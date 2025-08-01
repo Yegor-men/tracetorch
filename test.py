@@ -7,9 +7,9 @@ config_dict = {
 	"lr": 1e-1,
 }
 
-n_in = 100
+n_in = 10
 n_out = 10
-n_hidden = 100
+n_hidden = 10
 
 model = tracetorch.nn.Sequential(
 	tracetorch.nn.LIF(
@@ -63,3 +63,4 @@ print(f"Exp: {random_y}")
 
 print(f"{torch.nn.functional.sigmoid(model.layers[0].mem_decay)}")
 print(f"{torch.nn.functional.softplus(model.layers[0].threshold)}")
+print(f"{torch.nn.functional.sigmoid(model.layers[0].in_trace_decay)}")
