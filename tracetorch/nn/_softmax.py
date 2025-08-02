@@ -45,7 +45,7 @@ class Softmax:
 			syn_current = torch.einsum("i, oi -> o", in_spikes, self.weight)
 			mem_decay = torch.nn.functional.sigmoid(self.mem_decay)
 			self.mem = self.mem * mem_decay + syn_current
-			probability_distribution = torch.nn.functional.softmax(self.mem)
+			probability_distribution = torch.nn.functional.softmax(self.mem, dim=-1)
 			index = torch.multinomial(probability_distribution, num_samples=1)
 			out_spikes = torch.zeros_like(probability_distribution)
 			out_spikes[index] = 1.
@@ -59,7 +59,7 @@ class Softmax:
 		# if i=t(1-d), then t=i/(1-d)
 		mem_decay = torch.nn.functional.sigmoid(self.mem_decay)
 		stabilized_mem = average_syn_current / (1 - mem_decay)
-		average_output = torch.nn.functional.softmax(stabilized_mem)
+		average_output = torch.nn.functional.softmax(stabilized_mem, dim=-1)
 
 		average_output.backward(learning_signal)
 		passed_ls = average_input.grad

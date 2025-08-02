@@ -12,22 +12,22 @@ n_out = 10
 n_hidden = 10
 
 model = tracetorch.nn.Sequential(
-	tracetorch.nn.LIF(
+	tracetorch.nn.Sigmoid(
 		n_in=n_in,
 		n_out=n_hidden,
 		config=config_dict
 	),
-	tracetorch.nn.LIF(
+	tracetorch.nn.Sigmoid(
 		n_in=n_hidden,
 		n_out=n_hidden,
 		config=config_dict
 	),
-	tracetorch.nn.LIF(
+	tracetorch.nn.Sigmoid(
 		n_in=n_hidden,
 		n_out=n_hidden,
 		config=config_dict
 	),
-	tracetorch.nn.LIF(
+	tracetorch.nn.Sigmoid(
 		n_in=n_hidden,
 		n_out=n_out,
 		config=config_dict
@@ -61,6 +61,7 @@ tracetorch.plot.line_graph(lses, "ls")
 print(f"Got: {model_outputs[-1]}")
 print(f"Exp: {random_y}")
 
-print(f"{torch.nn.functional.sigmoid(model.layers[0].mem_decay)}")
-print(f"{torch.nn.functional.softplus(model.layers[0].threshold)}")
-print(f"{torch.nn.functional.sigmoid(model.layers[0].in_trace_decay)}")
+with torch.no_grad():
+	print(f"{torch.nn.functional.sigmoid(model.layers[0].mem_decay)}")
+	print(f"{torch.nn.functional.softplus(model.layers[0].threshold)}")
+	print(f"{torch.nn.functional.sigmoid(model.layers[0].in_trace_decay)}")
