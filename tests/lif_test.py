@@ -4,11 +4,11 @@ import tracetorch
 
 config_dict = {
 	"device": "cuda",
-	"lr": 1e-1,
+	"lr": 1e-3,
 }
 
-n_in = 10
-n_out = 10
+n_in = 5
+n_out = 7
 n_hidden = 10
 
 model = tracetorch.nn.Sequential(
@@ -37,7 +37,7 @@ model = tracetorch.nn.Sequential(
 random_x = torch.rand(n_in).round()
 random_y = torch.rand(n_out).round()
 
-n_timesteps = 100
+n_timesteps = 10
 model_outputs = []
 losses = []
 lses = []
