@@ -1,5 +1,4 @@
 import torch
-from math import log as ln
 
 from .. import functional
 
