@@ -4,7 +4,7 @@ import torch
 def mse(
 		received: torch.Tensor,
 		expected: torch.Tensor,
-		reduction: str = "sum"
+		reduction: str = "mean"
 ) -> tuple[torch.Tensor, torch.Tensor]:
 	received = received.detach().clone().requires_grad_(True)
 	expected = expected.detach().to(received)
