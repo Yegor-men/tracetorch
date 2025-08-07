@@ -22,7 +22,7 @@ class LIF:
 		self.device = config["device"]
 		self.lr = config["lr"]
 
-		self.weight = torch.randn(n_out, n_in).to(self.device)
+		self.weight = (torch.randn(n_out, n_in) * 0.1).to(self.device)
 		self.mem_decay = (functional.sigmoid_inverse(torch.ones(n_out) * mem_decay)).to(self.device)
 		self.in_trace_decay = (functional.sigmoid_inverse(torch.ones(n_in) * in_trace_decay)).to(self.device)
 		self.threshold = (functional.softplus_inverse(torch.ones(n_out) * threshold)).to(self.device)
@@ -62,7 +62,7 @@ class LIF:
 		d = torch.nn.functional.sigmoid(self.mem_decay)
 		t = torch.nn.functional.softplus(self.threshold)
 
-		excess = i - t * (1 - d)
+		excess = (2 * i - i * d) / 2 - t * (1 - d)
 		f = torch.nn.functional.sigmoid(5 * excess)
 
 		f.backward(learning_signal)
