@@ -1,4 +1,5 @@
 import torch
+from math import log as ln
 
 from .. import functional
 
@@ -55,27 +56,19 @@ class LIF:
 	def backward(self, learning_signal: torch.Tensor) -> torch.Tensor:
 		in_trace_decay = torch.nn.functional.sigmoid(self.in_trace_decay)
 		average_input = self.in_trace * (1 - in_trace_decay)
-		avg_in = average_input.detach().clone().requires_grad_(True)
+		avg_in = average_input.detach().requires_grad_(True)
 
 		i = torch.einsum("i, oi -> o", avg_in, self.weight)
 		d = torch.nn.functional.sigmoid(self.mem_decay)
 		t = torch.nn.functional.softplus(self.threshold)
 
-		will_fire = t < i / (1 - d)
-
-		valid_freq = torch.log(d) / torch.log(1 - (t / i) * (1 - d))
-		invalid_freq = 1 / (torch.exp(i + i * d) * torch.exp(t - i / (1 - d)))
-
-		f = torch.where(will_fire, valid_freq, invalid_freq)
+		excess = i - t * (1 - d)
+		f = torch.nn.functional.sigmoid(5 * excess)
 
 		f.backward(learning_signal)
 		passed_ls = avg_in.grad
 		average_input.backward(passed_ls)
 
 		self.optimizer.step()
-		self.optimizer.step()
 		self.optimizer.zero_grad(set_to_none=True)
-		print(f"wil fire: {will_fire}")
-		print(f"avg outp: {f}")
-		print(f"passedls: {passed_ls}")
 		return passed_ls
