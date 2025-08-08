@@ -82,7 +82,7 @@ for epoch in range(n_epochs):
 		model.zero_states()
 		aggregate = torch.zeros_like(model.layers[-1].mem)
 		for i in range(n_think):
-			model_out = model.forward(x)
+			model_out = model.forward(torch.bernoulli(x))
 			aggregate += model_out
 		aggregate /= aggregate.sum()
 		loss, ls = tracetorch.loss.mse(aggregate, y)
@@ -106,7 +106,7 @@ for index, (x, y) in tqdm(enumerate(test_loader), total=num_test_samples, leave=
 	model.zero_states()
 	aggregate = torch.zeros_like(model.layers[-1].mem)
 	for i in range(n_think):
-		model_out = model.forward(x)
+		model_out = model.forward(torch.bernoulli(x))
 		aggregate += model_out
 	aggregate /= aggregate.sum()
 	loss, ls = tracetorch.loss.mse(aggregate, y)
