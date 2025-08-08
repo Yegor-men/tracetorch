@@ -4,7 +4,7 @@ from torchvision import datasets, transforms
 import torch.nn.functional as F
 
 # Parameter: scale factor for pixel values
-alpha = 1.0  # Default alpha; set to any value in [0,1] as needed
+alpha = 0.3  # Default alpha; set to any value in [0,1] as needed
 
 # Image transforms: convert to tensor, flatten, scale by alpha
 image_transform = transforms.Compose([
@@ -115,4 +115,4 @@ for index, (x, y) in tqdm(enumerate(test_loader), total=num_test_samples, leave=
 		correct_test_predictions += 1
 accuracy = correct_test_predictions / num_test_samples
 tracetorch.plot.line_graph(test_loss,
-						   title=f"Loss graph, Accuracy: {(accuracy * 100):.2f}% for {num_test_samples} samples")
+						   title=f"Loss graph, Accuracy: {(accuracy * 100):.2f}% for {num_test_samples:,} samples")
