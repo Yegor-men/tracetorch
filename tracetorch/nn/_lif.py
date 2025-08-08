@@ -71,3 +71,8 @@ class LIF:
 		self.optimizer.step()
 		self.optimizer.zero_grad(set_to_none=True)
 		return passed_ls
+
+	def zero_states(self):
+		with torch.no_grad():
+			self.in_trace.zero_()
+			self.mem.zero_()

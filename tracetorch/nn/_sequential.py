@@ -13,3 +13,7 @@ class Sequential:
 	def backward(self, ls: torch.Tensor) -> None:
 		for index, layer in enumerate(reversed(self.layers)):
 			ls = layer.backward(ls)
+
+	def zero_states(self):
+		for layer in self.layers:
+			layer.zero_states()
