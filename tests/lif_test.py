@@ -4,12 +4,12 @@ import tracetorch
 
 config_dict = {
 	"device": "cuda",
-	"lr": 1e-2,
+	"lr": 1e-3,
 }
 
-n_in = 10000
-n_out = 10000
-n_hidden = 10000
+n_in = 10
+n_out = 40
+n_hidden = 10
 
 model = tracetorch.nn.Sequential(
 	tracetorch.nn.LIF(
@@ -34,34 +34,39 @@ model = tracetorch.nn.Sequential(
 	),
 )
 
-random_x = torch.rand(n_in).round()
-random_y = torch.rand(n_out).round()
+n_samples = 5
 
-n_timesteps = 50
-model_outputs = []
+samples = [(torch.rand(n_in).round(), torch.rand(n_out).round()) for _ in range(n_samples)]
+
+n_epochs = 100
+think_length = 10
+
 losses = []
-lses = []
 
-for i in range(n_timesteps):
-	model_out = model.forward(random_x)
-	model_outputs.append(model_out)
+for epoch in range(n_epochs):
+	for index, (x, y) in enumerate(samples):
+		model.zero_states()
+		cum_loss = 0
+		for j in range(think_length):
+			model_output = model.forward(x)
+			loss, ls = tracetorch.loss.mse(model_output, y)
+			cum_loss += loss
+			if j == think_length - 1:
+				model.backward(ls)
+		cum_loss /= think_length
+		losses.append(cum_loss)
+		print(f"Epoch: {epoch:,}, Sample: {index} - Loss: {cum_loss}")
 
-	loss, ls = tracetorch.loss.mse(model_out, random_y)
-	print(f"{i} - Loss: {loss}")
-
-	losses.append(loss)
-	lses.append(ls)
-
-	model.backward(ls)
-
-tracetorch.plot.spike_train(model_outputs)
 tracetorch.plot.line_graph(losses, "loss")
-tracetorch.plot.line_graph(lses, "ls")
 
-# print(f"Got: {model_outputs[-1]}")
-# print(f"Exp: {random_y}")
-
-# with torch.no_grad():
-# 	print(f"{torch.nn.functional.sigmoid(model.layers[0].mem_decay)}")
-# 	print(f"{torch.nn.functional.softplus(model.layers[0].threshold)}")
-# 	print(f"{torch.nn.functional.sigmoid(model.layers[0].in_trace_decay)}")
+for index, (x, y) in enumerate(samples):
+	model.zero_states()
+	model_output_list = []
+	cum_loss = 0
+	for j in range(think_length):
+		model_output = model.forward(x)
+		model_output_list.append(model_output)
+		loss, ls = tracetorch.loss.mse(model_output, y)
+		cum_loss += loss
+	cum_loss /= think_length
+	tracetorch.plot.spike_train(model_output_list, title=f"Index: {index}, Loss: {cum_loss}")
