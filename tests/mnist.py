@@ -105,12 +105,20 @@ for epoch in range(n_epochs):
 			trace_decays = [torch.nn.functional.sigmoid(layer.in_trace_decay) for layer in model.layers]
 			tracetorch.plot.render_image(trace_decays[0].view(28, 28), title=f"L1 decay: E {epoch}, I {index}")
 			tracetorch.plot.distributions(f"Input trace decays: E {epoch}, I {index}", trace_decays)
+			weights = [layer.weight for layer in model.layers]
+			mem_decays = [torch.nn.functional.sigmoid(layer.mem_decay) for layer in model.layers]
+			tracetorch.plot.distributions(f"weights: E {epoch}, I {index}", weights)
+			tracetorch.plot.distributions(f"mem decays: E {epoch}, I {index}", mem_decays)
 
 train_loss_manager.plot(title=f"Loss, training finished")
 train_acc_manager.plot(title=f"Accuracy, training finished")
 trace_decays = [torch.nn.functional.sigmoid(layer.in_trace_decay) for layer in model.layers]
 tracetorch.plot.render_image(trace_decays[0].view(28, 28), title=f"In trace decay, training finished")
 tracetorch.plot.distributions("Input trace decays training finished", trace_decays)
+weights = [layer.weight for layer in model.layers]
+mem_decays = [torch.nn.functional.sigmoid(layer.mem_decay) for layer in model.layers]
+tracetorch.plot.distributions("weights training finished", weights)
+tracetorch.plot.distributions("mem decays training finished", mem_decays)
 
 test_loss_manager = tracetorch.plot.MeasurementManager(title="Test Loss", decay=decay)
 num_test_samples = len(test_loader)
