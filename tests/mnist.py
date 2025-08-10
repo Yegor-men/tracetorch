@@ -4,8 +4,8 @@ from torchvision import datasets, transforms
 import torch.nn.functional as F
 
 # Parameter: scale factor for pixel values
-alpha = 0.3  # Default alpha; set to any value in [0,1] as needed
-beta = 0.1
+alpha = 1  # Default alpha; set to any value in [0,1] as needed
+beta = 0.05
 
 # Image transforms: convert to tensor, flatten, scale by alpha
 image_transform = transforms.Compose([
@@ -102,9 +102,13 @@ for epoch in range(n_epochs):
 		if index % 10_000 == 0:
 			train_loss_manager.plot(title=f"Loss: Epoch {epoch}, image {index}")
 			train_acc_manager.plot(title=f"Accuracy: Epoch {epoch}, image {index}")
+			tracetorch.plot.render_image(torch.nn.functional.sigmoid(model.layers[0].in_trace_decay.view(28, 28)),
+										 title=f"In trace decay: Epoch {epoch}, image {index}")
 
 train_loss_manager.plot(title=f"Loss, training finished")
 train_acc_manager.plot(title=f"Accuracy, training finished")
+tracetorch.plot.render_image(torch.nn.functional.sigmoid(model.layers[0].in_trace_decay.view(28, 28)),
+							 title=f"In trace decay, training finished")
 
 test_loss_manager = tracetorch.plot.MeasurementManager(title="Test Loss", decay=decay)
 num_test_samples = len(test_loader)
