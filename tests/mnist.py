@@ -79,17 +79,15 @@ model = tracetorch.nn.Sequential(
 )
 
 n_epochs = 1
-n_think = 100
+n_think = 10
 
-train_loss = []
-train_accuracy = []
+decay = torch.tensor([0.9, 0.99, 0.999]).to(config_dict["device"])
+train_loss_manager = tracetorch.plot.MeasurementManager(title="Train Loss", decay=decay)
+train_acc_manager = tracetorch.plot.MeasurementManager(title="Train Accuracy", decay=decay)
+
 num_train_samples = len(train_loader)
 
 for epoch in range(n_epochs):
-	epoch_losses, epoch_accuracies = [], []
-	loss_ao100, acc_ao100 = [], []
-	epoch_loss = torch.tensor(0.).to(config_dict["device"])
-	correct_train_predictions = 0
 	for index, (x, y) in tqdm(enumerate(train_loader), total=num_train_samples, leave=True, desc=f"Epoch {epoch + 1}"):
 		model.zero_states()
 		aggregate = torch.zeros_like(model.layers[-1].mem)
@@ -99,27 +97,16 @@ for epoch in range(n_epochs):
 		aggregate /= aggregate.sum()
 		loss, ls = tracetorch.loss.mse(torch.nn.functional.softmax(model.layers[-1].mem, dim=-1), y)
 		model.backward(ls)
-		epoch_loss += loss
-		epoch_losses.append(loss)
-		if aggregate.argmax().item() == y.argmax().item():
-			correct_train_predictions += 1
-			epoch_accuracies.append(1)
-		else:
-			epoch_accuracies.append(0)
-		if len(epoch_losses) % 100 == 0:
-			loss_ao100.append(sum(epoch_losses[-100:]) / 100)
-			acc_ao100.append(sum(epoch_accuracies[-100:]) / 100)
-	epoch_loss /= num_train_samples
-	train_loss.append(epoch_loss)
-	accuracy = correct_train_predictions / num_train_samples
-	train_accuracy.append(accuracy)
-	print(f"Loss: {epoch_loss}, Accuracy: {(accuracy * 100):.2f}%")
-	tracetorch.plot.line_graph(train_loss, title=f"Loss over epochs")
-	tracetorch.plot.line_graph(train_accuracy, title=f"Accuracy over epochs")
-	tracetorch.plot.line_graph(loss_ao100, title=f"Epoch {epoch + 1} - Loss ao100")
-	tracetorch.plot.line_graph(acc_ao100, title=f"Epoch {epoch + 1} - Accuracy ao100")
+		train_loss_manager.append(loss)
+		train_acc_manager.append(1 if aggregate.argmax().item() == y.argmax().item() else 0)
+		if index % 10_000 == 0:
+			train_loss_manager.plot(title=f"Loss: Epoch {epoch}, image {index}")
+			train_acc_manager.plot(title=f"Accuracy: Epoch {epoch}, image {index}")
 
-test_loss = []
+train_loss_manager.plot(title=f"Loss, training finished")
+train_acc_manager.plot(title=f"Accuracy, training finished")
+
+test_loss_manager = tracetorch.plot.MeasurementManager(title="Test Loss", decay=decay)
 num_test_samples = len(test_loader)
 correct_test_predictions = 0
 
@@ -131,9 +118,8 @@ for index, (x, y) in tqdm(enumerate(test_loader), total=num_test_samples, leave=
 		aggregate += model_out
 	aggregate /= aggregate.sum()
 	loss, ls = tracetorch.loss.mse(torch.nn.functional.softmax(model.layers[-1].mem, dim=-1), y)
-	test_loss.append(loss)
+	test_loss_manager.append(loss)
 	if aggregate.argmax().item() == y.argmax().item():
 		correct_test_predictions += 1
 accuracy = correct_test_predictions / num_test_samples
-tracetorch.plot.line_graph(test_loss,
-						   title=f"Loss graph, Accuracy: {(accuracy * 100):.2f}% for {num_test_samples:,} samples")
+test_loss_manager.plot(title=f"Test accuracy: {(accuracy * 100):.2f}%")
