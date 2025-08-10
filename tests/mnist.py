@@ -102,13 +102,15 @@ for epoch in range(n_epochs):
 		if index % 10_000 == 0:
 			train_loss_manager.plot(title=f"Loss: Epoch {epoch}, image {index}")
 			train_acc_manager.plot(title=f"Accuracy: Epoch {epoch}, image {index}")
-			tracetorch.plot.render_image(torch.nn.functional.sigmoid(model.layers[0].in_trace_decay.view(28, 28)),
-										 title=f"In trace decay: Epoch {epoch}, image {index}")
+			trace_decays = [torch.nn.functional.sigmoid(layer.in_trace_decay) for layer in model.layers]
+			tracetorch.plot.render_image(trace_decays[0].view(28, 28), title=f"L1 decay: E {epoch}, I {index}")
+			tracetorch.plot.distributions(f"Input trace decays: E {epoch}, I {index}", trace_decays)
 
 train_loss_manager.plot(title=f"Loss, training finished")
 train_acc_manager.plot(title=f"Accuracy, training finished")
-tracetorch.plot.render_image(torch.nn.functional.sigmoid(model.layers[0].in_trace_decay.view(28, 28)),
-							 title=f"In trace decay, training finished")
+trace_decays = [torch.nn.functional.sigmoid(layer.in_trace_decay) for layer in model.layers]
+tracetorch.plot.render_image(trace_decays[0].view(28, 28), title=f"In trace decay, training finished")
+tracetorch.plot.distributions("Input trace decays training finished", trace_decays)
 
 test_loss_manager = tracetorch.plot.MeasurementManager(title="Test Loss", decay=decay)
 num_test_samples = len(test_loader)
