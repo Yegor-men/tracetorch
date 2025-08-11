@@ -232,15 +232,15 @@ So instead let's think from the first principles, and some things we can easily 
 1. If the threshold `t` is higher than `m = average synaptic current / (1 - d)`, then that means that even if we had
    infinite time, the membrane level will _never_ reach the firing threshold, so the firing frequency is `0`
 2. If the `average synaptic current` is higher than the threshold `t`, then it really doesn't matter what `d` or `m` or
-   anything is, because we will surpass the threshold at each timestep, so the firing frequency is `1`
+   anything is, because we will surpass the threshold at each timestep, so the firing frequency is `1`.
 
 It's not hard to imagine a sigmoid function stretching across from these two points to smoothly approximate the firing
 frequency in between, as well as beyond the domain, and that is what traceTorch does behind the scenes. In reality, the
 sigmoid function isn't exactly `0` or `1` at these points; and the decay `d` for both the input trace and membrane decay
 is actually stored as a raw value with an infinite domain, just passed through sigmoid before using; and so is the
-threshold `t` stored as a raw value, but then passed through softplus; but these are minor details, this explanation is
-sufficient to explain the works of traceTorch: the goal is to try approximate the average outputs from the average
-inputs in some smooth, differential way.
+threshold `t` stored as a raw value, but then passed through softplus; there are more layers than just the LIF; but
+these are minor details, this explanation is sufficient to explain the works of traceTorch: the goal of any traceTorch
+layer is to try approximate the average outputs from the average inputs in some smooth, differential way.
 
 ## Authors
 
