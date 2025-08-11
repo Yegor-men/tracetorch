@@ -73,7 +73,8 @@ following:
 
 #. Accumulate the charge over time
 #. Reset the accumulated charge so that we can fire again
-#. Gradually decay the charge over time,
+#. Gradually decay the charge over time. This isn't strictly necessary, but if it's a learnable parameter then the
+   neuron can learn to change it's scale of time importance to focus more on short term or long term events
 
 Also, let's plot the outputs of our layer in a spike train: the spikes plotted along time. Since now we're accumulating
 charge over time, it only makes sense that we have one input that we continuously show to the model. Better yet, we can
