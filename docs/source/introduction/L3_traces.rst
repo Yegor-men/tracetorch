@@ -72,11 +72,11 @@ required on average to get the observed trace?"*. Let's follow through.
 
 Now we have a generalized formula ``i = t * (1 - d)`` to find out the average input given a trace and some decay. Let's
 test it out in practice, seeing how various values of ``d`` affect the calculated average input ``i``. We are going to
-use ``tracetorch.plot.MeasurementManager`` for exactly that. Internally, it maintains multiple traces with various decay
+use ``tracetorch.plot.MeasurementManager()`` for exactly that. Internally, it maintains multiple traces with various decay
 values, initialized to ``[0, 0.9, 0.99, 0.999]``. At each timestep it implements the input into each trace, recalculates
 the ``i`` value, and saves that. Then we can plot the ``i`` values over time. For the sake of simplicity, let's feed
 into it a number with a mean of 5 and a standard deviation of 1, that is to say ``torch.randn(1) + 5``. Let's also do
-this for 1000 timesteps.
+this for 10000 timesteps.
 
 .. code-block:: python
    :linenos:
