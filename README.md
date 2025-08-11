@@ -6,17 +6,25 @@ traceTorch is a PyTorch-based library built on spiking neural network architectu
 through time with lightweight, per-layer input traces, enabling biologically inspired, constant-memory learning on long
 or streaming sequences.
 
-It is highly recommended that you read the [documentation](https://yegor-men.github.io/tracetorch/) first. It contains a
-detailed introduction to how traceTorch works with intuitive explanations, comparisons and analogies to the "classic"
-architecture counterparts. It explains what traceTorch can and can't do, when it's better and when it's not. It also
-walks through the `examples/` files in a tutorial manner to explain how you can create your own traceTorch networks.
+## Documentation
+
+It is highly recommended that you read the [documentation](https://yegor-men.github.io/tracetorch/) first. It contains:
+
+1. **Introduction**: An introduction to traceTorch, how and why it works, it's founding principles. It's thoroughly
+   recommended that you read through the entire introduction and gain an intuitive understanding before proceeding.
+2. **Tutorials**: Various tutorials to create your own traceTorch models. The resultant code can be found in
+   `tutorials/`.
+3. **Documentation**: The actual documentation to all the modules included in `traceTorch`. It includes detailed
+   explanations, examples and math to gain a full understanding.
 
 ## Roadmap
 
 - Create the poisson click test example
 - Implement the trace alternative to REINFORCE
 - Make traceTorch into a PyPI library
-- Finish writing documentation
+- Finish writing the documentation
+- Clean up the tutorial code
+- Implement abstract graph based models, not just sequential
 
 ## Installation
 
@@ -37,13 +45,14 @@ from tracetorch import tracetorch
 
 ## Usage examples
 
-There exists `tracetorch/examples/` within which sit test files for playtesting, aimed to test if the components work.
+`tutorials/` contains all the tutorial files, ready to run and playtest. The tutorials themselves can be
+found [here](https://yegor-men.github.io/tracetorch/tutorials/index.html).
 
-The example files are ready to go files that demonstrate traceTorch in various scenarios. To make sure that you have all
-the necessary libraries do:
+To ensure that you have all the necessary packages for the tutorials installed, please execute the following command:
 
 ```
-pip install -r examples-requirements.txt
+cd tutorials/
+pip install -r requirements.txt
 ```
 
 ## Authors
@@ -59,7 +68,7 @@ design, but I would also like to recognize the following projects and people who
   principles of function. Ironically, its dependency on constructing the full autograd graph is what largely inspired me
   to make traceTorch.
 - [Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov) for introducing me to computational neuroscience, presenting
-  interesting concepts in an easy to understand manner. My earliest tests, when I naively wanted to implement 1:1
+  interesting concepts in an easy-to-understand manner. My earliest tests, when I naively wanted to implement 1:1
   biological neurons, largely revolved around his work.
 - [e-prop (eligibility propagation)](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf) inspired
   the whole "trace" concept, the idea of keeping a decaying value. Earlier, before traceTorch, I wanted to use e-prop
@@ -73,5 +82,5 @@ it.
 
 You can also reach out to me via either email or Twitter:
 
-- email: yegor.mn@gmail.com
+- yegor.mn@gmail.com
 - [Twitter](https://x.com/Yegor_Men)
