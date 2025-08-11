@@ -3,6 +3,13 @@ import matplotlib.pyplot as plt
 
 
 def line_graph(list_of_values, title: str, label=None) -> None:
+	"""
+	Uses a list of values (allows tensors) to make a line graph
+	:param list_of_values:
+	:param title:
+	:param label:
+	:return:
+	"""
 	# Check if it's a list of tensors
 	if isinstance(list_of_values[0], torch.Tensor):
 		T = len(list_of_values)

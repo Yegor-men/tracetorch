@@ -6,6 +6,13 @@ def mse(
 		expected: torch.Tensor,
 		reduction: str = "mean"
 ) -> tuple[torch.Tensor, torch.Tensor]:
+	"""
+	calculates the mse loss
+	:param received:
+	:param expected:
+	:param reduction:
+	:return:
+	"""
 	received = received.detach().clone().requires_grad_(True)
 	expected = expected.detach().to(received)
 

@@ -4,6 +4,9 @@ from .. import functional
 
 
 class LIF:
+	"""
+	Leaky integrate and fire neuron layer
+	"""
 	def __init__(
 			self,
 			n_in: int,

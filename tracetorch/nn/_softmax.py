@@ -5,6 +5,9 @@ from .. import functional
 
 
 class Softmax:
+	"""
+	Outputs a probability distribution rather than spikes
+	"""
 	def __init__(
 			self,
 			n_in: int,

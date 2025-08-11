@@ -2,6 +2,9 @@ import torch
 
 
 class Sequential:
+	"""
+	binds layers into a sequential modde
+	"""
 	def __init__(self, *layers):
 		self.layers = list(layers)
 

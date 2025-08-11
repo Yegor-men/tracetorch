@@ -3,10 +3,13 @@ from .. import plot
 
 
 class MeasurementManager:
+	"""
+	Manages measurements over time like loss or accuracy
+	"""
 	def __init__(
 			self,
 			title: str,
-			decay: torch.Tensor = torch.tensor([0.9, 0.99, 0.999])
+			decay: torch.Tensor = torch.tensor([0., 0.9, 0.99, 0.999])
 	):
 		self.title = title
 		self.trace = torch.zeros_like(decay)

@@ -17,6 +17,12 @@ def render_image(tensor, figsize=(4, 4), title=None, vmin=None, vmax=None):
                  If None, the function uses tensor.min() / tensor.max().
     Behavior change for grayscale: the image is rescaled to [0,1] for display (max contrast),
     but the colorbar shows the original numeric range (vmin..vmax).
+    :param tensor:
+    :param figsize:
+    :param title:
+    :param vmin:
+    :param vmax:
+    :return:
     """
     if not torch.is_tensor(tensor):
         tensor = torch.as_tensor(tensor)

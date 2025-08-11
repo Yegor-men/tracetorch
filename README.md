@@ -97,7 +97,7 @@ traceTorch is primarily focused around:
 ## Installation
 
 ⚠️ WARNING, traceTorch is _not yet_ a library. For now, you'll just have to clone this repository and use the
-`tracetorch/` folder.
+`tracetorch/` folder within.
 
 ```
 git clone https://github.com/Yegor-men/tracetorch
@@ -105,10 +105,10 @@ cd tracetorch/
 pip install -r requirements.txt
 ```
 
-Then, within a python file where from where the `tracetorch/` folder is visible, simply do:
+Then, within a python file where from where the repository root folder is visible, simply do:
 
 ```
-import tracetorch
+from tracetorch import tracetorch
 ```
 
 ## Usage examples
