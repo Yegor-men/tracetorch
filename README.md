@@ -119,7 +119,7 @@ The example files are ready to go files that demonstrate traceTorch in various s
 the necessary libraries do:
 
 ```
-pip install -r examples/requirements.txt
+pip install -r examples-requirements.txt
 ```
 
 ## How does traceTorch work?
