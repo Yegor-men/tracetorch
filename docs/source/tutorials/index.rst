@@ -1,13 +1,8 @@
 Tutorials
 =========
 
-Detailed explanations, mathematics, and usage examples for traceTorch components.
-
 .. toctree::
    :maxdepth: 2
+   :caption: Contents:
 
-   lif_layer
-   softmax_layer
-   sequential
-   plotting
-   examples_walkthrough
+   T1_memorizing_patterns
