@@ -2,9 +2,9 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-purple.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-traceTorch is a PyTorch-based library built on spiking neural network architectures that replaces full backpropagation
-through time with lightweight, per-layer input traces, enabling biologically inspired, constant-memory learning on long
-or streaming sequences.
+``traceTorch`` is a PyTorch-based library built on the principles of spiking neural networks, replacing the PyTorch
+default backpropagation through time with lightweight, per-layer input traces, enabling biologically inspired, constant
+time and memory consumption learning on arbitrarily long or even streaming sequences.
 
 ## Documentation
 
