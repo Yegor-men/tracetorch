@@ -16,7 +16,7 @@ that you don't understand.
   the forward pass when looking at the ``n`` th layer.
 - ``upstream``: any layer that is calculated earlier in the forward pass, typically referring to the ``n-1`` th layer in
   the forward pass when looking at the ``n`` th layer.
-- ``learning signal``: the derivative of the loss w.r.t. some neuron or layer's output.
+- ``learning signal``: the derivative of the loss w.r.t. some neuron or layer's output, often shortened to ``ls``.
 
 **Trace mechanics**:
 
