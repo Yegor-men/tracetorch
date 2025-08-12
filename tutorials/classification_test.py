@@ -1,5 +1,6 @@
 import torch
 import tracetorch
+import random
 
 config_dict = {
 	"device": "cuda",
@@ -26,7 +27,7 @@ model = tracetorch.nn.Sequential(
 		n_out=n_hidden,
 		config=config_dict
 	),
-	tracetorch.nn.Softmax(
+	tracetorch.nn.LIS(
 		n_in=n_hidden,
 		n_out=n_out,
 		config=config_dict
@@ -47,7 +48,7 @@ think_length = 50
 losses = []
 
 for epoch in range(n_epochs):
-	tracetorch.functional.shuffle_list(samples)
+	random.shuffle(samples)
 	for index, (x, y) in enumerate(samples):
 		model.zero_states()
 		model_out_aggregate = torch.zeros_like(model.layers[-1].mem)

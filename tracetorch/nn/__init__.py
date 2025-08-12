@@ -1,4 +1,4 @@
 from ._sequential import Sequential
 
 from ._lif import LIF
-from ._softmax import Softmax
+from ._lis import LIS

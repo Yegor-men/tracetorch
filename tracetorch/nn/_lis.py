@@ -4,9 +4,9 @@ from math import log as ln
 from .. import functional
 
 
-class Softmax:
+class LIS:
 	"""
-	Outputs a probability distribution rather than spikes
+	Leaky integrate and softmax layer
 	"""
 	def __init__(
 			self,

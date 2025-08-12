@@ -70,7 +70,7 @@ model = tracetorch.nn.Sequential(
 		weight_scaling=0.05,
 		config=config_dict,
 	),
-	tracetorch.nn.Softmax(
+	tracetorch.nn.LIS(
 		n_in=128,
 		n_out=10,
 		weight_scaling=0.05,

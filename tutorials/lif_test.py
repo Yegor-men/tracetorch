@@ -1,5 +1,6 @@
 import torch
 import tracetorch
+import random
 
 config_dict = {
 	"device": "cuda",
@@ -43,7 +44,7 @@ think_length = 50
 losses = []
 
 for epoch in range(n_epochs):
-	tracetorch.functional.shuffle_list(samples)
+	random.shuffle(samples)
 	for index, (x, y) in enumerate(samples):
 		model.zero_states()
 		avg_loss = 0
