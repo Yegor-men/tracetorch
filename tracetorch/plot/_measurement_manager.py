@@ -18,6 +18,8 @@ class MeasurementManager:
 
 	def append(self, value):
 		with torch.no_grad():
+			if isinstance(value, torch.Tensor):
+				value = value.item()
 			self.trace *= self.decay
 			self.trace += value * torch.ones_like(self.trace)
 			avg_input = self.trace * (1 - self.decay)
