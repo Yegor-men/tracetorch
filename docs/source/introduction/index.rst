@@ -5,9 +5,6 @@ The following content is the introduction to ``traceTorch``. It is recommended t
 are designed in ascending complexity. Doing them all should grant you the necessary knowledge to understand the working
 principles of ``traceTorch``. Detailed explanations of the modules themselves can be found :doc:`here <../reference/index>`.
 
-
-
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

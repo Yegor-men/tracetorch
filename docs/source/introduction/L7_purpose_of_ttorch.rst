@@ -14,5 +14,3 @@ aiming to create biological-esque networks in a computationally feasible manner.
 
 With the introduction out of the way, it's recommended that you read through some of the tutorials, at the very least
 :doc:`Tutorial 0 <../tutorials/T0_terminology>` to become familiar with the terminology used in ``traceTorch``.
-
-
