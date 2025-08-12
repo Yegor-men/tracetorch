@@ -51,10 +51,7 @@ class LIS:
 			self.mem = self.mem * mem_decay + syn_current
 
 			probability_dist = torch.nn.functional.softmax(self.mem, dim=-1)
-			index = torch.multinomial(probability_dist, num_samples=1)
-			out_spikes = torch.zeros_like(probability_dist)
-			out_spikes[index] = 1
-			return out_spikes
+			return probability_dist
 
 	def backward(self, learning_signal: torch.Tensor) -> torch.Tensor:
 		in_trace_decay = torch.nn.functional.sigmoid(self.in_trace_decay)
