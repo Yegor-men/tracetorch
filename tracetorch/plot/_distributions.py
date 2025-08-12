@@ -61,8 +61,8 @@ def _gaussian_kde_eval(samples: np.ndarray,
 	return dens
 
 
-def distributions(title: str,
-				  layers: List[torch.Tensor],
+def distributions(layers: List[torch.Tensor],
+				  title: str,
 				  *,
 				  n_grid: int = 1024,
 				  n_percentiles: int = 100,
