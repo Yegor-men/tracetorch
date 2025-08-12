@@ -71,8 +71,8 @@ model = tracetorch.nn.Sequential(
 		config=config_dict,
 	),
 	tracetorch.nn.LIS(
-		n_in=128,
-		n_out=10,
+		num_in=128,
+		num_out=10,
 		weight_scaling=0.05,
 		config=config_dict,
 	),

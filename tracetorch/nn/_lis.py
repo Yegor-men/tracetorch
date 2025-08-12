@@ -10,8 +10,8 @@ class LIS:
 	"""
 	def __init__(
 			self,
-			n_in: int,
-			n_out: int,
+			num_in: int,
+			num_out: int,
 			weight_scaling: float = 0.1,
 			mem_decay: float = 0.9,
 			in_trace_decay: float = 0.9,
@@ -24,9 +24,9 @@ class LIS:
 		self.device = device
 		self.lr = lr
 
-		self.weight = (torch.randn(n_out, n_in) * weight_scaling).to(self.device)
-		self.mem_decay = (functional.sigmoid_inverse(torch.ones(n_out) * mem_decay)).to(self.device)
-		self.in_trace_decay = (functional.sigmoid_inverse(torch.ones(n_in) * in_trace_decay)).to(self.device)
+		self.weight = (torch.randn(num_out, num_in) * weight_scaling).to(self.device)
+		self.mem_decay = (functional.sigmoid_inverse(torch.ones(num_out) * mem_decay)).to(self.device)
+		self.in_trace_decay = (functional.sigmoid_inverse(torch.ones(num_in) * in_trace_decay)).to(self.device)
 
 		self.weight.requires_grad_(learn_weight)
 		self.mem_decay.requires_grad_(learn_mem_decay)
@@ -37,8 +37,8 @@ class LIS:
 			lr=self.lr
 		)
 
-		self.mem = torch.zeros(n_out).to(self.device)
-		self.in_trace = torch.zeros(n_in).to(self.device)
+		self.mem = torch.zeros(num_out).to(self.device)
+		self.in_trace = torch.zeros(num_in).to(self.device)
 
 	def forward(self, in_spikes: torch.Tensor) -> torch.Tensor:
 		with torch.no_grad():

@@ -28,8 +28,8 @@ model = tracetorch.nn.Sequential(
 		config=config_dict
 	),
 	tracetorch.nn.LIS(
-		n_in=n_hidden,
-		n_out=n_out,
+		num_in=n_hidden,
+		num_out=n_out,
 		config=config_dict
 	),
 )
