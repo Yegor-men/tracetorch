@@ -13,23 +13,23 @@ n_out = 10
 
 model = tracetorch.nn.Sequential(
 	tracetorch.nn.LIF(
-		n_in=n_in,
-		n_out=n_hidden,
+		num_in=n_in,
+		num_out=n_hidden,
 		config=config_dict
 	),
 	tracetorch.nn.LIF(
-		n_in=n_hidden,
-		n_out=n_hidden,
+		num_in=n_hidden,
+		num_out=n_hidden,
 		config=config_dict
 	),
 	tracetorch.nn.LIF(
-		n_in=n_hidden,
-		n_out=n_hidden,
+		num_in=n_hidden,
+		num_out=n_hidden,
 		config=config_dict
 	),
 	tracetorch.nn.LIF(
-		n_in=n_hidden,
-		n_out=n_out,
+		num_in=n_hidden,
+		num_out=n_out,
 		config=config_dict
 	),
 )

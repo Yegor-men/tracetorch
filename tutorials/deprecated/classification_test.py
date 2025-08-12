@@ -13,18 +13,18 @@ n_out = 10
 
 model = tracetorch.nn.Sequential(
 	tracetorch.nn.LIF(
-		n_in=n_in,
-		n_out=n_hidden,
+		num_in=n_in,
+		num_out=n_hidden,
 		config=config_dict
 	),
 	tracetorch.nn.LIF(
-		n_in=n_hidden,
-		n_out=n_hidden,
+		num_in=n_hidden,
+		num_out=n_hidden,
 		config=config_dict
 	),
 	tracetorch.nn.LIF(
-		n_in=n_hidden,
-		n_out=n_hidden,
+		num_in=n_hidden,
+		num_out=n_hidden,
 		config=config_dict
 	),
 	tracetorch.nn.LIS(
@@ -42,7 +42,7 @@ for i in range(n_out):
 	y[i] = 1.
 	samples.append((x, y))
 
-n_epochs = 500
+n_epochs = 50
 think_length = 50
 
 losses = []
@@ -51,13 +51,11 @@ for epoch in range(n_epochs):
 	random.shuffle(samples)
 	for index, (x, y) in enumerate(samples):
 		model.zero_states()
-		model_out_aggregate = torch.zeros_like(model.layers[-1].mem)
 		for j in range(think_length):
-			model_output = model.forward(x)
-			model_out_aggregate += model_output
+			output_distribution = model.forward(x)
+			model_output = tracetorch.functional.sample_softmax(output_distribution)
 
-		model_out_aggregate /= model_out_aggregate.sum()
-		loss, ls = tracetorch.loss.mse(model_out_aggregate, y)
+		loss, ls = tracetorch.loss.mse(output_distribution, y)
 		model.backward(ls)
 		losses.append(loss)
 		print(f"Epoch: {epoch:,}, Sample: {index} - Loss: {loss}")

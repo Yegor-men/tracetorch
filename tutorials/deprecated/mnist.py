@@ -53,20 +53,20 @@ config_dict = {
 
 model = tracetorch.nn.Sequential(
 	tracetorch.nn.LIF(
-		n_in=784,
-		n_out=128,
+		num_in=784,
+		num_out=128,
 		weight_scaling=0.05,
 		config=config_dict,
 	),
 	tracetorch.nn.LIF(
-		n_in=128,
-		n_out=128,
+		num_in=128,
+		num_out=128,
 		weight_scaling=0.05,
 		config=config_dict,
 	),
 	tracetorch.nn.LIF(
-		n_in=128,
-		n_out=128,
+		num_in=128,
+		num_out=128,
 		weight_scaling=0.05,
 		config=config_dict,
 	),
