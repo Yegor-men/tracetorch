@@ -1,6 +1,7 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-purple.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.1.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 ``traceTorch`` is a PyTorch-based library built on the principles of spiking neural networks, replacing the PyTorch
 default backpropagation through time with lightweight, per-layer input traces, enabling biologically inspired, constant
@@ -21,32 +22,30 @@ It is highly recommended that you read the [documentation](https://yegor-men.git
 
 - Create the poisson click test example
 - Implement the trace alternative to REINFORCE
-- Make traceTorch into a PyPI library
 - Finish writing the documentation
-- Clean up the tutorial code
+- Move tutorial code to separate repository
 - Implement abstract graph based models, not just sequential
 
 ## Installation
 
-⚠️ WARNING, traceTorch is _not yet_ a library. For now, you'll just have to clone this repository and use the
-`tracetorch/` folder within.
+``traceTorch`` is a PyPI library, which can be found [here](https://pypi.org/project/tracetorch/).
+
+You can install it via pip:
 
 ```
-git clone https://github.com/Yegor-men/tracetorch
-cd tracetorch/
-pip install -r requirements.txt
+pip install tracetorch
 ```
 
-Then, within a python file where from where the repository root folder is visible, simply do:
+To use, simply do:
 
 ```
-from tracetorch import tracetorch
+import tracetorch
 ```
 
 ## Usage examples
 
-`tutorials/` contains all the tutorial files, ready to run and playtest. The tutorials themselves can be
-found [here](https://yegor-men.github.io/tracetorch/tutorials/index.html).
+`tutorials/` contains all the tutorial files, ready to run and playtest. The tutorials themselves can be found
+[here](https://yegor-men.github.io/tracetorch/tutorials/index.html).
 
 To ensure that you have all the necessary packages for the tutorials installed, please execute the following command:
 
