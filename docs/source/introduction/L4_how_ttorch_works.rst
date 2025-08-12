@@ -40,3 +40,6 @@ meta-patterns, the patterns of patterns. For this, it's going to need to be cent
 In fact, the charge level (technically called the membrane level, inspired by biology) in the LIF neuron is also a
 trace. We decay it by some value at each timestep, to it add the current (called the synaptic current, also because of
 biology). The only difference is that we occasionally reset the membrane level, but other than that it's the same trace.
+Subsequently some of the layers present in ``traceTorch``, such as ``tracetorch.nn.Softmax()``, which outputs a
+softmaxed probability distribution rather than spikes per se, also utilize the trace formulae to find at what levels the
+membrane will stabilize, and hence what the average output is.

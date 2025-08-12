@@ -1,4 +1,4 @@
-Tutorial 1. Memorizing an input pattern to output pattern mapping
-=================================================================
+1. Memorizing an input pattern to output pattern mapping
+========================================================
 
 foo bar

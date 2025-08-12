@@ -150,5 +150,5 @@ Close enough, within the reasonable margin of error.
    :alt: Spike train of layer outputs
 
 Congratulations. You have created the simplest recurrent LIF layer there is. It cannot train, nor does it have any
-practical purpose, and the initialization of the weights is not nice, but good enough, you understand the principle of
-an LIF neuron.
+practical purpose, and the initialization of the weights is not nice, but this is decent enough to understand the
+principles of the works of the forward pass.

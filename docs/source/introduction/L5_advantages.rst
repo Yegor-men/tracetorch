@@ -1,22 +1,20 @@
-The advantages of traceTorch
-============================
+5. The advantages of traceTorch
+===============================
 
-Like mentioned above, the goal of traceTorch is to make a computationally practical approach to realtime learning based
-on sparse rewards. Hence, networks constructed with traceTorch have the following advantages over classic PyTorch ANNs:
+So, ``traceTorch`` is similar enough to base PyTorch to not be too jarring a difference, but behind the scenes it
+updates the parameters in a quite different manner. So, what are the advantages of this approach in contrast to base
+PyTorch?
 
-- **Recurrent in nature**: Based on SNN principles, traceTorch is recurrent in nature, nonlinearity appearing not
-  because of nonlinear functions, but because of the nonlinear nature of the fundamental backbone of SNNs: the Leaky
-  Integrate and Fire (LIF) neurons.
-- **Constant memory consumption**: As mentioned above, it makes little sense biologically that neurons are somehow able
-  to store, traverse and manipulate complex graphs of arbitrary size. Instead, it intuitively makes sense that they
-  consume constant memory. traceTorch is built on this principle as well. Despite being recurrent, traceTorch doesn't
-  grow its memory consumption regardless of how many forward passes are done.
-- **Trace-driven gradients**: traceTorch relies on maintaining an input trace: a running average of the inputs, so that
-  it can be possible to reconstruct the "true" average input and hence calculate the approximate output. Thus,
-  traceTorch effectively recreates an approximation of the real BPTT autograd graph, without ever needing to actually
-  make it or store the history. Through cheap, local updates, traceTorch effectively mimics BPTT by compressing the
-  entire history into one singular forward pass, with more value attributed to temporally recent events and inputs.
-- **Intermittent, online learning**: With traceTorch being reliant entirely on local calculations, and never needing to
-  build a full graph, the backward pass can be invoked at any point in time. Backward passes, reliant on small, local
-  per-layer graphs, are also very memory-friendly, consuming a fixed amount of time no matter how many forward passes
-  were committed before.
+#. **Constant memory consumption**: Since ``traceTorch`` doesn't rely on autograd graphs, or, rather, builds a small
+   one during the backward pass to approximate all the forward passes that happened, and updating parameters happens
+   consecutively, layer by layer, the memory impact is a fair bit smaller, especially considering the recurrent nature.
+#. **Sparse rewards and "online" learning**: Since everything is stored locally and is always ready to do a backwards
+   pass regardless of the number of forward passes beforehand, ``traceTorch`` is effectively capable of online learning.
+   To be pedantic, it's not exact online learning, since we do not do any extra calculations for the derivatives during
+   the forward pass, but that technically makes ``traceTorch`` all the better, since now we do these calculations
+   sparsely, only when the backward pass occurs, rather than needing to do them in the forward pass each time to have an
+   "instant" backward pass.
+#. **Continuous interpolation between stateful and stateless**: By default, ``traceTorch`` layers are initialized to be
+   in a recurrent manner. But you can just as easily change the hyperparameters, and disable learning of them in order
+   to enforce the model to be stateless. It's a continuous interpolation between maximal recurrence, accumulating
+   information over an infinite amount of time, versus rapidly discarding old information.

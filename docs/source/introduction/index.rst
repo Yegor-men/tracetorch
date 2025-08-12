@@ -3,8 +3,10 @@ Introduction
 
 The following content is the introduction to ``traceTorch``. It is recommended to go through the lessons in order, they
 are designed in ascending complexity. Doing them all should grant you the necessary knowledge to understand the working
-principles of ``traceTorch``. Detailed explanations of the modules themselves can be found here:
-:doc:`../reference/index`.
+principles of ``traceTorch``. Detailed explanations of the modules themselves can be found :doc:`here <../reference/index>`.
+
+
+
 
 .. toctree::
    :maxdepth: 2
@@ -16,4 +18,4 @@ principles of ``traceTorch``. Detailed explanations of the modules themselves ca
    L4_how_ttorch_works
    L5_advantages
    L6_disadvantages
-   L7_why_to_use_ttorch
+   L7_purpose_of_ttorch
