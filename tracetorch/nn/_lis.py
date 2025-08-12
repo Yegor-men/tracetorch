@@ -15,26 +15,25 @@ class LIS:
 			weight_scaling: float = 0.1,
 			mem_decay: float = 0.9,
 			in_trace_decay: float = 0.9,
-			config=None,
+			device: str = "cpu",
+			lr: float = 1e-3,
+			learn_weight: bool = True,
+			learn_mem_decay: bool = True,
+			learn_in_trace_decay: bool = True,
 	):
-		if config is None:
-			config = {
-				"device": "cuda",
-				"lr": 1e-2,
-			}
-		self.device = config["device"]
-		self.lr = config["lr"]
+		self.device = device
+		self.lr = lr
 
 		self.weight = (torch.randn(n_out, n_in) * weight_scaling).to(self.device)
 		self.mem_decay = (functional.sigmoid_inverse(torch.ones(n_out) * mem_decay)).to(self.device)
 		self.in_trace_decay = (functional.sigmoid_inverse(torch.ones(n_in) * in_trace_decay)).to(self.device)
 
-		self.weight.requires_grad_(True)
-		self.mem_decay.requires_grad_(True)
-		self.in_trace_decay.requires_grad_(True)
+		self.weight.requires_grad_(learn_weight)
+		self.mem_decay.requires_grad_(learn_mem_decay)
+		self.in_trace_decay.requires_grad_(learn_in_trace_decay)
 
 		self.optimizer = torch.optim.AdamW(
-			[self.weight, self.mem_decay, self.in_trace_decay],
+			[p for p in (self.weight, self.mem_decay, self.in_trace_decay) if p.requires_grad],
 			lr=self.lr
 		)
 

@@ -7,41 +7,42 @@ class LIF:
 	"""
 	Leaky integrate and fire neuron layer
 	"""
+
 	def __init__(
 			self,
-			n_in: int,
-			n_out: int,
+			num_in: int,
+			num_out: int,
 			weight_scaling: float = 0.1,
 			mem_decay: float = 0.9,
 			in_trace_decay: float = 0.9,
 			threshold: float = 1,
-			config=None,
+			device: str = "cpu",
+			lr: float = 1e-3,
+			learn_weight: bool = True,
+			learn_mem_decay: bool = True,
+			learn_in_trace_decay: bool = True,
+			learn_threshold: bool = True
 	):
-		if config is None:
-			config = {
-				"device": "cuda",
-				"lr": 1e-2,
-			}
-		self.device = config["device"]
-		self.lr = config["lr"]
+		self.device = device
+		self.lr = lr
 
-		self.weight = (torch.randn(n_out, n_in) * weight_scaling).to(self.device)
-		self.mem_decay = (functional.sigmoid_inverse(torch.ones(n_out) * mem_decay)).to(self.device)
-		self.in_trace_decay = (functional.sigmoid_inverse(torch.ones(n_in) * in_trace_decay)).to(self.device)
-		self.threshold = (functional.softplus_inverse(torch.ones(n_out) * threshold)).to(self.device)
+		self.weight = (torch.randn(num_out, num_in) * weight_scaling).to(self.device)
+		self.mem_decay = (functional.sigmoid_inverse(torch.ones(num_out) * mem_decay)).to(self.device)
+		self.in_trace_decay = (functional.sigmoid_inverse(torch.ones(num_in) * in_trace_decay)).to(self.device)
+		self.threshold = (functional.softplus_inverse(torch.ones(num_out) * threshold)).to(self.device)
 
-		self.weight.requires_grad_(True)
-		self.mem_decay.requires_grad_(True)
-		self.in_trace_decay.requires_grad_(True)
-		self.threshold.requires_grad_(True)
+		self.weight.requires_grad_(learn_weight)
+		self.mem_decay.requires_grad_(learn_mem_decay)
+		self.in_trace_decay.requires_grad_(learn_in_trace_decay)
+		self.threshold.requires_grad_(learn_threshold)
 
 		self.optimizer = torch.optim.AdamW(
-			[self.weight, self.mem_decay, self.in_trace_decay, self.threshold],
+			[p for p in (self.weight, self.mem_decay, self.in_trace_decay, self.threshold) if p.requires_grad],
 			lr=self.lr
 		)
 
-		self.mem = torch.zeros(n_out).to(self.device)
-		self.in_trace = torch.zeros(n_in).to(self.device)
+		self.mem = torch.zeros(num_out).to(self.device)
+		self.in_trace = torch.zeros(num_in).to(self.device)
 
 	def forward(self, in_spikes: torch.Tensor) -> torch.Tensor:
 		with torch.no_grad():
