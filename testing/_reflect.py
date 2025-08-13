@@ -1,7 +1,7 @@
 import torch
 from tracetorch import functional
 
-class ReinforceManager:
+class Reflect:
 	def __init__(
 			self,
 			num_out: int,
