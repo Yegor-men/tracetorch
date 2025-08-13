@@ -1,27 +1,41 @@
 import torch
 import tracetorch as tt
 import random
+from tqdm import tqdm
+import copy
 
 torch.manual_seed(0)
 torch.cuda.manual_seed_all(0)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-n_in = 10
-n_hidden = 40
+n_in = 100
+n_hidden = 100
 n_out = 10
 
-data = []
+train_data = []
 
 for i in range(n_out):
 	x = torch.rand(n_in)
 	y = torch.zeros(n_out)
 	y[i] = 1.
-	data.append((x, y))
+	train_data.append((x, y))
+
+test_data = copy.deepcopy(train_data)
 
 model = tt.nn.Sequential(
 	tt.nn.LIF(
 		num_in=n_in,
+		num_out=n_hidden,
+		device=device
+	),
+	tt.nn.LIF(
+		num_in=n_hidden,
+		num_out=n_hidden,
+		device=device
+	),
+	tt.nn.LIF(
+		num_in=n_hidden,
 		num_out=n_hidden,
 		device=device
 	),
@@ -44,9 +58,9 @@ train_loss_manager = tt.plot.MeasurementManager(title="Loss")
 train_accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
 
 for epoch in range(num_epochs):
-	print(f"Epoch: {epoch + 1}/{num_epochs} - {((epoch + 1) / num_epochs) * 100:.2f}%")
-	random.shuffle(data)
-	for index, (x, y) in enumerate(data):
+	random.shuffle(train_data)
+	for index, (x, y) in tqdm(enumerate(train_data), total=len(train_data), leave=True, desc=f"Epoch {epoch + 1}"):
+		model.zero_states()
 		for step in range(think_steps):
 			model_out = model.forward(torch.bernoulli(x))
 		loss, ls = tt.loss.mse(model_out, y)
@@ -57,7 +71,8 @@ for epoch in range(num_epochs):
 train_loss_manager.plot()
 train_accuracy_manager.plot()
 
-for index, (x, y) in enumerate(data):
+for index, (x, y) in tqdm(enumerate(test_data), total=len(test_data), leave=True, desc="Test"):
+	model.zero_states()
 	inputs = []
 	distributions = []
 	outputs = []
@@ -75,7 +90,9 @@ for index, (x, y) in enumerate(data):
 in_trace_decays = [torch.nn.functional.sigmoid(layer.in_trace_decay) for layer in model.layers]
 mem_decays = [torch.nn.functional.sigmoid(layer.mem_decay) for layer in model.layers]
 weights = [layer.weight for layer in model.layers]
+thresholds = [torch.nn.functional.softplus(layer.threshold) for layer in model.layers[:-1]]
 
 tt.plot.distributions(in_trace_decays, title="Input trace decay")
 tt.plot.distributions(mem_decays, title="Membrane decay")
 tt.plot.distributions(weights, title="Weights")
+tt.plot.distributions(thresholds, title="Thresholds")
