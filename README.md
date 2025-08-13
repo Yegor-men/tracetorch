@@ -30,7 +30,7 @@ It is highly recommended that you read the [documentation](https://yegor-men.git
 
 ``traceTorch`` is a PyPI library, which can be found [here](https://pypi.org/project/tracetorch/).
 
-You can install it via pip:
+You can install it via pip. All the required packages for it to work are also downloaded automatically.
 
 ```
 pip install tracetorch
@@ -47,12 +47,16 @@ import tracetorch
 `tutorials/` contains all the tutorial files, ready to run and playtest. The tutorials themselves can be found
 [here](https://yegor-men.github.io/tracetorch/tutorials/index.html).
 
-To ensure that you have all the necessary packages for the tutorials installed, please execute the following command:
+The tutorials make use of libraries that ``tracetorch`` doesn't necessarily use. To ensure that you have all the
+necessary packages for the tutorials installed, please install the packages listed in `tutorials/requirements.txt`
 
 ```
 cd tutorials/
 pip install -r requirements.txt
 ```
+
+It's recommended to use an environment that does _not_ have ``tracetorch`` installed if using the tutorials,
+``tracetorch/`` is structured identically to the library, but is of course a running release.
 
 ## Authors
 
@@ -65,14 +69,14 @@ design, but I would also like to recognize the following projects and people who
 
 - [snntorch](https://github.com/jeshraghian/snntorch) for introducing me to SNN networks in the first place, and their
   principles of function. Ironically, its dependency on constructing the full autograd graph is what largely inspired me
-  to make traceTorch.
+  to make ``traceTorch``.
 - [Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov) for introducing me to computational neuroscience, presenting
   interesting concepts in an easy-to-understand manner. My earliest tests, when I naively wanted to implement 1:1
   biological neurons, largely revolved around his work.
 - [e-prop (eligibility propagation)](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf) inspired
-  the whole "trace" concept, the idea of keeping a decaying value. Earlier, before traceTorch, I wanted to use e-prop
-  for online learning instead. Admittedly unsuccessful in my attempts, and a little put off by the relative difficulty,
-  I instead wanted to make something simpler.
+  the whole "trace" concept, the idea of keeping a decaying value. Earlier, before ``traceTorch``, I wanted to use
+  e-prop for online learning instead. Admittedly unsuccessful in my attempts, and a little put off by the relative
+  difficulty, I instead wanted to make something simpler.
 
 ## Contributing
 
