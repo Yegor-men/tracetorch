@@ -59,6 +59,7 @@ class Reflect:
 
 		loss.backward()
 		passed_ls = average_distribution.grad
+		average_distribution.grad = None
 
 		self.optimizer.step()
 		self.clear_grads()

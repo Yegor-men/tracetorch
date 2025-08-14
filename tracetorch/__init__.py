@@ -1,1 +1,1 @@
-from . import functional, nn, loss, plot
+from . import functional, snn, loss, plot
