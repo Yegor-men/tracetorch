@@ -42,7 +42,7 @@ class LIF:
 			self.in_trace
 		]
 
-		for tensor in [self.weight, self.mem_decay, self.in_trace_decay, self.threshold]:
+		for tensor in self.all_tensors:
 			tensor.requires_grad_(True)
 
 		self.learnable_parameters = [
@@ -54,7 +54,7 @@ class LIF:
 			] if learn
 		]
 
-		self.optimizer = torch.optim.AdamW(self.learnable_parameters, lr=self.lr)
+		self.optimizer = torch.optim.AdamW(self.learnable_parameters, lr=lr)
 
 	def clear_grads(self):
 		for t in self.all_tensors:

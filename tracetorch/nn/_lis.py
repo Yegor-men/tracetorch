@@ -39,7 +39,7 @@ class LIS:
 			self.in_trace
 		]
 
-		for tensor in [self.weight, self.mem_decay, self.in_trace_decay]:
+		for tensor in self.all_tensors:
 			tensor.requires_grad_(True)
 
 		self.learnable_parameters = [
@@ -50,7 +50,7 @@ class LIS:
 			] if learn
 		]
 
-		self.optimizer = torch.optim.AdamW(self.learnable_parameters, lr=self.lr)
+		self.optimizer = torch.optim.AdamW(self.learnable_parameters, lr=lr)
 
 	def clear_grads(self):
 		for t in self.all_tensors:
