@@ -1,5 +1,6 @@
 import torch
 import tracetorch as tt
+from tracetorch import snn
 import random
 from tqdm import tqdm
 import copy
@@ -16,46 +17,43 @@ n_out = 10
 train_data = []
 
 for i in range(n_out):
-	x = torch.rand(n_in)
-	y = torch.zeros(n_out)
+	x = torch.rand(n_in).to(device)
+	y = torch.zeros(n_out).to(device)
 	y[i] = 1.
 	train_data.append((x, y))
 
 test_data = copy.deepcopy(train_data)
 
-model = tt.nn.Sequential(
-	tt.nn.LIF(
+model = snn.Sequential(
+	snn.LIF(
 		num_in=n_in,
 		num_out=n_hidden,
-		device=device
 	),
-	tt.nn.LIF(
+	snn.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
-		device=device
 	),
-	tt.nn.LIF(
+	snn.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
-		device=device
 	),
-	tt.nn.LIF(
+	snn.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
-		device=device
 	),
-	tt.nn.LIS(
+	snn.LIS(
 		num_in=n_hidden,
 		num_out=n_out,
-		device=device
 	)
-)
+).to(device)
 
 think_steps = 50
 num_epochs = 100
 
 train_loss_manager = tt.plot.MeasurementManager(title="Loss")
 train_accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
+
+optimizer = torch.optim.AdamW(params=model.get_learnable_parameters(), lr=1e-3)
 
 for epoch in range(num_epochs):
 	random.shuffle(train_data)
@@ -65,6 +63,9 @@ for epoch in range(num_epochs):
 			model_out = model.forward(torch.bernoulli(x))
 		loss, ls = tt.loss.mse(model_out, y)
 		model.backward(ls)
+		optimizer.step()
+		model.clear_grad()
+
 		train_loss_manager.append(loss)
 		train_accuracy_manager.append(1 if model_out.argmax().item() == y.argmax().item() else 0)
 
