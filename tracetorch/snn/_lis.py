@@ -9,21 +9,22 @@ class LIS(nn.Module):
 			num_in: int,
 			num_out: int,
 			mem_decay: float = 0.9,
-			threshold: float = 1,
 			in_trace_decay: float = 0.9,
-			init_weight_scaling: float = 0.1,
 			learn_weight: bool = True,
 			learn_mem_decay: bool = True,
 			learn_in_trace_decay: bool = True,
 	):
 		super().__init__()
+		self.num_in = num_in
+		self.num_out = num_out
+
 		self.learn_weight = learn_weight
 		self.learn_mem_decay = learn_mem_decay
 		self.learn_in_trace_decay = learn_in_trace_decay
 
-		self.weight = nn.Parameter(torch.randn(num_out, num_in) * init_weight_scaling)
+		t, i = 1, num_in
+		self.weight = nn.Parameter(torch.normal(mean=t / i, std=1 / i, size=(num_out, num_in)))
 		self.mem_decay = nn.Parameter(functional.sigmoid_inverse(torch.full((num_out,), mem_decay)))
-		self.threshold = nn.Parameter(functional.softplus_inverse(torch.full((num_out,), threshold)))
 		self.in_trace_decay = nn.Parameter(torch.full((num_in,), in_trace_decay))
 
 		self.register_buffer("mem", torch.zeros(num_out))
