@@ -6,4 +6,5 @@ def sigmoid_inverse(tensor: torch.Tensor) -> torch.Tensor:
 	:param tensor:
 	:return:
 	"""
-	return torch.log(tensor / (1 - tensor))
+	with torch.no_grad():
+		return torch.log(tensor / (1 - tensor))

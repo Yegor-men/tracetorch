@@ -13,13 +13,12 @@ def mse(
 	:param reduction:
 	:return:
 	"""
-	received = received.detach().clone().requires_grad_(True)
-	expected = expected.detach().to(received)
+	received.requires_grad_(True)
 
 	loss_fn = torch.nn.MSELoss(reduction=reduction)
 	loss = loss_fn.forward(received, expected)
 	loss.backward()
 
-	ls = received.grad.detach()
+	ls = received.grad.detach().clone()
 
-	return loss.detach(), ls
+	return loss, ls

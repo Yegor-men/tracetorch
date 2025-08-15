@@ -6,4 +6,5 @@ def softplus_inverse(tensor: torch.Tensor) -> torch.Tensor:
 	:param tensor:
 	:return:
 	"""
-	return torch.log(torch.e ** tensor - 1)
+	with torch.no_grad():
+		return torch.log(torch.e ** tensor - 1)
