@@ -27,7 +27,7 @@ class LIS(nn.Module):
 		self.in_trace_decay = nn.Parameter(torch.full((num_in,), in_trace_decay))
 
 		self.register_buffer("mem", torch.zeros(num_out))
-		self.register_buffer("in_trace", torch.zeros(num_out))
+		self.register_buffer("in_trace", torch.zeros(num_in))
 
 	def get_learnable_parameters(self):
 		learnable_parameters = [
@@ -47,7 +47,7 @@ class LIS(nn.Module):
 
 	def zero_states(self):
 		self.mem.zero_()
-		self.in_trace_decay.zero_()
+		self.in_trace.zero_()
 
 	def forward(self, in_spikes):
 		with torch.no_grad():

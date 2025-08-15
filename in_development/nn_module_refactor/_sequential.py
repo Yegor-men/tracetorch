@@ -27,6 +27,4 @@ class Sequential(nn.Module):
 			param.grad = None
 
 	def get_learnable_parameters(self):
-		combined_iterator = itertools.chain(layer.get_learnable_parameters for layer in self.layers)
-		learnable_parameters = list(combined_iterator)
-		return learnable_parameters
+		return [p for layer in self.layers for p in layer.get_learnable_parameters()]
