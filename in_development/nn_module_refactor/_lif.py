@@ -29,7 +29,7 @@ class LIF(nn.Module):
 		self.in_trace_decay = nn.Parameter(torch.full((num_in,), in_trace_decay))
 
 		self.register_buffer("mem", torch.zeros(num_out))
-		self.register_buffer("in_trace_decay", torch.zeros(num_out))
+		self.register_buffer("in_trace", torch.zeros(num_out))
 
 	def get_learnable_parameters(self):
 		learnable_parameters = [
@@ -39,7 +39,7 @@ class LIF(nn.Module):
 				(self.mem_decay, self.learn_mem_decay),
 				(self.threshold, self.learn_threshold),
 				(self.in_trace_decay, self.learn_in_trace_decay)
-			]
+			] if learnable
 		]
 
 		return learnable_parameters
@@ -75,7 +75,8 @@ class LIF(nn.Module):
 		excess = (2 * i - i * d) / 2 - t * (1 - d)
 		frequency = torch.nn.functional.sigmoid(5 * excess)
 
-		frequency.backward(learning_signal)
+		frequency.backward(learning_signal.detach())
 		passed_learning_signal = average_input.grad.detach().clone()
+		average_input.grad = None
 		del average_input
 		return passed_learning_signal
