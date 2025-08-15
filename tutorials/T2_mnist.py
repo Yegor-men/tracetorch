@@ -7,7 +7,8 @@ from torchvision import datasets, transforms
 torch.manual_seed(0)
 torch.cuda.manual_seed_all(0)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
 
 min_prob = 0.05
 max_prob = 1
@@ -39,7 +40,7 @@ test_dataset = datasets.MNIST(train=False, **dataset_kwargs)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
-n_hidden = 128
+n_hidden = 8
 
 model = snn.Sequential(
 	snn.LIF(
@@ -56,7 +57,7 @@ model = snn.Sequential(
 	)
 ).to(device)
 
-think_steps = 5
+think_steps = 50
 num_epochs = 1
 
 from tqdm import tqdm
@@ -64,20 +65,25 @@ from tqdm import tqdm
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
 
-optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=1e-5)
+optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=1e-4)
 
 for epoch in range(num_epochs):
 	for index, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=True, desc=f"E{epoch}"):
-		model.clear_grad()
+		x, y = x.to(device), y.to(device)
+		model.zero_grad(set_to_none=True)
 		model.zero_states()
+		aggregate = torch.zeros(model.num_out).to(device)
 		for _ in range(think_steps):
-			model_dist = model.forward(torch.bernoulli(x).to(device))
-		loss, ls = tt.loss.mse(model_dist, y.to(device))
+			bern = torch.bernoulli(x)
+			model_dist = model.forward(bern)
+			aggregate += model_dist
+		aggregate /= aggregate.sum()
+		loss, ls = tt.loss.mse(aggregate, y)
 		model.backward(ls)
 		optimizer.step()
 		loss_manager.append(loss)
-		accuracy_manager.append(1 if model_dist.argmax().item() == y.argmax().item() else 0)
-		if index % 10000 == 0:
+		accuracy_manager.append(1 if aggregate.argmax().item() == y.argmax().item() else 0)
+		if (index % 10000 == 0) and (index != 0):
 			loss_manager.plot()
 			accuracy_manager.plot()
 
@@ -109,3 +115,25 @@ tt.plot.distributions(in_trace_decays, title="Input trace decay")
 tt.plot.distributions(mem_decays, title="Membrane decay")
 tt.plot.distributions(weights, title="Weights")
 tt.plot.distributions(thresholds, title="Thresholds")
+
+test_samples = 32
+test_iter = iter(test_dataloader)
+
+for i in range(test_samples):
+	(x, y) = next(test_iter)
+	tt.plot.render_image(x.unsqueeze(0).view(28, 28))
+	x, y = x.to(device), y.to(device)
+	model.zero_states()
+	aggregate = torch.zeros(model.num_out).to(device)
+	out_dists = []
+	for j in range(think_steps):
+		bern = torch.bernoulli(x).to(device)
+		model_dist = model.forward(bern)
+		aggregate += model_dist
+		out_dists.append(model_dist)
+	aggregate /= aggregate.sum()
+	loss, ls = tt.loss.mse(aggregate, y)
+	chosen_index = int(aggregate.argmax().item())
+	real_index = int(y.argmax().item())
+	correct = chosen_index == real_index
+	tt.plot.spike_train(out_dists, title=f"Loss: {loss}, {correct}, {chosen_index}, {real_index}")
