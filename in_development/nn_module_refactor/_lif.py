@@ -44,7 +44,7 @@ class LIF(nn.Module):
 
 		return learnable_parameters
 
-	def clear_gradients(self):
+	def clear_grad(self):
 		for param in self.parameters():
 			param.grad = None
 

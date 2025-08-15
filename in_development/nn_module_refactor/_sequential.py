@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import itertools
 
 
 class Sequential(nn.Module):
@@ -21,6 +22,11 @@ class Sequential(nn.Module):
 		for layer in self.layers:
 			layer.zero_states()
 
-	def clear_gradients(self):
+	def clear_grad(self):
 		for param in self.parameters():
 			param.grad = None
+
+	def get_learnable_parameters(self):
+		combined_iterator = itertools.chain(layer.get_learnable_parameters for layer in self.layers)
+		learnable_parameters = list(combined_iterator)
+		return learnable_parameters
