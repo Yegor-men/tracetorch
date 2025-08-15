@@ -35,7 +35,7 @@ def spike_train(
 	"""
 	# Stack into 2D array: shape (num_neurons, T)
 	# list_of_tensors assumed length T each
-	data = torch.stack(list_of_tensors).cpu().numpy()  # shape (T, N)
+	data = torch.stack(list_of_tensors).cpu().detach().numpy()  # shape (T, N)
 	data = data.T  # shape (N, T)
 
 	plt.figure(figsize=(8, 4))
