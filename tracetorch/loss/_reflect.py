@@ -1,0 +1,62 @@
+import torch
+from torch import nn
+from .. import functional
+
+
+class Reflect(nn.Module):
+	def __init__(
+			self,
+			num_in: int,
+			decay: float = 0.9,
+			learn_decay: bool = True
+	):
+		super().__init__()
+		self.num_in = num_in
+
+		self.learn_decay = learn_decay
+
+		self.decay = nn.Parameter(functional.sigmoid_inverse(torch.tensor(decay)))
+
+		self.register_buffer("distribution_trace", torch.zeros(num_in))
+		self.register_buffer("output_trace", torch.zeros(num_in))
+		self.register_buffer("reward_trace", torch.tensor(0.))
+
+	def get_learnable_parameters(self):
+		learnable_parameters = [
+			t for t, learn in [
+				(self.decay, self.learn_decay),
+			] if learn
+		]
+		return learnable_parameters
+
+	def zero_states(self):
+		self.distribution_trace.zero_()
+		self.output_trace.zero_()
+		self.reward_trace.zero_()
+
+	def forward(self, distribution, output):
+		with torch.no_grad():
+			d = torch.nn.functional.sigmoid(self.decay)
+			self.distribution_trace.mul_(d).add_(distribution)
+			self.output_trace.mul_(d).add_(output)
+
+	def backward(self, reward):
+		with torch.no_grad():
+			baseline_reward = self.reward_trace * (1 - torch.nn.functional.sigmoid(self.decay))
+			self.reward_trace.mul_(torch.nn.functional.sigmoid(self.decay)).add_(reward)
+
+		d = torch.nn.functional.sigmoid(self.decay)
+
+		advantage = reward - baseline_reward
+
+		average_distribution = self.distribution_trace * (1 - d)
+		average_distribution.retain_grad()
+		average_output = self.output_trace * (1 - d)
+
+		loss = -advantage * (average_output * torch.log(average_distribution + 1e-12)).sum()
+
+		loss.backward()
+		passed_ls = average_distribution.grad.detach().clone()
+		average_distribution.grad = None
+		del average_distribution
+		return loss, passed_ls
