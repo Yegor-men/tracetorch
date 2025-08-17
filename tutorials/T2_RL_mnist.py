@@ -64,7 +64,7 @@ reflect_optimizer = torch.optim.AdamW(params=REFLECT.get_learnable_parameters(),
 
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
-reflect_manager = tt.plot.MeasurementManager(title="REFLECT decay", decay=torch.tensor([0.0]))
+reflect_manager = tt.plot.MeasurementManager(title="REFLECT decay", decay=[0.0])
 
 from tqdm import tqdm
 
