@@ -20,8 +20,9 @@ It is highly recommended that you read the [documentation](https://yegor-men.git
 
 ## Roadmap
 
-- Create the poisson click test example
 - Implement the trace alternative to REINFORCE
+- Create the poisson click test example
+- Make dynamic LR
 - Finish writing the documentation
 - Move tutorial code to separate repository
 - Implement abstract graph based models, not just sequential
