@@ -40,7 +40,7 @@ test_dataset = datasets.MNIST(train=False, **dataset_kwargs)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
-n_hidden = 10
+n_hidden = 32
 
 model = snn.Sequential(
 	snn.LIF(
@@ -48,6 +48,21 @@ model = snn.Sequential(
 		num_out=n_hidden,
 	),
 	snn.LIF(
+		num_in=n_hidden,
+		num_out=n_hidden,
+	),
+	snn.LIF(
+		num_in=n_hidden,
+		num_out=n_hidden,
+	),
+	snn.LIF(
+		num_in=n_hidden,
+		num_out=n_hidden,
+	),
+	snn.LIF(
+		num_in=n_hidden,
+		num_out=n_hidden,
+	), snn.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
@@ -90,7 +105,7 @@ for epoch in range(num_epochs):
 loss_manager.plot()
 accuracy_manager.plot()
 
-net_loss = torch.tensor(0).to(device)
+net_loss = torch.tensor(0.).to(device)
 net_accuracy = 0
 mistakes_matrix = torch.zeros(10, 10)
 
@@ -99,15 +114,18 @@ for index, (x, y) in tqdm(enumerate(test_dataloader), total=len(test_dataloader)
 	model.zero_states()
 	aggregate = torch.zeros(model.num_out).to(device)
 	raw_image = torch.zeros_like(x)
+	model_dists = []
 	for _ in range(think_steps):
 		bern = torch.bernoulli(x)
 		raw_image += bern
 		model_dist = model.forward(bern)
 		aggregate += model_dist
+		model_dists.append(model_dist)
 	aggregate /= aggregate.sum()
 	raw_image /= think_steps
 	if index % 1000 == 0:
 		tt.plot.render_image(raw_image.unsqueeze(0).view(28, 28))
+		tt.plot.spike_train(model_dists, title="Model outputs")
 	loss, ls = tt.loss.mse(aggregate, y)
 	net_loss += loss
 	chosen_index = int(aggregate.argmax().item())
