@@ -20,7 +20,6 @@ It is highly recommended that you read the [documentation](https://yegor-men.git
 
 ## Roadmap
 
-- Implement the trace alternative to REINFORCE
 - Create the poisson click test example
 - Make dynamic LR
 - Finish writing the documentation
