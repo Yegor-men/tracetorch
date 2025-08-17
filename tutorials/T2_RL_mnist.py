@@ -40,7 +40,7 @@ test_dataset = datasets.MNIST(train=False, **dataset_kwargs)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
-n_hidden = 32
+n_hidden = 128
 
 model = snn.Sequential(
 	snn.LIF(
@@ -59,8 +59,8 @@ model = snn.Sequential(
 
 REFLECT = tt.loss.Reflect(num_in=model.num_out, decay=0.9)
 
-model_optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=1e-4)
-reflect_optimizer = torch.optim.Adam(params=REFLECT.get_learnable_parameters(), lr=1e-5)
+model_optimizer = torch.optim.AdamW(params=model.get_learnable_parameters(), lr=1e-4)
+reflect_optimizer = torch.optim.AdamW(params=REFLECT.get_learnable_parameters(), lr=1e-5)
 
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")

@@ -58,7 +58,6 @@ class Reflect(nn.Module):
 		average_output = self.output_trace * (1 - d)
 
 		loss = -advantage * (average_output * average_logprob).sum()
-		# learning_signal = (-advantage * average_logprob).detach().clone()
 
 		loss.backward()
 		passed_ls = average_logprob.grad.detach().clone()
