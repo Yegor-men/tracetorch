@@ -17,7 +17,7 @@ class Reflect(nn.Module):
 
 		self.decay = nn.Parameter(functional.sigmoid_inverse(torch.tensor(decay)))
 
-		self.register_buffer("distribution_trace", torch.zeros(num_in))
+		self.register_buffer("logprob_trace", torch.zeros(num_in))
 		self.register_buffer("output_trace", torch.zeros(num_in))
 		self.register_buffer("reward_trace", torch.tensor(0.))
 
@@ -29,9 +29,9 @@ class Reflect(nn.Module):
 		]
 		return learnable_parameters
 
-	def zero_states(self, clear_distribution=True, clear_output=True, clear_reward=True):
+	def zero_states(self, clear_logprob=True, clear_output=True, clear_reward=True):
 		for trace, clear in [
-			(self.distribution_trace, clear_distribution),
+			(self.logprob_trace, clear_logprob),
 			(self.output_trace, clear_output),
 			(self.reward_trace, clear_reward)
 		]:
@@ -41,7 +41,7 @@ class Reflect(nn.Module):
 	def forward(self, distribution, output):
 		with torch.no_grad():
 			d = torch.nn.functional.sigmoid(self.decay)
-			self.distribution_trace.mul_(d).add_(distribution)
+			self.logprob_trace.mul_(d).add_(torch.log(distribution + 1e-12))
 			self.output_trace.mul_(d).add_(output)
 
 	def backward(self, reward):
@@ -53,14 +53,15 @@ class Reflect(nn.Module):
 
 		advantage = reward - baseline_reward
 
-		average_distribution = self.distribution_trace * (1 - d)
-		average_distribution.retain_grad()
+		average_logprob = self.logprob_trace * (1 - d)
+		average_logprob.retain_grad()
 		average_output = self.output_trace * (1 - d)
 
-		loss = -advantage * (average_output * torch.log(average_distribution + 1e-12)).sum()
+		loss = -advantage * (average_output * average_logprob).sum()
+		# learning_signal = (-advantage * average_logprob).detach().clone()
 
 		loss.backward()
-		passed_ls = average_distribution.grad.detach().clone()
-		average_distribution.grad = None
-		del average_distribution
+		passed_ls = average_logprob.grad.detach().clone()
+		average_logprob.grad = None
+		del average_logprob
 		return loss, passed_ls

@@ -57,11 +57,10 @@ model = snn.Sequential(
 	)
 ).to(device)
 
-REFLECT = tt.loss.Reflect(num_in=model.num_out, decay=0.5)
+REFLECT = tt.loss.Reflect(num_in=model.num_out, decay=0.9)
 
-lr = 1e-4
-model_optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=lr)
-reflect_optimizer = torch.optim.Adam(params=REFLECT.get_learnable_parameters(), lr=lr)
+model_optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=1e-4)
+reflect_optimizer = torch.optim.Adam(params=REFLECT.get_learnable_parameters(), lr=1e-5)
 
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
@@ -70,7 +69,7 @@ reflect_manager = tt.plot.MeasurementManager(title="REFLECT decay", decay=torch.
 from tqdm import tqdm
 
 think_steps = 20
-num_epochs = 10
+num_epochs = 1
 
 for epoch in range(num_epochs):
 	for index, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=True, desc=f"E{epoch}"):
@@ -85,10 +84,12 @@ for epoch in range(num_epochs):
 			aggregate += model_dist
 			model_output = tt.functional.sample_softmax(model_dist)
 			REFLECT.forward(model_dist, model_output)
-		aggregate /= aggregate.sum()
-		reward = 1 if aggregate.argmax().item() == y.argmax().item() else -1
+		aggregate /= think_steps
+		reward = 1 if aggregate.argmax().item() == y.argmax().item() else 0
 
 		loss, ls = REFLECT.backward(reward)
+		# print(f"Average Distribution: {average_distribution}")
+		# print(f"Passed LS max: {ls.abs().max()}")
 		model.backward(ls)
 
 		model_optimizer.step()
@@ -97,7 +98,7 @@ for epoch in range(num_epochs):
 		REFLECT.zero_grad(set_to_none=True)
 
 		loss_manager.append(loss)
-		accuracy_manager.append(1 if reward == 1 else 0)
+		accuracy_manager.append(reward)
 		reflect_manager.append(torch.nn.functional.sigmoid(REFLECT.decay))
 
 		if (index % 10000 == 0) and (index != 0):
@@ -125,7 +126,7 @@ for index, (x, y) in tqdm(enumerate(test_dataloader), total=len(test_dataloader)
 		model_dist = model.forward(bern)
 		aggregate += model_dist
 		model_dists.append(model_dist)
-	aggregate /= aggregate.sum()
+	aggregate /= think_steps
 	raw_image /= think_steps
 	if index % 1000 == 0:
 		tt.plot.render_image(raw_image.unsqueeze(0).view(28, 28))
