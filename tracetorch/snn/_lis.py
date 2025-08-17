@@ -23,8 +23,8 @@ class LIS(nn.Module):
 		self.learn_mem_decay = learn_mem_decay
 		self.learn_in_trace_decay = learn_in_trace_decay
 
-		ti = 1 / num_in
-		self.weight = nn.Parameter(torch.normal(mean=0, std=math.sqrt(ti), size=(num_out, num_in)))
+		i = num_in
+		self.weight = nn.Parameter(torch.normal(mean=0, std=1 / math.sqrt(i), size=(num_out, num_in)))
 		self.mem_decay = nn.Parameter(functional.sigmoid_inverse(torch.full((num_out,), mem_decay)))
 		self.in_trace_decay = nn.Parameter(torch.full((num_in,), in_trace_decay))
 
