@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracetorch"
-version = "0.2.0"
+version = "0.3.0"
 authors = [{ name = "Yegor Men", email = "yegor.mn@gmail.com" }]
 description = "An extension to PyTorch: SNN layers that function on traces."
 readme = "README.md"

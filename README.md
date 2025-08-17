@@ -1,7 +1,7 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-purple.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.2.0-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.3.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 ``traceTorch`` is a PyTorch-based library built on the principles of spiking neural networks, replacing the PyTorch
 default backpropagation through time with lightweight, per-layer input traces, enabling biologically inspired, constant
