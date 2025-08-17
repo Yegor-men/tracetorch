@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from .. import functional
+import math
 
 
 class LIF(nn.Module):
@@ -25,8 +26,8 @@ class LIF(nn.Module):
 		self.learn_in_trace_decay = learn_in_trace_decay
 		self.learn_threshold = learn_threshold
 
-		t, i = threshold, num_in
-		self.weight = nn.Parameter(torch.normal(mean=t / i, std=t / i, size=(num_out, num_in)))
+		ti = threshold / num_in
+		self.weight = nn.Parameter(torch.normal(mean=ti, std=math.sqrt(ti), size=(num_out, num_in)))
 		self.mem_decay = nn.Parameter(functional.sigmoid_inverse(torch.full((num_out,), mem_decay)))
 		self.threshold = nn.Parameter(functional.softplus_inverse(torch.full((num_out,), threshold)))
 		self.in_trace_decay = nn.Parameter(torch.full((num_in,), in_trace_decay))
