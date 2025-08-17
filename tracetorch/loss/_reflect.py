@@ -29,10 +29,14 @@ class Reflect(nn.Module):
 		]
 		return learnable_parameters
 
-	def zero_states(self):
-		self.distribution_trace.zero_()
-		self.output_trace.zero_()
-		self.reward_trace.zero_()
+	def zero_states(self, clear_distribution=True, clear_output=True, clear_reward=True):
+		for trace, clear in [
+			(self.distribution_trace, clear_distribution),
+			(self.output_trace, clear_output),
+			(self.reward_trace, clear_reward)
+		]:
+			if clear:
+				trace.zero_()
 
 	def forward(self, distribution, output):
 		with torch.no_grad():

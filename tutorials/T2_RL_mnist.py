@@ -40,7 +40,7 @@ test_dataset = datasets.MNIST(train=False, **dataset_kwargs)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
-n_hidden = 10
+n_hidden = 32
 
 model = snn.Sequential(
 	snn.LIF(
@@ -57,54 +57,95 @@ model = snn.Sequential(
 	)
 ).to(device)
 
-think_steps = 50
-num_epochs = 1
+REFLECT = tt.loss.Reflect(num_in=model.num_out, decay=0.5)
 
-from tqdm import tqdm
+lr = 1e-4
+model_optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=lr)
+reflect_optimizer = torch.optim.Adam(params=REFLECT.get_learnable_parameters(), lr=lr)
 
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
+reflect_manager = tt.plot.MeasurementManager(title="REFLECT decay", decay=torch.tensor([0.0]))
 
-optimizer = torch.optim.Adam(params=model.get_learnable_parameters(), lr=1e-4)
+from tqdm import tqdm
+
+think_steps = 20
+num_epochs = 10
 
 for epoch in range(num_epochs):
 	for index, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=True, desc=f"E{epoch}"):
 		x, y = x.to(device), y.to(device)
-		model.zero_grad(set_to_none=True)
 		model.zero_states()
+		REFLECT.zero_states(clear_reward=False)
+
 		aggregate = torch.zeros(model.num_out).to(device)
 		for _ in range(think_steps):
 			bern = torch.bernoulli(x)
 			model_dist = model.forward(bern)
 			aggregate += model_dist
+			model_output = tt.functional.sample_softmax(model_dist)
+			REFLECT.forward(model_dist, model_output)
 		aggregate /= aggregate.sum()
-		loss, ls = tt.loss.mse(aggregate, y)
+		reward = 1 if aggregate.argmax().item() == y.argmax().item() else -1
+
+		loss, ls = REFLECT.backward(reward)
 		model.backward(ls)
-		optimizer.step()
+
+		model_optimizer.step()
+		reflect_optimizer.step()
+		model.zero_grad(set_to_none=True)
+		REFLECT.zero_grad(set_to_none=True)
+
 		loss_manager.append(loss)
-		accuracy_manager.append(1 if aggregate.argmax().item() == y.argmax().item() else 0)
+		accuracy_manager.append(1 if reward == 1 else 0)
+		reflect_manager.append(torch.nn.functional.sigmoid(REFLECT.decay))
+
 		if (index % 10000 == 0) and (index != 0):
 			loss_manager.plot()
 			accuracy_manager.plot()
+			reflect_manager.plot()
 
 loss_manager.plot()
 accuracy_manager.plot()
+reflect_manager.plot()
 
-net_loss = torch.zeros_like(loss)
+net_loss = torch.tensor(0.).to(device)
 net_accuracy = 0
+mistakes_matrix = torch.zeros(10, 10)
 
 for index, (x, y) in tqdm(enumerate(test_dataloader), total=len(test_dataloader), leave=True, desc=f"Testing"):
+	x, y = x.to(device), y.to(device)
 	model.zero_states()
+	aggregate = torch.zeros(model.num_out).to(device)
+	raw_image = torch.zeros_like(x)
+	model_dists = []
 	for _ in range(think_steps):
-		model_dist = model.forward(torch.bernoulli(x).to(device))
-	loss, ls = tt.loss.mse(model_dist, y.to(device))
+		bern = torch.bernoulli(x)
+		raw_image += bern
+		model_dist = model.forward(bern)
+		aggregate += model_dist
+		model_dists.append(model_dist)
+	aggregate /= aggregate.sum()
+	raw_image /= think_steps
+	if index % 1000 == 0:
+		tt.plot.render_image(raw_image.unsqueeze(0).view(28, 28))
+		tt.plot.spike_train(model_dists, title="Model outputs")
+	loss, ls = tt.loss.mse(aggregate, y)
 	net_loss += loss
-	net_accuracy += (1 if model_dist.argmax().item() == y.argmax().item() else 0)
+	chosen_index = int(aggregate.argmax().item())
+	real_index = int(y.argmax().item())
+	correct = chosen_index == real_index
+	if not correct:
+		mistakes_matrix[real_index][chosen_index] += 1
+	else:
+		net_accuracy += 1
 
 net_loss /= len(test_dataloader)
 net_accuracy /= len(test_dataloader)
 
 print(f"\tTEST\nLoss: {net_loss}\nAccuracy: {net_accuracy}")
+for index, mistakes in enumerate(mistakes_matrix):
+	print(f"Index: {index} confused for: {mistakes}")
 
 in_trace_decays = [torch.nn.functional.sigmoid(layer.in_trace_decay) for layer in model.layers]
 mem_decays = [torch.nn.functional.sigmoid(layer.mem_decay) for layer in model.layers]
@@ -116,24 +157,4 @@ tt.plot.distributions(mem_decays, title="Membrane decay")
 tt.plot.distributions(weights, title="Weights")
 tt.plot.distributions(thresholds, title="Thresholds")
 
-test_samples = 32
-test_iter = iter(test_dataloader)
-
-for i in range(test_samples):
-	(x, y) = next(test_iter)
-	tt.plot.render_image(x.unsqueeze(0).view(28, 28))
-	x, y = x.to(device), y.to(device)
-	model.zero_states()
-	aggregate = torch.zeros(model.num_out).to(device)
-	out_dists = []
-	for j in range(think_steps):
-		bern = torch.bernoulli(x).to(device)
-		model_dist = model.forward(bern)
-		aggregate += model_dist
-		out_dists.append(model_dist)
-	aggregate /= aggregate.sum()
-	loss, ls = tt.loss.mse(aggregate, y)
-	chosen_index = int(aggregate.argmax().item())
-	real_index = int(y.argmax().item())
-	correct = chosen_index == real_index
-	tt.plot.spike_train(out_dists, title=f"Loss: {loss}, {correct}, {chosen_index}, {real_index}")
+tt.plot.render_image(mistakes_matrix)
