@@ -48,10 +48,6 @@ class LIF(nn.Module):
 
 		return learnable_parameters
 
-	def clear_grad(self):
-		for param in self.parameters():
-			param.grad = None
-
 	def zero_states(self):
 		self.mem.zero_()
 		self.in_trace.zero_()
