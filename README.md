@@ -14,9 +14,49 @@ It is highly recommended that you read the [documentation](https://yegor-men.git
 1. **Introduction**: An introduction to traceTorch, how and why it works, it's founding principles. It's thoroughly
    recommended that you read through the entire introduction and gain an intuitive understanding before proceeding.
 2. **Tutorials**: Various tutorials to create your own traceTorch models. The resultant code can be found in
-   `tutorials/`.
+   `tutorials/`, complete with plotting and display of any useful metrics.
 3. **Documentation**: The actual documentation to all the modules included in `traceTorch`. It includes detailed
-   explanations, examples and math to gain a full understanding.
+   explanations, examples and math to gain a full understanding of how ``traceTorch`` works behind the scenes.
+
+## Related work & acknowledgements
+
+I built ``traceTorch`` from the ground up with the goal of exploring biologically inspired, constant-memory learning for
+spiking networks. Many projects and papers shaped the ideas here — the following helped the most and deserve
+acknowledgment.
+
+### Acknowledgements
+
+- [snntorch](https://github.com/jeshraghian/snntorch) — for introducing me to spiking neural networks and practical SNN
+  tooling. The design choice in snntorch to build full autograd graphs was a helpful contrast that inspired
+  ``traceTorch``’s constant-memory approach.
+- [Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov) — for accessible presentations on computational neuroscience
+  that influenced my thinking about spiking dynamics and simple, interpretable neuron models.
+- [E-prop / eligibility propagation](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf) — the
+  idea of maintaining decaying eligibility traces and combining them with modulatory signals heavily inspired the
+  “trace” abstraction in ``traceTorch``. While e-prop aims at approximating full RTRL, ``traceTorch`` focuses on a
+  lighter-weight single-lifetime learning pipeline using local traces to obtain the average input and subsequently
+  output for entirely local, small graph backpropagation.
+- Reward-modulated plasticity / three-factor rules — the biological and theoretical literature on reward-modulated STDP
+  and three-factor learning (local eligibility × global reward) shaped the REFLECT concept: keep a lightweight trace and
+  apply credit via a scalar reinforcement signal.
+
+### How traceTorch is different
+
+``traceTorch`` sits at the intersection of these ideas but with a different engineering emphasis:
+
+- Single-Lifetime Learning (SLL): the API and algorithms are designed to learn online during a single continuous run
+  through the data/environment with constant memory usage (no BPTT or replay buffers).
+- Constant-memory trace mechanics: each layer maintains compact decaying traces (inputs, outputs, and log-prob traces)
+  that approximate time-averages; these traces are used to build a tiny differentiable window at the time of update
+  rather than building a long computational graph.
+- Practical policy-gradient for SNNs (REFLECT): a trace-based REINFORCE-style estimator that keeps an averaged log-prob
+  trace of sampled actions and uses it to produce low-variance, correct learning signals for spiking layers.
+- Modular, pluggable design: lightweight LIF/LIS layers, Reflect learning modules, and a Sequential orchestration
+  layer make it easy to build SNNs that learn online while remaining debuggable and serializable (state_dict friendly).
+
+If you’re curious about specific papers: look into e-prop (Bellec et al.), eligibility traces and three-factor
+learning (Frémaux & Gerstner), and reward-modulated STDP literature (Izhikevich, Florian). These influenced the ideas
+here and are useful starting points if you want more theory.
 
 ## Roadmap
 
@@ -36,10 +76,11 @@ You can install it via pip. All the required packages for it to work are also do
 pip install tracetorch
 ```
 
-To use, simply do:
+To import, you can just do ``import tracetorch``, although more frequently it will look like this:
 
 ```
-import tracetorch
+import tracetorch as tt
+from tracetorch import snn
 ```
 
 ## Usage examples
@@ -47,7 +88,7 @@ import tracetorch
 `tutorials/` contains all the tutorial files, ready to run and playtest. The tutorials themselves can be found
 [here](https://yegor-men.github.io/tracetorch/tutorials/index.html).
 
-The tutorials make use of libraries that ``tracetorch`` doesn't necessarily use. To ensure that you have all the
+The tutorials make use of libraries that ``traceTorch`` doesn't necessarily use. To ensure that you have all the
 necessary packages for the tutorials installed, please install the packages listed in `tutorials/requirements.txt`
 
 ```
@@ -61,22 +102,6 @@ It's recommended to use an environment that does _not_ have ``tracetorch`` insta
 ## Authors
 
 - [@Yegor-men](https://github.com/Yegor-men)
-
-## Acknowledgements
-
-I built traceTorch from the ground up, trying to reverse engineer biological neurons with a sprinkle of intelligent
-design, but I would also like to recognize the following projects and people who helped shape my thinking:
-
-- [snntorch](https://github.com/jeshraghian/snntorch) for introducing me to SNN networks in the first place, and their
-  principles of function. Ironically, its dependency on constructing the full autograd graph is what largely inspired me
-  to make ``traceTorch``.
-- [Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov) for introducing me to computational neuroscience, presenting
-  interesting concepts in an easy-to-understand manner. My earliest tests, when I naively wanted to implement 1:1
-  biological neurons, largely revolved around his work.
-- [e-prop (eligibility propagation)](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf) inspired
-  the whole "trace" concept, the idea of keeping a decaying value. Earlier, before ``traceTorch``, I wanted to use
-  e-prop for online learning instead. Admittedly unsuccessful in my attempts, and a little put off by the relative
-  difficulty, I instead wanted to make something simpler.
 
 ## Contributing
 
