@@ -54,8 +54,8 @@ class Reflect(nn.Module):
 		advantage = reward - baseline_reward
 
 		average_logprob = self.logprob_trace * (1 - d)
-		average_logprob.retain_grad()
 		average_output = self.output_trace * (1 - d)
+		average_logprob.retain_grad()
 
 		loss = -advantage * (average_output * average_logprob).sum()
 

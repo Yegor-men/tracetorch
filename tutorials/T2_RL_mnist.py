@@ -10,8 +10,8 @@ torch.cuda.manual_seed_all(0)
 # device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "cpu"
 
-min_prob = 0.1
-max_prob = 0.5
+min_prob = 0
+max_prob = 1
 
 # Flattens the image and redistributes the brightness domain from [0, 1] to [min_prob, max_prob]
 image_transform = transforms.Compose([
@@ -54,6 +54,7 @@ model = snn.Sequential(
 	snn.LIS(
 		num_in=n_hidden,
 		num_out=10,
+		use_logprob_backward=True
 	)
 ).to(device)
 

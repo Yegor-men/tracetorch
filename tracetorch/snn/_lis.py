@@ -14,10 +14,12 @@ class LIS(nn.Module):
 			learn_weight: bool = True,
 			learn_mem_decay: bool = True,
 			learn_in_trace_decay: bool = True,
+			use_logprob_backward: bool = False,
 	):
 		super().__init__()
 		self.num_in = num_in
 		self.num_out = num_out
+		self.use_logprob_backward = bool(use_logprob_backward)
 
 		self.learn_weight = learn_weight
 		self.learn_mem_decay = learn_mem_decay
@@ -64,10 +66,14 @@ class LIS(nn.Module):
 		i = torch.einsum("i, oi -> o", average_input, self.weight)
 		d = nn.functional.sigmoid(self.mem_decay)
 
-		stabilized_mem_level = i / (1 - d + 1e-6)
+		stabilized_mem_level = i / (1 - d + 1e-12)
 		frequency = torch.nn.functional.softmax(stabilized_mem_level, dim=-1)
+		if self.use_logprob_backward:
+			logprob = torch.log(frequency + 1e-12)
+			logprob.backward(-learning_signal.detach())
+		else:
+			frequency.backward(learning_signal.detach())
 
-		frequency.backward(learning_signal.detach())
 		passed_learning_signal = average_input.grad.detach().clone()
 		average_input.grad = None
 		del average_input
