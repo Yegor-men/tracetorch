@@ -10,8 +10,8 @@ torch.cuda.manual_seed_all(0)
 # device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "cpu"
 
-min_prob = 0.1
-max_prob = 0.5
+min_prob = 0
+max_prob = 1
 
 # Flattens the image and redistributes the brightness domain from [0, 1] to [min_prob, max_prob]
 image_transform = transforms.Compose([
@@ -46,34 +46,22 @@ model = snn.Sequential(
 	snn.LIF(
 		num_in=784,
 		num_out=n_hidden,
+		mem_decay=0.3,
 	),
 	snn.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
-	),
-	snn.LIF(
-		num_in=n_hidden,
-		num_out=n_hidden,
-	),
-	snn.LIF(
-		num_in=n_hidden,
-		num_out=n_hidden,
-	),
-	snn.LIF(
-		num_in=n_hidden,
-		num_out=n_hidden,
-	), snn.LIF(
-		num_in=n_hidden,
-		num_out=n_hidden,
+		mem_decay=0.3,
 	),
 	snn.LIS(
 		num_in=n_hidden,
 		num_out=10,
+		mem_decay=0.3,
 	)
 ).to(device)
 
-think_steps = 50
-num_epochs = 1
+think_steps = 5
+num_epochs = 3
 
 from tqdm import tqdm
 
@@ -92,10 +80,11 @@ for epoch in range(num_epochs):
 			model_dist = model.forward(bern)
 			aggregate += model_dist
 		aggregate /= aggregate.sum()
-		loss, ls = tt.loss.mse(aggregate, y)
+		loss, ls = tt.loss.cross_entropy(aggregate, y)
 		model.backward(ls)
-		optimizer.step()
-		model.zero_grad(set_to_none=True)
+		if (index + 1) % 10 == 0:
+			optimizer.step()
+			model.zero_grad(set_to_none=True)
 		loss_manager.append(loss)
 		accuracy_manager.append(1 if aggregate.argmax().item() == y.argmax().item() else 0)
 		if (index % 10000 == 0) and (index != 0):
@@ -140,8 +129,8 @@ net_loss /= len(test_dataloader)
 net_accuracy /= len(test_dataloader)
 
 print(f"\tTEST\nLoss: {net_loss}\nAccuracy: {net_accuracy}")
-for index, mistakes in enumerate(mistakes_matrix):
-	print(f"Index: {index}, n_mistakes: {mistakes}")
+# for index, mistakes in enumerate(mistakes_matrix):
+# 	print(f"Index: {index}, n_mistakes: {mistakes}")
 
 tt.plot.render_image(mistakes_matrix)
 
