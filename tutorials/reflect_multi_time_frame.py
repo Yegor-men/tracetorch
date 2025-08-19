@@ -54,7 +54,7 @@ model = snn.Sequential(
 	snn.LIS(
 		num_in=n_hidden,
 		num_out=10,
-		use_logprob_backward=True
+		expect_logprob_ls=True
 	)
 ).to(device)
 
