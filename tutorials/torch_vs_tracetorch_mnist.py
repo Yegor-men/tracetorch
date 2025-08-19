@@ -129,8 +129,7 @@ for _, (x, y) in tqdm(enumerate(test_dataloader), total=len(test_dataloader), le
 		tracetorch_model.zero_states()
 		aggregate = torch.zeros(tracetorch_model.num_out).to(device)
 		for t in range(think_steps):
-			bernoulli_x = torch.bernoulli(x)
-			tracetorch_out = tracetorch_model.forward(bernoulli_x)
+			tracetorch_out = tracetorch_model.forward(x)
 			aggregate += tracetorch_out
 		aggregate /= think_steps
 		tracetorch_correct += 1 if aggregate.argmax().item() == correct_class else 0
