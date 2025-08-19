@@ -14,12 +14,12 @@ class LIS(nn.Module):
 			learn_weight: bool = True,
 			learn_mem_decay: bool = True,
 			learn_in_trace_decay: bool = True,
-			use_logprob_backward: bool = False,
+			expect_logprob_ls: bool = False,
 	):
 		super().__init__()
 		self.num_in = num_in
 		self.num_out = num_out
-		self.use_logprob_backward = bool(use_logprob_backward)
+		self.expect_logprob_ls = bool(expect_logprob_ls)
 
 		self.learn_weight = learn_weight
 		self.learn_mem_decay = learn_mem_decay
@@ -68,7 +68,7 @@ class LIS(nn.Module):
 
 		stabilized_mem_level = i / (1 - d + 1e-12)
 		frequency = torch.nn.functional.softmax(stabilized_mem_level, dim=-1)
-		if self.use_logprob_backward:
+		if self.expect_logprob_ls:
 			logprob = torch.log(frequency + 1e-12)
 			logprob.backward(-learning_signal.detach())
 		else:

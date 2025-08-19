@@ -54,14 +54,14 @@ model = snn.Sequential(
 	snn.LIS(
 		num_in=n_hidden,
 		num_out=10,
-		use_logprob_backward=True
+		expect_logprob_ls=True
 	)
 ).to(device)
 
 REFLECT = tt.loss.Reflect(num_in=model.num_out, decay=0.9)
 
 model_optimizer = torch.optim.AdamW(params=model.get_learnable_parameters(), lr=1e-4)
-reflect_optimizer = torch.optim.AdamW(params=REFLECT.get_learnable_parameters(), lr=1e-5)
+reflect_optimizer = torch.optim.AdamW(params=REFLECT.get_learnable_parameters(), lr=1e-3)
 
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
@@ -94,7 +94,7 @@ for epoch in range(num_epochs):
 		model.backward(ls)
 
 		model_optimizer.step()
-		reflect_optimizer.step()
+		# reflect_optimizer.step()
 		model.zero_grad(set_to_none=True)
 		REFLECT.zero_grad(set_to_none=True)
 
