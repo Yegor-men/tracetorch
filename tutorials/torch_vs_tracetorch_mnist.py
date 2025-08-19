@@ -98,10 +98,10 @@ for epoch in range(num_epochs):
 		for t in range(think_steps):
 			tracetorch_out = tracetorch_model.forward(x)
 			aggregate += tracetorch_out
+			tracetorch_loss, ls = tt.loss.cross_entropy(tracetorch_out, y)
+			tracetorch_model.backward(ls)
 		aggregate /= think_steps
 		tracetorch_model_accuracy.append(1 if aggregate.argmax().item() == correct_class else 0)
-		tracetorch_loss, ls = tt.loss.cross_entropy(aggregate, y)
-		tracetorch_model.backward(ls)
 
 		pytorch_model_optimizer.step()
 		pytorch_model.zero_grad(set_to_none=True)
