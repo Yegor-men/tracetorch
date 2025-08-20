@@ -60,7 +60,9 @@ here and are useful starting points if you want more theory.
 
 ## Roadmap
 
+- Finish REFLECT
 - Create the poisson click test example
+- Make .grad function as a trace
 - Make dynamic LR
 - Finish writing the documentation
 - Move tutorial code to separate repository
