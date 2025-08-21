@@ -25,11 +25,13 @@ class LIF(nn.Module):
 		self.mem_decay = nn.Parameter(sigmoid_inverse(torch.full((num_out,), mem_decay)))
 		self.threshold = nn.Parameter(softplus_inverse(torch.full((num_out,), threshold)))
 
+		self.register_buffer("pre_decay", torch.tensor(pre_decay))
+		self.register_buffer("post_decay", torch.tensor(post_decay))
+
 		self.register_buffer("mem", torch.zeros(num_out))
 		self.register_buffer("pre_trace", torch.zeros(num_in))
 		self.register_buffer("post_trace", torch.zeros(num_out))
-		self.register_buffer("pre_decay", torch.tensor(pre_decay))
-		self.register_buffer("post_decay", torch.tensor(post_decay))
+
 		self.register_buffer("last_surrogate", torch.zeros(num_out))
 
 	@torch.no_grad()
