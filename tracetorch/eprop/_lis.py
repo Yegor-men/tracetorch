@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 
-class Readout(nn.Module):
+class LIS(nn.Module):
 	def __init__(
 			self,
 			num_in: int,
@@ -16,8 +16,10 @@ class Readout(nn.Module):
 		self.weight = nn.Parameter(torch.randn(num_out, num_in))
 		self.bias = nn.Parameter(torch.zeros(num_out))
 
-		self.register_buffer("pre_trace", torch.zeros(num_in))
 		self.register_buffer("pre_decay", torch.tensor(pre_decay))
+
+		self.register_buffer("pre_trace", torch.zeros(num_in))
+
 		self.register_buffer("normalized_pre_trace", torch.zeros(num_in))
 
 	@torch.no_grad()
