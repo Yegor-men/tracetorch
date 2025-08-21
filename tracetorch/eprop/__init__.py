@@ -1,4 +1,4 @@
 from ._lif import LIF
 from ._alif import ALIF
 from ._sequential import Sequential
-from ._readout import Readout
+from ._lis import LIS
