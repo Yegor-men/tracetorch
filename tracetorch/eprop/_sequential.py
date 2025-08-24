@@ -18,6 +18,10 @@ class Sequential(nn.Module):
 		for layer in reversed(self.layers):
 			ls = layer.backward(ls)
 
+	def elig_to_grad(self, scalar: float = 1.0):
+		for layer in self.layers[:-1]:
+			layer.elig_to_grad(scalar)
+
 	def zero_states(self):
 		for layer in self.layers:
 			layer.zero_states()

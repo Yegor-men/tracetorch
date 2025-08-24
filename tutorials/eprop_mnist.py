@@ -47,11 +47,11 @@ n_hidden = 32
 decay = tt.functional.halflife_to_decay(5)
 
 model = eprop.Sequential(
-	eprop.LIF(
+	eprop.ALIF(
 		num_in=784,
 		num_out=n_hidden,
 	),
-	eprop.LIF(
+	eprop.ALIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
@@ -88,6 +88,7 @@ for epoch in range(num_epochs):
 			loss, ls = tt.loss.cross_entropy(model_dist, y)
 			model.backward(ls)
 
+		model.elig_to_grad()
 		optimizer.step()
 		aggregate /= think_steps
 		accuracy_manager.append(1 if aggregate.argmax().item() == correct_class else 0)

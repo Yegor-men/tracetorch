@@ -46,6 +46,19 @@ class ALIF(nn.Module):
 		self.register_buffer("mem_decay_trace", torch.zeros(num_out))
 
 	@torch.no_grad()
+	def zero_states(self):
+		self.mem.zero_()
+		self.pre_trace.zero_()
+		self.post_trace.zero_()
+		self.last_pre_trace.zero_()
+		self.last_post_trace.zero_()
+		self.last_mem.zero_()
+		self.last_surrogate.zero_()
+		self.pre_decay_trace.zero_()
+		self.post_decay_trace.zero_()
+		self.mem_decay_trace.zero_()
+
+	@torch.no_grad()
 	def zero_elig(self):
 		for name in self.params.keys():
 			elig = getattr(self, f"{name}_elig")
