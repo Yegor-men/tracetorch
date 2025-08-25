@@ -69,7 +69,7 @@ from tqdm import tqdm
 loss_manager = tt.plot.MeasurementManager(title="Loss")
 accuracy_manager = tt.plot.MeasurementManager(title="Accuracy")
 
-optimizer = torch.optim.SGD(params=model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-4)
 
 for epoch in range(num_epochs):
 	for index, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=True, desc=f"E{epoch}"):
@@ -85,8 +85,9 @@ for epoch in range(num_epochs):
 			model_dist = model.forward(bern)
 			aggregate += model_dist
 
-			loss, ls = tt.loss.cross_entropy(model_dist, y)
+			loss, ls = tt.loss.mse(model_dist, y)
 			model.backward(ls)
+			loss_manager.append(loss)
 
 		model.elig_to_grad()
 		optimizer.step()
@@ -94,10 +95,10 @@ for epoch in range(num_epochs):
 		accuracy_manager.append(1 if aggregate.argmax().item() == correct_class else 0)
 
 		if (index % 10000 == 0) and (index != 0):
-			# loss_manager.plot()
+			loss_manager.plot()
 			accuracy_manager.plot()
 
-# loss_manager.plot()
+loss_manager.plot()
 accuracy_manager.plot()
 
 net_loss = torch.tensor(0.).to(device)
@@ -144,10 +145,10 @@ print(f"\tTEST\nLoss: {net_loss}\nAccuracy: {net_accuracy}")
 
 tt.plot.render_image(mistakes_matrix)
 
-mem_decays = [torch.nn.functional.sigmoid(layer.mem_decay) for layer in model.layers[:-1]]
-weights = [layer.weight for layer in model.layers]
-thresholds = [torch.nn.functional.softplus(layer.threshold) for layer in model.layers[:-1]]
-
-tt.plot.distributions(mem_decays, title="Membrane decay")
-tt.plot.distributions(weights, title="Weights")
-tt.plot.distributions(thresholds, title="Thresholds")
+# mem_decays = [torch.nn.functional.sigmoid(layer.mem_decay) for layer in model.layers[:-1]]
+# weights = [layer.weight for layer in model.layers]
+# thresholds = [torch.nn.functional.softplus(layer.threshold) for layer in model.layers[:-1]]
+#
+# tt.plot.distributions(mem_decays, title="Membrane decay")
+# tt.plot.distributions(weights, title="Weights")
+# tt.plot.distributions(thresholds, title="Thresholds")
