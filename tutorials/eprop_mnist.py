@@ -47,11 +47,11 @@ n_hidden = 32
 decay = tt.functional.halflife_to_decay(5)
 
 model = eprop.Sequential(
-	eprop.ALIF(
+	eprop.LIF(
 		num_in=784,
 		num_out=n_hidden,
 	),
-	eprop.ALIF(
+	eprop.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
