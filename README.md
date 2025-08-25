@@ -3,70 +3,67 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-purple.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![PyPI](https://img.shields.io/badge/PyPI-v0.3.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
-``traceTorch`` is a PyTorch-based library built on the principles of spiking neural networks, replacing the PyTorch
-default backpropagation through time with lightweight, per-layer input traces, enabling biologically inspired, constant
-time and memory consumption learning on arbitrarily long or even streaming sequences.
+``traceTorch`` is a PyTorch-based library that
+implements [eligibility propagation](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf),
+replacing the PyTorch default backpropagation through time with lightweight, per-layer eligibility traces, enabling
+biologically inspired, constant time and memory consumption learning on arbitrarily long or even streaming sequences.
 
 ## Documentation
 
-It is highly recommended that you read the [documentation](https://yegor-men.github.io/tracetorch/) first. It contains:
+It is highly recommended that you read the [documentation](https://yegor-men.github.io/tracetorch/) first. It contains
+the following sections:
 
-1. **Introduction**: An introduction to traceTorch, how and why it works, it's founding principles. It's thoroughly
-   recommended that you read through the entire introduction and gain an intuitive understanding before proceeding.
-2. **Tutorials**: Various tutorials to create your own traceTorch models. The resultant code can be found in
-   `tutorials/`, complete with plotting and display of any useful metrics.
-3. **Documentation**: The actual documentation to all the modules included in `traceTorch`. It includes detailed
-   explanations, examples and math to gain a full understanding of how ``traceTorch`` works behind the scenes.
+1. **What is Eligibility Propagation?**: Covers the background, theory and intuition for eligibility propagation.
+   It's not crucial to know, but it helps.
+2. **Getting Started**: Explains the installation, setup and usage patterns of ``traceTorch``.
+3. **Tutorials and Examples**: Walks through various practical examples and implementations that utilize ``traceTorch``.
+   The resultant code can be found in ``tutorials/``.
+4. **API Reference**: Detailed documentation of all modules, classes and functions that ``traceTorch`` contains.
 
-## Related work & acknowledgements
+## Origins & Acknowledgements
 
-I built ``traceTorch`` from the ground up with the goal of exploring biologically inspired, constant-memory learning for
-spiking networks. Many projects and papers shaped the ideas here — the following helped the most and deserve
-acknowledgment.
+I originally developed ``traceTorch`` with the intent of exploring biologically inspired, constant-memory learning for
+spiking neural networks (SNNs). The idea was that each layer maintains an input trace, from it could be reconstructed
+the average input, and from that, by reusing the layer's parameters: the average output. Layer by layer, the backward
+pass would happen, passing the learning signal from one layer to the next, each one reconstructing the average outputs
+and utilizing PyTorch's autograd to compute derivatives from the approximated output based on the incoming learning
+signal. Effectively, instead of calling .backward() on an arbitrary size autograd graph, ``traceTorch`` allowed to
+"compress" it into one forward pass, and subsequently in theory required only one backward pass. Call an arbitrary
+number of forward passes, in the backward pass it would approximate the "average" forward pass, and then do a real
+.backward() pass on effectively one timestep.
+
+In itself, the approach was fine. Models could learn and generalize. Works also started on a realtime alternative to
+REINFORCE, aptly named REFLECT, as it would strengthen or weaken the chain of choices that led up to a reward, rather
+than those that, as a consequence of them occurring, led to a reward. Mathematically effectively similar, simply adapted
+to online learning.
+
+However, further testing revealed that doing a backward pass for each timestep, rather than one at the end, drastically
+improved the model's ability to learn, being almost as fast as traditional backpropagation. However, this came at the
+cost of an immense decrease in speed, as each timestep would effectively do: 1 real forward pass and in the backward
+pass effectively redo the forward pass and do an actual autograd .backward() pass inside. Subsequently, I got interested
+if it was possible to "pre-bake" the backward pass graph, after all, the graph was the same each time. The sole reason
+autograd was used was because the real underlying function is complex. However, biologically, through evolution, it's
+not difficult to imagine that the correct function got pre-baked into the neurons, that in reality, it's only a matter
+of retrieval of values, without any computations involved.
+
+I hence found myself back at the starting
+point: [e-prop](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf). Eligibility propagation,
+which originally I did not understand, inspired the very input trace mechanics. It effectively uses this "pre-baked"
+concept, and, hence, training by doing a backward pass at each timestep is not only faster (inference speed, not
+necessarily training speed) while also being cleaner.
+
+Hence, ``traceTorch`` is now focused around eligibility propagation. The old code can still be found and used in
+``legacy/``. I may or may not return to it sometime, from the perspective of sparse .backward() calls.
 
 ### Acknowledgements
 
-- [snntorch](https://github.com/jeshraghian/snntorch) — for introducing me to spiking neural networks and practical SNN
-  tooling. The design choice in snntorch to build full autograd graphs was a helpful contrast that inspired
-  ``traceTorch``’s constant-memory approach.
-- [Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov) — for accessible presentations on computational neuroscience
+- **[snntorch](https://github.com/jeshraghian/snntorch)**: For introducing me to spiking neural networks and practical
+  SNN tooling.
+- **[Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov)**: For accessible presentations on computational
+  neuroscience
   that influenced my thinking about spiking dynamics and simple, interpretable neuron models.
-- [E-prop / eligibility propagation](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf) — the
-  idea of maintaining decaying eligibility traces and combining them with modulatory signals heavily inspired the
-  “trace” abstraction in ``traceTorch``. While e-prop aims at approximating full RTRL, ``traceTorch`` focuses on a
-  lighter-weight single-lifetime learning pipeline using local traces to obtain the average input and subsequently
-  output for entirely local, small graph backpropagation.
-- Reward-modulated plasticity / three-factor rules — the biological and theoretical literature on reward-modulated STDP
-  and three-factor learning (local eligibility × global reward) shaped the REFLECT concept: keep a lightweight trace and
-  apply credit via a scalar reinforcement signal.
-
-### How traceTorch is different
-
-``traceTorch`` sits at the intersection of these ideas but with a different engineering emphasis:
-
-- Single-Lifetime Learning (SLL): the API and algorithms are designed to learn online during a single continuous run
-  through the data/environment with constant memory usage (no BPTT or replay buffers).
-- Constant-memory trace mechanics: each layer maintains compact decaying traces (inputs, outputs, and log-prob traces)
-  that approximate time-averages; these traces are used to build a tiny differentiable window at the time of update
-  rather than building a long computational graph.
-- Practical policy-gradient for SNNs (REFLECT): a trace-based REINFORCE-style estimator that keeps an averaged log-prob
-  trace of sampled actions and uses it to produce low-variance, correct learning signals for spiking layers.
-- Modular, pluggable design: lightweight LIF/LIS layers, Reflect learning modules, and a Sequential orchestration
-  layer make it easy to build SNNs that learn online while remaining debuggable and serializable (state_dict friendly).
-
-If you’re curious about specific papers: look into e-prop (Bellec et al.), eligibility traces and three-factor
-learning (Frémaux & Gerstner), and reward-modulated STDP literature (Izhikevich, Florian). These influenced the ideas
-here and are useful starting points if you want more theory.
-
-## Roadmap
-
-- Finish REFLECT
-- Create the poisson click test example
-- Make .grad function as a trace
-- Make dynamic LR
-- Finish writing the documentation
-- Move tutorial code to separate repository
-- Implement abstract graph based models, not just sequential
+- **[E-prop / eligibility propagation](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf)**: The
+  very paper that powers most of ``traceTorch``.
 
 ## Installation
 
