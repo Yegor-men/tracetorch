@@ -1,6 +1,6 @@
 import torch
 import tracetorch as tt
-from tracetorch import eprop
+from tracetorch import snn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
@@ -46,16 +46,16 @@ n_hidden = 32
 
 decay = tt.functional.halflife_to_decay(5)
 
-model = eprop.Sequential(
-	eprop.LIF(
+model = snn.Sequential(
+	snn.LIF(
 		num_in=784,
 		num_out=n_hidden,
 	),
-	eprop.LIF(
+	snn.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
-	eprop.LIS(
+	snn.LIS(
 		num_in=n_hidden,
 		num_out=10,
 	),
