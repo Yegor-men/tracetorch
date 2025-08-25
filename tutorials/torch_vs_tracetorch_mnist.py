@@ -58,36 +58,32 @@ tracetorch_model = snn.Sequential(
 	snn.LIF(
 		num_in=784,
 		num_out=num_hidden,
-		mem_decay=decay,
-		in_trace_decay=decay,
 	),
 	snn.LIF(
 		num_in=num_hidden,
 		num_out=num_hidden,
-		mem_decay=decay,
-		in_trace_decay=decay,
 	),
 	snn.LIS(
 		num_in=num_hidden,
-		num_out=10, mem_decay=decay,
-		in_trace_decay=decay,
+		num_out=10,
 	),
 ).to(device)
 
 lr = 1e-4
 pytorch_model_optimizer = torch.optim.AdamW(pytorch_model.parameters(), lr=lr)
-tracetorch_model_optimizer = torch.optim.AdamW(tracetorch_model.get_learnable_parameters(), lr=lr)
+tracetorch_model_optimizer = torch.optim.AdamW(tracetorch_model.parameters(), lr=lr)
 
 pytorch_model_accuracy = tt.plot.MeasurementManager(title="PyTorch Model Accuracy")
 tracetorch_model_accuracy = tt.plot.MeasurementManager(title="traceTorch Model Accuracy")
 
 num_epochs = 1
-think_steps = 15
+think_steps = 10
 
 for epoch in range(num_epochs):
 	for _, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=True, desc=f"E{epoch}"):
 		x, y = x.to(device), y.to(device)
 		correct_class = y.argmax().item()
+
 		pytorch_out = pytorch_model.forward(x)
 		pytorch_model_accuracy.append(1 if pytorch_out.argmax().item() == correct_class else 0)
 		pytorch_loss = torch.nn.functional.cross_entropy(pytorch_out, y)
@@ -104,10 +100,11 @@ for epoch in range(num_epochs):
 		tracetorch_model_accuracy.append(1 if aggregate.argmax().item() == correct_class else 0)
 
 		pytorch_model_optimizer.step()
-		pytorch_model.zero_grad(set_to_none=True)
+		pytorch_model.zero_grad()
 
+		tracetorch_model.elig_to_grad()
 		tracetorch_model_optimizer.step()
-		tracetorch_model.zero_grad(set_to_none=True)
+		tracetorch_model.zero_grad()
 
 		if (_ + 1) % 10_000 == 0:
 			pytorch_model_accuracy.plot()
@@ -123,6 +120,7 @@ for _, (x, y) in tqdm(enumerate(test_dataloader), total=len(test_dataloader), le
 	with torch.no_grad():
 		x, y = x.to(device), y.to(device)
 		correct_class = y.argmax().item()
+
 		pytorch_out = pytorch_model.forward(x)
 		pytorch_correct += 1 if pytorch_out.argmax().item() == correct_class else 0
 
