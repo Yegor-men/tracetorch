@@ -26,7 +26,8 @@ class ALIF(nn.Module):
 			"mem_decay": nn.Parameter(sigmoid_inverse(torch.full((num_out,), mem_decay))),
 			"threshold": nn.Parameter(softplus_inverse(torch.full((num_out,), threshold))),
 			"pre_decay": nn.Parameter(sigmoid_inverse(torch.full((num_in,), pre_decay))),
-			"post_decay": nn.Parameter(sigmoid_inverse(torch.full((num_out,), post_decay)))
+			"post_decay": nn.Parameter(sigmoid_inverse(torch.full((num_out,), post_decay))),
+			"bias": nn.Parameter(torch.zeros(num_out))
 		})
 
 		for name, p in self.params.items():
@@ -85,7 +86,7 @@ class ALIF(nn.Module):
 		synaptic_current = torch.einsum("oi,i->o", self.params["weight"], in_spikes)
 
 		# update membrane
-		self.mem.mul_(mem_decay).add_(synaptic_current)
+		self.mem.mul_(mem_decay).add_(synaptic_current).add_(self.params["bias"])
 
 		# spikes and instantaneous surrogate (before reset)
 		out_spikes = (self.mem >= threshold).float()
@@ -128,6 +129,10 @@ class ALIF(nn.Module):
 		# threshold_elig stores gradient w.r.t. actual threshold (softplus output)
 		self.threshold_elig.add_(learning_signal * (-self.last_surrogate))  # [out]
 
+		# ---------- bias: direct current to membrane, effect on spike ~= last_surrogate ----------
+		# bias_elig stores real gradient contributions for bias (actual-space)
+		self.bias_elig.add_(learning_signal * self.last_surrogate)  # shape [out]
+
 		# ---------- mem_decay: use the recurrence trace mem_decay_trace ----------
 		# mem_decay_elig accumulates learning_signal * surrogate * mem_decay_trace
 		self.mem_decay_elig.add_((learning_signal * self.last_surrogate) * self.mem_decay_trace)  # [out]
@@ -168,6 +173,13 @@ class ALIF(nn.Module):
 		if self.weight_elig is not None:
 			accum_grad(w, scalar * self.weight_elig)
 			self.weight_elig.zero_()
+
+		# --- bias (identity) ---
+		raw = self.params["bias"]
+		if getattr(self, "bias_elig", None) is not None:
+			g_raw = scalar * self.bias_elig
+			accum_grad(raw, g_raw)
+			self.bias_elig.zero_()
 
 		# --- mem_decay (actual = sigmoid(raw)): raw_grad = actual_grad * s * (1-s) ---
 		raw = self.params["mem_decay"]
