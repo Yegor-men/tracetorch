@@ -1,12 +1,13 @@
 import torch
 from torch import nn
 import math
-from ..functional import sigmoid_inverse
-from ..functional import softplus_inverse
-from ..functional import sigmoid_derivative
+from tracetorch.functional import sigmoid_inverse
+from tracetorch.functional import softplus_inverse
+from tracetorch.functional import sigmoid_derivative
+from _trace_module import TraceModule
 
 
-class LIF(nn.Module):
+class LIF(nn.Module, TraceModule):
 	def __init__(
 			self,
 			num_in: int,
@@ -15,23 +16,22 @@ class LIF(nn.Module):
 			threshold: float = 1,
 			pre_decay: float = 0.9,
 			post_decay: float = 0.9,
+			update_mode: str = "immediate",
+			preserve_elig: bool = True,
 	):
 		super().__init__()
 		self.num_in = int(num_in)
 		self.num_out = int(num_out)
 
-		t, i = threshold, num_in
-		self.params = nn.ParameterDict({
-			"weight": nn.Parameter(torch.normal(mean=t / i, std=t / math.sqrt(i), size=(num_out, num_in))),
-			"mem_decay": nn.Parameter(sigmoid_inverse(torch.full((num_out,), mem_decay))),
-			"threshold": nn.Parameter(softplus_inverse(torch.full((num_out,), threshold))),
-			"pre_decay": nn.Parameter(sigmoid_inverse(torch.full((num_in,), pre_decay))),
-			"post_decay": nn.Parameter(sigmoid_inverse(torch.full((num_out,), post_decay))),
-			"bias": nn.Parameter(torch.zeros(num_out))
-		})
+		self.set_update_mode(update_mode, preserve_elig)
 
-		for name, p in self.params.items():
-			self.register_buffer(f"{name}_elig", torch.zeros_like(p), persistent=True)
+		t, i = threshold, num_in
+		self.weight = nn.Parameter(torch.normal(mean=t / i, std=t / math.sqrt(i), size=(num_out, num_in)))
+		self.mem_decay = nn.Parameter(sigmoid_inverse(torch.full((num_out,), mem_decay)))
+		self.threshold = nn.Parameter(softplus_inverse(torch.full((num_out,), threshold)))
+		self.pre_decay = nn.Parameter(sigmoid_inverse(torch.full((num_in,), pre_decay)))
+		self.post_decay = nn.Parameter(sigmoid_inverse(torch.full((num_out,), post_decay)))
+		self.bias = nn.Parameter(torch.zeros(num_out))
 
 		self.register_buffer("mem", torch.zeros(num_out))
 		self.register_buffer("pre_trace", torch.zeros(num_in))
@@ -58,12 +58,6 @@ class LIF(nn.Module):
 		self.pre_decay_trace.zero_()
 		self.post_decay_trace.zero_()
 		self.mem_decay_trace.zero_()
-
-	@torch.no_grad()
-	def zero_elig(self):
-		for name in self.params.keys():
-			elig = getattr(self, f"{name}_elig")
-			elig.zero_()
 
 	@torch.no_grad()
 	def forward(self, in_spikes: torch.Tensor) -> torch.Tensor:

@@ -1,6 +1,6 @@
 import torch
 import tracetorch as tt
-from tracetorch import snn
+from tracetorch import neurons
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
@@ -42,18 +42,18 @@ test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_
 
 n_hidden = 32
 
-model = snn.Sequential(
-	snn.LIF(
+model = neurons.Sequential(
+	neurons.LIF(
 		num_in=784,
 		num_out=n_hidden,
 		mem_decay=0.3,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 		mem_decay=0.3,
 	),
-	snn.LIS(
+	neurons.LIS(
 		num_in=n_hidden,
 		num_out=10,
 		mem_decay=0.3,

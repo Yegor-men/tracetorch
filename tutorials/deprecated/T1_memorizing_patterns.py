@@ -1,6 +1,6 @@
 import torch
 import tracetorch as tt
-from tracetorch import snn
+from tracetorch import neurons
 import random
 from tqdm import tqdm
 import copy
@@ -24,24 +24,24 @@ for i in range(n_out):
 
 test_data = copy.deepcopy(train_data)
 
-model = snn.Sequential(
-	snn.LIF(
+model = neurons.Sequential(
+	neurons.LIF(
 		num_in=n_in,
 		num_out=n_hidden,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=n_hidden,
 		num_out=n_hidden,
 	),
-	snn.LIS(
+	neurons.LIS(
 		num_in=n_hidden,
 		num_out=n_out,
 	)

@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch import snn
+from tracetorch import neurons
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
@@ -45,16 +45,16 @@ device = "cpu"
 
 num_hidden = 32
 
-actor = snn.Sequential(
-	snn.LIF(
+actor = neurons.Sequential(
+	neurons.LIF(
 		num_in=784,
 		num_out=num_hidden,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=num_hidden,
 		num_out=num_hidden,
 	),
-	snn.LIS(
+	neurons.LIS(
 		num_in=num_hidden,
 		num_out=10,
 	),

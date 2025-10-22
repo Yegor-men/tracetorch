@@ -1,7 +1,6 @@
 import torch
-from torch import nn
 import tracetorch as tt
-from tracetorch import snn
+from tracetorch import neurons
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
@@ -60,16 +59,16 @@ old_model = tt.legacy.snn.Sequential(
 	),
 ).to(device)
 
-new_model = snn.Sequential(
-	snn.LIF(
+new_model = neurons.Sequential(
+	neurons.LIF(
 		num_in=784,
 		num_out=num_hidden,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=num_hidden,
 		num_out=num_hidden,
 	),
-	snn.LIS(
+	neurons.LIS(
 		num_in=num_hidden,
 		num_out=10,
 	),

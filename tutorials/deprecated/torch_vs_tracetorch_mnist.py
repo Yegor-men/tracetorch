@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch import snn
+from tracetorch import neurons
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
@@ -54,16 +54,16 @@ pytorch_model = nn.Sequential(
 ).to(device)
 
 decay = tt.functional.halflife_to_decay(3)
-tracetorch_model = snn.Sequential(
-	snn.LIF(
+tracetorch_model = neurons.Sequential(
+	neurons.LIF(
 		num_in=784,
 		num_out=num_hidden,
 	),
-	snn.LIF(
+	neurons.LIF(
 		num_in=num_hidden,
 		num_out=num_hidden,
 	),
-	snn.LIS(
+	neurons.LIS(
 		num_in=num_hidden,
 		num_out=10,
 	),
