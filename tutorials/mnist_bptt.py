@@ -144,22 +144,22 @@ for e in range(num_epochs):
 	plt.legend()
 	plt.show()
 
-# VISUALIZE
-# with torch.no_grad():
-# 	images, labels = next(iter(test_dloader))
-# 	images, labels = images.to(device), labels.to(device)
-#
-# 	for image, label in tqdm(zip(images, labels), total=len(images), desc=f"Epoch {e + 1}, visualization"):
-# 		spike_train = []
-# 		model.zero_states()
-#
-# 		for t in range(num_timesteps):
-# 			model_output = model(image.unsqueeze(0)).squeeze()
-# 			spike_train.append(model_output.squeeze())
-#
-# 		loss = nn.functional.mse_loss(model_output, label)
-# 		tt.plot.render_image(image, title=f"{torch.argmax(label).item()}")
-# 		tt.plot.spike_train(spike_train, title=f"{loss.item()}")
+	# VISUALIZE
+	with torch.no_grad():
+		images, labels = next(iter(test_dloader))
+		images, labels = images.to(device), labels.to(device)
+
+		for image, label in tqdm(zip(images, labels), total=len(images), desc=f"Epoch {e + 1}, visualization"):
+			spike_train = []
+			model.zero_states()
+
+			for t in range(num_timesteps):
+				model_output = model(image.unsqueeze(0)).squeeze()
+				spike_train.append(model_output.squeeze())
+
+			loss = nn.functional.mse_loss(model_output, label)
+			tt.plot.render_image(image, title=f"{torch.argmax(label).item()}")
+			tt.plot.spike_train(spike_train, title=f"{loss.item()}")
 
 total_params = sum(p.numel() for p in model.parameters())
 print(f"Total parameters: {total_params:,}")
