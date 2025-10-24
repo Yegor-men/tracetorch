@@ -18,13 +18,14 @@ def one_hot_encode(label):
 
 
 class OneHotMNIST(torch.utils.data.Dataset):
-	def __init__(self, train=True):
+	def __init__(self, train=True, min_val=0.0, max_val=0.5, offset=0.05):
 		self.dataset = datasets.MNIST(
 			root='data',
 			train=train,
 			download=True,
 			transform=transforms.Compose([
-				transforms.ToTensor(),  # Converts to [C, H, W] in [0.0, 1.0]
+				transforms.ToTensor(),
+				lambda x: x * (max_val - min_val) + min_val + offset,
 			])
 		)
 
@@ -37,8 +38,8 @@ class OneHotMNIST(torch.utils.data.Dataset):
 		return len(self.dataset)
 
 
-train_dataset = OneHotMNIST(train=True)
-test_dataset = OneHotMNIST(train=False)
+train_dataset = OneHotMNIST(train=True, min_val=0.0, max_val=0.1, offset=0.05)
+test_dataset = OneHotMNIST(train=False, min_val=0.0, max_val=0.1, offset=0.05)
 
 # ======================================================================================================================
 
@@ -85,8 +86,8 @@ for e in range(num_epochs):
 
 			model_output = model(spike_input)
 
-			loss = nn.functional.mse_loss(model_output, label)
-			# loss = torch.mean(torch.log(model_output) * label)
+			# loss = nn.functional.mse_loss(model_output, label)
+			loss = torch.mean(-torch.log(model_output) * label)
 			loss.backward()
 			model.detach_states()
 
@@ -126,8 +127,8 @@ for e in range(num_epochs):
 			for t in range(num_timesteps):
 				spike_input = torch.bernoulli(image)
 				model_output = model(spike_input)
-				loss = nn.functional.mse_loss(model_output, label)
-			# loss = torch.mean(torch.log(model_output) * label)
+				# loss = nn.functional.mse_loss(model_output, label)
+				loss = torch.mean(-torch.log(model_output) * label)
 
 			temp_loss += loss.item()
 			true_classes = label.argmax(dim=1)
@@ -162,19 +163,24 @@ for e in range(num_epochs):
 		images, labels = images.to(device), labels.to(device)
 
 		for image, label in tqdm(zip(images, labels), total=len(images), desc=f"E{e + 1} - VISUALIZE"):
+			empty_image = torch.zeros_like(image)
+
 			spike_train = []
 			model.zero_states()
 
 			for t in range(num_timesteps):
-				model_output = model(image.unsqueeze(0)).squeeze()
+				spike_input = torch.bernoulli(image)
+				model_output = model(spike_input.unsqueeze(0)).squeeze()
+				empty_image += spike_input
 				spike_train.append(model_output.squeeze())
 
-			loss = nn.functional.mse_loss(model_output, label)
-			# loss = torch.mean(torch.log(model_output) * label)
+			empty_image /= num_timesteps
+			# loss = nn.functional.mse_loss(model_output, label)
+			loss = torch.mean(-torch.log(model_output) * label)
 			real_number = torch.argmax(label).item()
 			pred_number = torch.argmax(model_output).item()
 			title = f"Was: {real_number}, pred: {pred_number}, loss: {loss.item():.5f}"
-			tt.plot.render_image(image, title=title)
+			tt.plot.render_image(empty_image, title=title)
 			tt.plot.spike_train(spike_train, title=title)
 
 total_params = sum(p.numel() for p in model.parameters())
