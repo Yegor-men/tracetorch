@@ -8,18 +8,17 @@ class Readout(nn.Module):
 			self,
 			num_neurons: int,
 			beta: float = 0.99,
-			view_tuple: tuple = (-1),
+			view_tuple: tuple[int, ...] = (-1,),
 			learn_beta: bool = True,
-			beta_is_scalar: bool = True,
+			beta_is_vector: bool = False,
 	):
 		super().__init__()
 		self.view_tuple = view_tuple
-		self.beta_is_scalar = beta_is_scalar
 		self.num_neurons = num_neurons
 
-		num_neurons = num_neurons if not beta_is_scalar else 1
 		with torch.no_grad():
-			beta = functional.sigmoid_inverse(torch.ones(num_neurons) * beta)
+			beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
+			beta_vector = torch.ones(num_neurons)
 
 		def _register(name: str, tensor: torch.Tensor, learn: bool):
 			if learn:
@@ -28,7 +27,8 @@ class Readout(nn.Module):
 				self.register_buffer(name, tensor)
 
 		for (n, t, l) in [
-			("beta", beta, learn_beta),
+			("beta_scalar", beta_scalar, learn_beta),
+			("beta_vector", beta_vector, (learn_beta and beta_is_vector)),
 		]:
 			_register(n, t, l)
 
@@ -44,9 +44,7 @@ class Readout(nn.Module):
 		if self.mem is None:
 			self.mem = torch.zeros_like(x)
 
-		beta = nn.functional.sigmoid(self.beta)
-		if self.beta_is_scalar:
-			beta = beta * torch.ones(self.num_neurons).to(x)
+		beta = nn.functional.sigmoid(self.beta_vector * self.beta_scalar)
 		beta = beta.view(self.view_tuple)
 
 		self.mem = self.mem * beta + x * (1 - beta)
