@@ -9,7 +9,7 @@ class Leaky(nn.Module):
 			num_neurons: int,
 			beta: float = 0.9,
 			threshold: float = 1.0,
-			view_tuple: tuple = (-1),
+			view_tuple: tuple[int, ...] = (-1,),
 			surrogate_function=functional.atan_surrogate(2.0),
 			learn_beta: bool = True,
 			learn_threshold: bool = True,

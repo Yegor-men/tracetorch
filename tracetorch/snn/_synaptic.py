@@ -10,7 +10,7 @@ class Synaptic(nn.Module):
 			alpha: float = 0.5,
 			beta: float = 0.5,
 			threshold: float = 1.0,
-			view_tuple: tuple = (-1),
+			view_tuple: tuple[int, ...] = (-1,),
 			surrogate_function=functional.atan_surrogate(2.0),
 			learn_alpha: bool = True,
 			learn_beta: bool = True,
