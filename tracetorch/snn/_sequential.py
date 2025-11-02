@@ -22,6 +22,9 @@ class Sequential(nn.Module):
 		for layer in self.layers:
 			self._call_if_present(layer, "detach_states")
 
+	def get_attr_list(self, *attr_names):
+		return [getattr(l, n) for l in self.layers for n in attr_names if hasattr(l, n)]
+
 	def forward(self, x):
 		for layer in self.layers:
 			x = layer(x)
