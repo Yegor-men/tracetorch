@@ -1,2 +1,2 @@
-from . import autograd
+from . import auto
 from . import eprop

@@ -11,11 +11,11 @@ The naming convention is a little arbitrary, but the point is that this is a com
 	1. BPTT vs online loss
 	2. Dense vs sparse learning signals
 
-Here's what actually happens for the losses and the autograd graphs for their construction:
+Here's what actually happens for the losses and the auto graphs for their construction:
 	1. BPTT dense creates a singular loss that is a mix of the loss of all timesteps; it can be set to make all timesteps
 	of equal priority, but for the sake of demonstration, we use an EMA for it so that later timesteps are of higher
 	priority than earlier ones.
-	2. BPTT sparse also creates an autograd graph that spans all timesteps, except we ignore all outputs except for the
+	2. BPTT sparse also creates an auto graph that spans all timesteps, except we ignore all outputs except for the
 	last timestep's; this is equivalent to BPTT dense, except setting the EMA decay to 0.0.
 	3. Online dense is similar to BPTT dense in that we have a learning signal at each timestep, but now we detach each
 	timestep from the graph; instead of having one massive graph to call .backward() on, we call on an arbitrary amount
@@ -45,7 +45,7 @@ it had learnt to maximally accumulate charge.
 import torch
 from torch import nn
 import tracetorch as tt
-import tracetorch.snn.autograd as snn
+import tracetorch.snn.auto as snn
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms

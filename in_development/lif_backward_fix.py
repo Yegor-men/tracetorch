@@ -9,7 +9,7 @@ def smooth_lif_rate_vector(i, d, t,
 						   eps: float = 1e-8):
 	"""
 	Vectorized smooth LIF firing frequency approximation for tensors i, d, t (same shape).
-	All operations are differentiable and autograd-friendly.
+	All operations are differentiable and auto-friendly.
 
 	Args:
 	  i: tensor of average inputs (shape [n])
