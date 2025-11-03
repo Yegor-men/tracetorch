@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from .. import functional
+from ... import functional
 
 
 class Readout(nn.Module):
