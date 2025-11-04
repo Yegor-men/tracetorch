@@ -1,9 +1,10 @@
 import torch
 from torch import nn
 from ... import functional
+from ._base_module import BaseModule
 
 
-class Leaky(nn.Module):
+class Leaky(BaseModule):
 	def __init__(
 			self,
 			num_neurons: int,
@@ -13,6 +14,9 @@ class Leaky(nn.Module):
 			surrogate_function=functional.atan_surrogate(2.0),
 			learn_beta: bool = True,
 			learn_threshold: bool = True,
+			beta_is_vector: bool = True,
+			threshold_is_vector: bool = True,
+
 	):
 		super().__init__()
 		self.out_features = int(num_neurons)
@@ -20,22 +24,28 @@ class Leaky(nn.Module):
 		self.view_tuple = view_tuple
 
 		with torch.no_grad():
-			beta = functional.sigmoid_inverse(torch.ones(num_neurons) * beta)
-			threshold = functional.softplus_inverse(torch.ones(num_neurons) * threshold)
-
-		def _register(name: str, tensor: torch.Tensor, learn: bool):
-			if learn:
-				setattr(self, name, nn.Parameter(tensor))
-			else:
-				self.register_buffer(name, tensor)
+			beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
+			beta_vector = torch.ones(num_neurons)
+			threshold_scalar = functional.softplus_inverse(torch.tensor(threshold))
+			threshold_vector = torch.ones(num_neurons)
 
 		for (n, t, l) in [
-			("beta", beta, learn_beta),
-			("threshold", threshold, learn_threshold)
+			("beta_scalar", beta_scalar, learn_beta),
+			("beta_vector", beta_vector, (learn_beta and beta_is_vector)),
+			("threshold_scalar", threshold_scalar, learn_threshold),
+			("threshold_vector", threshold_vector, (learn_threshold and threshold_is_vector))
 		]:
-			_register(n, t, l)
+			self._register_tensor(n, t, l)
 
 		self.zero_states()
+
+	@property
+	def beta(self):
+		return nn.functional.sigmoid(self.beta_vector * self.beta_scalar)
+
+	@property
+	def threshold(self):
+		return nn.functional.softplus(self.threshold_vector * self.threshold_scalar)
 
 	def zero_states(self):
 		self.mem = None
@@ -47,8 +57,8 @@ class Leaky(nn.Module):
 		if self.mem is None:
 			self.mem = torch.zeros_like(x)
 
-		beta = nn.functional.sigmoid(self.beta).view(self.view_tuple)
-		threshold = nn.functional.softplus(self.threshold).view(self.view_tuple)
+		beta = nn.functional.sigmoid(self.beta_scalar * self.beta_vector).view(self.view_tuple)
+		threshold = nn.functional.softplus(self.threshold_scalar * self.threshold_vector).view(self.view_tuple)
 
 		self.mem = self.mem * beta + x
 		out_spikes = self.surrogate_function(self.mem - threshold)

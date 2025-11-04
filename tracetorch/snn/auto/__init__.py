@@ -1,5 +1,6 @@
+from ._base_module import BaseModule
 from ._sequential import Sequential
-# from ._synaptic import Synaptic
-from ._readout import Readout
 from ._leaky import Leaky
-from ._rleaky import RLeaky
+from ._readout import Readout
+# from ._synaptic import Synaptic
+# from ._rleaky import RLeaky
