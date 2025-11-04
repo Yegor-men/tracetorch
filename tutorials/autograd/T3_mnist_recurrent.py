@@ -38,78 +38,110 @@ from tqdm import tqdm
 torch.manual_seed(0)
 torch.cuda.manual_seed_all(0)
 
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-device = "cpu"
-
+device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = "cpu"
 
 # ======================================================================================================================
+
+
+min_prob, max_prob, noise_offset = 0.0, 1.0, 0.0
+batch_size = 64
+kernel_size = 4
+stride = 4
+pad = False
+num_workers = 2
+pin_memory = True
 
 
 def one_hot_encode(label):
 	return nn.functional.one_hot(torch.tensor(label), num_classes=10).float()
 
 
-class OneHotFlattenMNIST(torch.utils.data.Dataset):
-	def __init__(self, train=True, min_val=0.0, max_val=1.0, offset=0.0):
-		self.dataset = datasets.MNIST(
-			root="data",
+class OneHotMNISTImage(torch.utils.data.Dataset):
+	def __init__(self, train=True, min_val=0.0, max_val=1.0, offset=0.0, root="data"):
+		self.ds = datasets.MNIST(
+			root=root,
 			train=train,
 			download=True,
 			transform=transforms.Compose([
-				transforms.ToTensor(),  # -> [1,28,28] in [0,1]
-				transforms.Lambda(lambda x: x.view(-1)),  # -> [784]
+				transforms.ToTensor(),  # -> [C, H, W] in [0,1]
 				transforms.Lambda(lambda x: x * (max_val - min_val) + min_val + offset)
 			])
 		)
 
-	def __getitem__(self, index):
-		img, label = self.dataset[index]  # img: [784], label: int
+	def __len__(self):
+		return len(self.ds)
+
+	def __getitem__(self, idx):
+		img, label = self.ds[idx]  # img: [C, H, W], label: int
 		return img, label
 
-	def __len__(self):
-		return len(self.dataset)
 
-
-def sliding_collate(batch):
+def patch_collate(batch):
+	"""
+	returns:
+	  imgs_orig:  [B, C, H, W]
+	  seq:        [T, B, area]  (area = C * k * k)
+	  labels_onehot: [B, 10]
+	"""
 	imgs, labels = zip(*batch)
-	imgs_b_784 = torch.stack(imgs, dim=0)  # [B, 784]
-	imgs_t_b_1 = imgs_b_784.transpose(0, 1).unsqueeze(-1)  # [784, B, 1]
+	imgs_b = torch.stack(imgs, dim=0)  # [B, C, H, W]
+	B, C, H, W = imgs_b.shape
+
+	# optional pad so patches tile exactly
+	if pad:
+		rem_h = (H - kernel_size) % stride
+		rem_w = (W - kernel_size) % stride
+		pad_h = (stride - rem_h) % stride
+		pad_w = (stride - rem_w) % stride
+		if pad_h != 0 or pad_w != 0:
+			imgs_b = nn.functional.pad(imgs_b, (0, pad_w, 0, pad_h), value=0.0)  # pad (left,right,top,bottom) order
+			_, _, H, W = imgs_b.shape
+
+	# unfold to patches: [B, C, n_h, n_w, k, k]
+	patches = imgs_b.unfold(2, kernel_size, stride).unfold(3, kernel_size, stride)
+	# permute and reshape to [B, n_patches, area]
+	patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+	n_h = patches.size(1)
+	n_w = patches.size(2)
+	n_patches = n_h * n_w
+	patches = patches.view(B, n_patches, C * kernel_size * kernel_size)  # [B, T, area]
+	# transpose to [T, B, area]
+	seq = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
+
 	labels_tensor = torch.tensor(labels, dtype=torch.long)
 	labels_onehot = nn.functional.one_hot(labels_tensor, num_classes=10).float()  # [B, 10]
-	return imgs_t_b_1, labels_onehot
+
+	return imgs_b, seq, labels_onehot
 
 
-# ======================================================================================================================
+train_dataset = OneHotMNISTImage(train=True, min_val=min_prob, max_val=max_prob, offset=noise_offset)
+test_dataset = OneHotMNISTImage(train=False, min_val=min_prob, max_val=max_prob, offset=noise_offset)
 
-min_prob, max_prob, noise_offset = 0.0, 1.0, 0.0
-
-train_dataset = OneHotFlattenMNIST(train=True, min_val=min_prob, max_val=max_prob, offset=noise_offset)
-test_dataset = OneHotFlattenMNIST(train=False, min_val=min_prob, max_val=max_prob, offset=noise_offset)
-
-batch_size = 100
-
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=sliding_collate)
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=sliding_collate)
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+							  collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
+test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+							 collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
 
 # ======================================================================================================================
 
-base_beta_decay = tt.functional.halflife_to_decay(784)  # 784 total timesteps, want the signals to still be kept alive
+base_beta_decay = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))
 print(f"Base Beta: {base_beta_decay}")
 
-hidden_features = 128
+hidden_features = 256
 model_template = a.Sequential(
-	nn.Linear(1, hidden_features),
-	a.RLeaky(hidden_features, base_beta_decay),
+	nn.Linear(kernel_size ** 2, hidden_features),
+	a.Leaky(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, hidden_features),
-	a.RLeaky(hidden_features, base_beta_decay),
+	a.Leaky(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, hidden_features),
-	a.RLeaky(hidden_features, base_beta_decay),
+	a.Leaky(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, 10),
 	a.Readout(10, base_beta_decay),
 	nn.Softmax(-1)
 ).to(device=device)
 
-num_epochs = 1
+num_epochs = 10
 
 total_params = sum(p.numel() for p in model_template.parameters())
 print(f"Total parameters: {total_params:,}")
@@ -119,9 +151,10 @@ loss_fn = tt.loss.soft_cross_entropy
 # loss_fn = nn.functional.mse_loss
 
 train_types = ["bptt", "online"]
+
 for train_type in train_types:
 	model = copy.deepcopy(model_template)
-	optimizer = torch.optim.AdamW(model.parameters(), 5e-5)
+	optimizer = torch.optim.AdamW(model.parameters(), 1e-3 if train_type == "bptt" else 1e-5)
 
 	loss_manager = tt.plot.MeasurementManager(f"{train_type} - Loss", [0.0, 0.9, 0.99])
 	accuracy_manager = tt.plot.MeasurementManager(f"{train_type} - Accuracy", [0.0, 0.9, 0.99])
@@ -129,26 +162,26 @@ for train_type in train_types:
 	# TRAIN
 	model.train()
 	for e in range(num_epochs):
-		for image_seq, label in tqdm(train_dataloader, total=len(train_dataloader), desc=f"{train_type}, E{e} - TRAIN"):
-			image_seq, label = torch.bernoulli(image_seq).to(device=device), label.to(device=device)
-			t, b, s = image_seq.shape
+		for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"{train_type}, E{e}-TRAIN"):
+			img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
+			t, b, a = seq.shape
 
 			model.zero_states()
 			model.zero_grad()
 
 			if train_type == "bptt":
-				for image in image_seq:
-					model_output = model(image)
+				for view in seq:
+					model_output = model(view)
 				loss = loss_fn(model_output, label)
 				loss.backward()
 
 			if train_type == "online":
-				for index, image in enumerate(image_seq):
+				for index, view in enumerate(seq):
 					if index < t - 1:
 						with torch.no_grad():
-							model_output = model(image)
+							model_output = model(view)
 					else:
-						model_output = model(image)
+						model_output = model(view)
 				loss = loss_fn(model_output, label)
 				loss.backward()
 
@@ -157,8 +190,8 @@ for train_type in train_types:
 			loss_manager.append(loss.item())
 			pred_classes = model_output.argmax(dim=1)
 			true_classes = label.argmax(dim=1)
-			num_correct = (pred_classes == true_classes).sum().item() / b
-			accuracy_manager.append(num_correct)
+			frac_correct = (pred_classes == true_classes).sum().item() / b
+			accuracy_manager.append(frac_correct)
 
 	loss_manager.plot()
 	accuracy_manager.plot()
@@ -166,25 +199,25 @@ for train_type in train_types:
 	# TEST
 	model.eval()
 	test_loss, test_accuracy = 0, 0
-	for image_seq, label in tqdm(test_dataloader, total=len(test_dataloader), desc=f"{train_type} - TEST"):
+	for (img, seq, label) in tqdm(test_dataloader, total=len(test_dataloader), desc=f"{train_type} - TEST"):
 		with torch.no_grad():
-			image_seq, label = torch.bernoulli(image_seq).to(device=device), label.to(device=device)
-			t, b, s = image_seq.shape
+			img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
+			t, b, a = seq.shape
 
 			model.zero_states()
 
-			for image in image_seq:
-				model_output = model(image)
+			for view in seq:
+				model_output = model(view)
 			loss = loss_fn(model_output, label)
 
 			test_loss += loss.item()
 			true_classes = label.argmax(dim=1)
 			pred_classes = model_output.argmax(dim=1)
-			correct = (pred_classes == true_classes).sum().item()
-			test_accuracy += correct
+			num_correct = (pred_classes == true_classes).sum().item()
+			test_accuracy += num_correct
 
-		test_loss /= len(test_dataloader)
-		test_accuracy /= len(test_dataloader.dataset)
+	test_loss /= len(test_dataloader)
+	test_accuracy /= len(test_dataset)
 
 	# PRINT
 	print(f"Test - Loss: {test_loss:.5f}, Accuracy: {test_accuracy * 100:.5f}%")
