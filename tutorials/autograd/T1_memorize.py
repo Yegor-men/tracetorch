@@ -12,7 +12,7 @@ detaches the states at each timestep so that it's discrete from one another
 import torch
 from torch import nn
 import tracetorch as tt
-import tracetorch.snn.auto as snn
+from tracetorch.snn import auto
 from tqdm import tqdm
 
 torch.manual_seed(0)
@@ -34,13 +34,13 @@ print(f"Output size: {label_tensor.size()}")
 
 beta = 0.9  # how much of the signal from the previous timestep is saved into this one
 
-model = snn.Sequential(
+model = auto.Sequential(
 	nn.Linear(in_features, hidden_features),
-	snn.Leaky(hidden_features, beta),
+	auto.Leaky(hidden_features, beta),
 	nn.Linear(hidden_features, hidden_features),
-	snn.Leaky(hidden_features, beta),
+	auto.Leaky(hidden_features, beta),
 	nn.Linear(hidden_features, out_features),
-	snn.Readout(out_features, beta),
+	auto.Readout(out_features, beta),
 	nn.Softmax(-1)
 ).to(device=device)
 
@@ -102,3 +102,11 @@ with torch.no_grad():
 		print(f"Example {index} - Expected output: {label_tensor[index]}")
 		tt.plot.line_graph(curated_spike_train, title=f"Example {index} - Output over time")
 		tt.plot.line_graph(curated_loss_train, title=f"Example {index} - Loss over time")
+
+betas = model.get_attr_list("beta")
+for beta in betas:
+	print(beta)
+
+thresholds = model.get_attr_list("threshold")
+for threshold in thresholds:
+	print(threshold)
