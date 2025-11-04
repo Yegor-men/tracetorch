@@ -23,6 +23,7 @@ class Sequential(nn.Module):
 			self._call_if_present(layer, "detach_states")
 
 	def get_attr_list(self, *attr_names):
+		"""Get a list of tensors with that name for every layer in layers that has it"""
 		return [getattr(l, n) for l in self.layers for n in attr_names if hasattr(l, n)]
 
 	def forward(self, x):
