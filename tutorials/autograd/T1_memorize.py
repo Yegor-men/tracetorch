@@ -12,7 +12,7 @@ detaches the states at each timestep so that it's discrete from one another
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch import snn
+import tracetorch.snn.auto as snn
 from tqdm import tqdm
 
 torch.manual_seed(0)
