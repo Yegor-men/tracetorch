@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from ... import functional
+from .. import functional
 from ._base_module import BaseModule
 
 

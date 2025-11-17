@@ -12,7 +12,7 @@ detaches the states at each timestep so that it's discrete from one another
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch.snn import auto
+from tracetorch import snn
 from tqdm import tqdm
 
 torch.manual_seed(0)
@@ -34,13 +34,13 @@ print(f"Output size: {label_tensor.size()}")
 
 beta = 0.9  # how much of the signal from the previous timestep is saved into this one
 
-model = auto.Sequential(
+model = snn.Sequential(
 	nn.Linear(in_features, hidden_features),
-	auto.Leaky(hidden_features, beta),
+	snn.Leaky(hidden_features, beta),
 	nn.Linear(hidden_features, hidden_features),
-	auto.Leaky(hidden_features, beta),
+	snn.Leaky(hidden_features, beta),
 	nn.Linear(hidden_features, out_features),
-	auto.Readout(out_features, beta),
+	snn.Readout(out_features, beta),
 	nn.Softmax(-1)
 ).to(device=device)
 

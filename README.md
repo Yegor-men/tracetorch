@@ -1,81 +1,55 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-purple.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
 [![PyPI](https://img.shields.io/badge/PyPI-v0.3.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
-``traceTorch`` is a PyTorch-based library that
-implements [eligibility propagation](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf),
-replacing the PyTorch default backpropagation through time with lightweight, per-layer eligibility traces, enabling
-biologically inspired, constant time and memory consumption learning on arbitrarily long or even streaming sequences.
+# traceTorch
 
-## Documentation
+A small, lightweight, and highly opinionated spiking neural network library for PyTorch.
 
-It is highly recommended that you read the [documentation](https://yegor-men.github.io/tracetorch/) first. It contains
-the following sections:
+`traceTorch` is a from-scratch, clean-room reimplementation of classic spiking neuron dynamics, integrating with the
+PyTorch autograd engine. `traceTorch` is heavily inspired by [snnTorch](https://github.com/jeshraghian/snntorch) (
+MIT-licensed); many class names (`leaky`, `synaptic`), variable names (`mem`, `syn`), and general API patterns are
+intentionally kept similar because they feel like natural and sensible choices, alterations would add needless
+complexity.
 
-1. **What is Eligibility Propagation?**: Covers the background, theory and intuition for eligibility propagation.
-   It's not crucial to know, but it helps.
-2. **Getting Started**: Explains the installation, setup and usage patterns of ``traceTorch``.
-3. **Tutorials and Examples**: Walks through various practical examples and implementations that utilize ``traceTorch``.
-   The resultant code can be found in ``tutorials/``.
-4. **API Reference**: Detailed documentation of all modules, classes and functions that ``traceTorch`` contains.
+Key differences and personal preferences baked in:
 
-## Origins & Acknowledgements
+- Parameters such as decays and thresholds are intentionally constrained with sigmoid and softplus for conceptual
+  cleanliness
+- Parameters are initialized as either nn.Parameter or as a registered buffer for if they should be learnable or not
+- Parameters can toggle between scalar and vector with zero code branching: they are internally decomposed into a scalar
+  and vector. The scalar is initialized to the desired default value and the vector is initialized to ones. Making the
+  scalar learnable and the vector not makes the parameter act like a scalar, setting both to learnable makes it act like
+  a vector. @property methods are added so that you can just get the parameter by the name, what's returned is the
+  effective parameter value used in the forward pass (`activation_fn(param_scalar * param_vector)`)
+- Some handy utilities that I like to use, such as plotting or recording of the parameters and model states
+- Much smaller codebase with essentially zero features I don’t use myself
 
-I originally developed ``traceTorch`` with the intent of exploring biologically inspired, constant-memory learning for
-spiking neural networks (SNNs). The idea was that each layer maintains an input trace, from it could be reconstructed
-the average input, and from that, by reusing the layer's parameters: the average output. Layer by layer, the backward
-pass would happen, passing the learning signal from one layer to the next, each one reconstructing the average outputs
-and utilizing PyTorch's autograd to compute derivatives from the approximated output based on the incoming learning
-signal. Effectively, instead of calling .backward() on an arbitrary size autograd graph, ``traceTorch`` allowed to
-"compress" it into one forward pass, and subsequently in theory required only one backward pass. Call an arbitrary
-number of forward passes, in the backward pass it would approximate the "average" forward pass, and then do a real
-.backward() pass on effectively one timestep.
+Important notes
 
-In itself, the approach was fine. Models could learn and generalize. Works also started on a realtime alternative to
-REINFORCE, aptly named REFLECT, as it would strengthen or weaken the chain of choices that led up to a reward, rather
-than those that, as a consequence of them occurring, led to a reward. Mathematically effectively similar, simply adapted
-to online learning.
+- `traceTorch` doesn't (intentionally) share source code from `snnTorch` or any other library, no code was copied,
+  although similarities are most certainly very likely
+- `traceTorch` is primarily written for my own daily use. Documentation is minimal, tutorials effectively don’t exist,
+  and some parts are vibecoded rather than cleanly written
+- If you want a mature, well-documented, SNN library, it's recommended to use `snnTorch` or any of the other SNN
+  libraries. They are likely to be better
 
-However, further testing revealed that doing a backward pass for each timestep, rather than one at the end, drastically
-improved the model's ability to learn, being almost as fast as traditional backpropagation. However, this came at the
-cost of an immense decrease in speed, as each timestep would effectively do: 1 real forward pass and in the backward
-pass effectively redo the forward pass and do an actual autograd .backward() pass inside. Subsequently, I got interested
-if it was possible to "pre-bake" the backward pass graph, after all, the graph was the same each time. The sole reason
-autograd was used was because the real underlying function is complex. However, biologically, through evolution, it's
-not difficult to imagine that the correct function got pre-baked into the neurons, that in reality, it's only a matter
-of retrieval of values, without any computations involved.
-
-I hence found myself back at the starting
-point: [e-prop](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf). Eligibility propagation,
-which originally I did not understand, inspired the very input trace mechanics. It effectively uses this "pre-baked"
-concept, and, hence, training by doing a backward pass at each timestep is not only faster (inference speed, not
-necessarily training speed) while also being cleaner.
-
-Hence, ``traceTorch`` is now focused around eligibility propagation. The old code can still be found and used in
-``legacy/``. I may or may not return to it sometime, from the perspective of sparse .backward() calls.
-
-### Acknowledgements
-
-- **[snntorch](https://github.com/jeshraghian/snntorch)**: For introducing me to spiking neural networks and practical
-  SNN tooling.
-- **[Artem Kirsanov](https://www.youtube.com/@ArtemKirsanov)**: For accessible presentations on computational
-  neuroscience
-  that influenced my thinking about spiking dynamics and simple, interpretable neuron models.
-- **[E-prop / eligibility propagation](https://www.biorxiv.org/content/biorxiv/early/2020/04/16/738385.full.pdf)**: The
-  very paper that powers most of ``traceTorch``.
+You are of course welcome to use `traceTorch` if the design choices align with your requirements or preferences, but
+there are no guarantees of stability, completeness, cleanliness or documentation. Think of `traceTorch` as "yet another
+personal take on an already existing wheel", rather than a competitor.
 
 ## Installation
 
-``traceTorch`` is a PyPI library, which can be found [here](https://pypi.org/project/tracetorch/).
+`traceTorch` is a PyPI library, which can be found [here](https://pypi.org/project/tracetorch/).
 
-You can install it via pip. All the required packages for it to work are also downloaded automatically.
+You can install it via pip. Requirements for the library are listed in `requirements.txt`.
 
 ```
 pip install tracetorch
 ```
 
-To import, you can just do ``import tracetorch``, although more frequently it will look like this:
+To use, it is recommended to import as such:
 
 ```
 import tracetorch as tt
@@ -84,19 +58,10 @@ from tracetorch import snn
 
 ## Usage examples
 
-`tutorials/` contains all the tutorial files, ready to run and playtest. The tutorials themselves can be found
-[here](https://yegor-men.github.io/tracetorch/tutorials/index.html).
-
-The tutorials make use of libraries that ``traceTorch`` doesn't necessarily use. To ensure that you have all the
-necessary packages for the tutorials installed, please install the packages listed in `tutorials/requirements.txt`
-
-```
-cd tutorials/
-pip install -r requirements.txt
-```
-
-It's recommended to use an environment that does _not_ have ``tracetorch`` installed if using the tutorials,
-``tracetorch/`` is structured identically to the library, but is of course a running release.
+`examples/` contains various PyTorch models and the associated training code that make use traceTorch. The examples make
+use of libraries not listed in the requirements, but aren't anything fancy or rare. The folder is primarily used for my
+own projects and experiments, completeness or cleanliness is not guaranteed, although they are numbered for the sake of
+simplicity.
 
 ## Authors
 
@@ -104,10 +69,5 @@ It's recommended to use an environment that does _not_ have ``tracetorch`` insta
 
 ## Contributing
 
-Contributions are always welcome. Feel free to submit pull requests or report issues, I will occasionally check in on
-it.
-
-You can also reach out to me via either email or Twitter:
-
-- yegor.mn@gmail.com
-- [Twitter](https://x.com/Yegor_Men)
+Contributions are always welcome. Feel free to fork, submit pull requests or report issues, I will occasionally check in
+on it.

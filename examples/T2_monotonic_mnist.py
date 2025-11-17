@@ -45,7 +45,7 @@ it had learnt to maximally accumulate charge.
 import torch
 from torch import nn
 import tracetorch as tt
-import tracetorch.snn.auto as snn
+from tracetorch import snn
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms

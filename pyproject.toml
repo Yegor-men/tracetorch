@@ -26,4 +26,4 @@ Documentation = "https://yegor-men.github.io/tracetorch/"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["tracetorch*"]
-exclude = ["media*", "tutorials*, docs*, in_development*"]
+exclude = ["media*", "examples*", "docs*"]

@@ -27,7 +27,7 @@ import time
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch.snn import auto as a
+from tracetorch import snn
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -129,15 +129,15 @@ base_beta_decay = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))
 print(f"Base Beta: {base_beta_decay}")
 
 hidden_features = 256
-model_template = a.Sequential(
+model_template = snn.Sequential(
 	nn.Linear(kernel_size ** 2, hidden_features),
-	a.Leaky(hidden_features, base_beta_decay),
+	snn.Leaky(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, hidden_features),
-	a.Leaky(hidden_features, base_beta_decay),
+	snn.Leaky(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, hidden_features),
-	a.Leaky(hidden_features, base_beta_decay),
+	snn.Leaky(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, 10),
-	a.Readout(10, base_beta_decay),
+	snn.Readout(10, base_beta_decay),
 	nn.Softmax(-1)
 ).to(device=device)
 
@@ -164,7 +164,7 @@ for train_type in train_types:
 	for e in range(num_epochs):
 		for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"{train_type}, E{e}-TRAIN"):
 			img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
-			t, b, a = seq.shape
+			t, b, snn = seq.shape
 
 			model.zero_states()
 			model.zero_grad()
@@ -202,7 +202,7 @@ for train_type in train_types:
 	for (img, seq, label) in tqdm(test_dataloader, total=len(test_dataloader), desc=f"{train_type} - TEST"):
 		with torch.no_grad():
 			img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
-			t, b, a = seq.shape
+			t, b, snn = seq.shape
 
 			model.zero_states()
 
