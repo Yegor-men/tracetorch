@@ -57,8 +57,8 @@ class Leaky(BaseModule):
 		if self.mem is None:
 			self.mem = torch.zeros_like(x)
 
-		beta = nn.functional.sigmoid(self.beta_scalar * self.beta_vector).view(self.view_tuple)
-		threshold = nn.functional.softplus(self.threshold_scalar * self.threshold_vector).view(self.view_tuple)
+		beta = self.beta.view(self.view_tuple)
+		threshold = self.threshold.view(self.view_tuple)
 
 		self.mem = self.mem * beta + x
 		out_spikes = self.surrogate_function(self.mem - threshold)

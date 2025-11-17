@@ -43,8 +43,7 @@ class Readout(BaseModule):
 		if self.mem is None:
 			self.mem = torch.zeros_like(x)
 
-		beta = nn.functional.sigmoid(self.beta_scalar * self.beta_vector)
-		beta = beta.view(self.view_tuple)
+		beta = self.beta.view(self.view_tuple)
 
 		self.mem = self.mem * beta + x * (1 - beta)
 
