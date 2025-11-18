@@ -18,11 +18,15 @@ class Readout(BaseModule):
 		self.num_neurons = num_neurons
 
 		with torch.no_grad():
-			beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
-			beta_vector = torch.ones(num_neurons)
+			if isinstance(beta, torch.Tensor):
+				beta_scalar = torch.tensor(1.)
+				beta_vector = functional.sigmoid_inverse(beta.clone().detach())
+			else:
+				beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
+				beta_vector = torch.ones(num_neurons)
 
 		for (n, t, l) in [
-			("beta_scalar", beta_scalar, learn_beta),
+			("beta_scalar", beta_scalar, (learn_beta and not beta_is_vector)),
 			("beta_vector", beta_vector, (learn_beta and beta_is_vector)),
 		]:
 			self._register_tensor(n, t, l)

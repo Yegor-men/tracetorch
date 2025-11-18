@@ -4,7 +4,7 @@ from .. import functional
 from ._base_module import BaseModule
 
 
-class Leaky(BaseModule):
+class LIF(BaseModule):
 	def __init__(
 			self,
 			num_neurons: int,
@@ -16,7 +16,6 @@ class Leaky(BaseModule):
 			learn_threshold: bool = True,
 			beta_is_vector: bool = True,
 			threshold_is_vector: bool = True,
-
 	):
 		super().__init__()
 		self.out_features = int(num_neurons)
@@ -24,15 +23,24 @@ class Leaky(BaseModule):
 		self.view_tuple = view_tuple
 
 		with torch.no_grad():
-			beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
-			beta_vector = torch.ones(num_neurons)
-			threshold_scalar = functional.softplus_inverse(torch.tensor(threshold))
-			threshold_vector = torch.ones(num_neurons)
+			if isinstance(beta, torch.Tensor):
+				beta_scalar = torch.tensor(1.)
+				beta_vector = functional.sigmoid_inverse(beta.clone().detach())
+			else:
+				beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
+				beta_vector = torch.ones(num_neurons)
+
+			if isinstance(threshold, torch.Tensor):
+				threshold_scalar = torch.tensor(1.)
+				threshold_vector = functional.softplus_inverse(beta.clone().detach())
+			else:
+				threshold_scalar = functional.softplus_inverse(torch.tensor(threshold))
+				threshold_vector = torch.ones(num_neurons)
 
 		for (n, t, l) in [
-			("beta_scalar", beta_scalar, learn_beta),
+			("beta_scalar", beta_scalar, (learn_beta and not beta_is_vector)),
 			("beta_vector", beta_vector, (learn_beta and beta_is_vector)),
-			("threshold_scalar", threshold_scalar, learn_threshold),
+			("threshold_scalar", threshold_scalar, (learn_threshold and not threshold_is_vector)),
 			("threshold_vector", threshold_vector, (learn_threshold and threshold_is_vector))
 		]:
 			self._register_tensor(n, t, l)
