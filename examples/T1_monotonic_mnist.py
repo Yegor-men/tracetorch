@@ -115,10 +115,10 @@ test_dloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 model_template = snn.Sequential(
 	nn.Conv2d(1, 8, 5, dilation=2),
 	# kernel 5x5 @ dilation 2 becomes 9x9, 28-9+1=20
-	snn.Leaky(8, model_layers_beta, 1.0, view_tuple=(1, -1, 1, 1)),
+	snn.LIF(8, model_layers_beta, 1.0, view_tuple=(1, -1, 1, 1)),
 	nn.Conv2d(8, 16, 5, dilation=2),
 	# kernel 5x5 @ dilation 2 becomes 9x9, 20-9+1 = 12
-	snn.Leaky(16, model_layers_beta, 1.0, view_tuple=(1, -1, 1, 1)),
+	snn.LIF(16, model_layers_beta, 1.0, view_tuple=(1, -1, 1, 1)),
 	nn.Conv2d(16, 16, 5, dilation=2),
 	# kernel 5x5 @ dilation 2 becomes 9x9, 12-9+1 = 4
 	nn.Flatten(),

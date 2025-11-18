@@ -131,11 +131,11 @@ print(f"Base Beta: {base_beta_decay}")
 hidden_features = 256
 model_template = snn.Sequential(
 	nn.Linear(kernel_size ** 2, hidden_features),
-	snn.Leaky(hidden_features, base_beta_decay),
+	snn.LIF(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, hidden_features),
-	snn.Leaky(hidden_features, base_beta_decay),
+	snn.LIF(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, hidden_features),
-	snn.Leaky(hidden_features, base_beta_decay),
+	snn.LIF(hidden_features, base_beta_decay),
 	nn.Linear(hidden_features, 10),
 	snn.Readout(10, base_beta_decay),
 	nn.Softmax(-1)
