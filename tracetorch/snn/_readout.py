@@ -1,10 +1,10 @@
 import torch
 from torch import nn
 from .. import functional
-from ._base_module import BaseModule
+from ._ttmodule import TTModule
 
 
-class Readout(BaseModule):
+class Readout(TTModule):
 	def __init__(
 			self,
 			num_neurons: int,
@@ -19,17 +19,37 @@ class Readout(BaseModule):
 
 		with torch.no_grad():
 			if isinstance(beta, torch.Tensor):
-				beta_scalar = torch.tensor(1.)
-				beta_vector = functional.sigmoid_inverse(beta.clone().detach())
+				# if user provided a custom beta
+				if beta.ndim == 0:  # beta is scalar
+					beta_scalar = functional.sigmoid_inverse(beta)
+					beta_vector = torch.ones(num_neurons)
+					beta_is_vector = False  # override in case it's wrong
+				else:
+					assert (beta.ndim == 1) and (beta.numel() == num_neurons)  # beta must be a vector
+					beta_scalar = torch.tensor(1.)
+					beta_vector = functional.sigmoid_inverse(beta)
+					beta_is_vector = True  # override in case it's wrong
 			else:
-				beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
-				beta_vector = torch.ones(num_neurons)
+				beta = float(beta)
+				assert 0.0 < beta < 1.0  # beta must be in (0,1)
+				if beta_is_vector:  # want beta to be a vector
+					beta_scalar = torch.tensor(1.)
+					beta_vector = functional.sigmoid_inverse(torch.full((num_neurons,), beta))
+				else:  # want beta to be a scalar
+					beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
+					beta_vector = torch.ones(num_neurons)
+
+		def register_tensor(name: str, tensor: torch.Tensor, learn: bool):
+			if learn:
+				setattr(self, name, nn.Parameter(tensor.detach().clone()))
+			else:
+				self.register_buffer(name, tensor.detach().clone())
 
 		for (n, t, l) in [
 			("beta_scalar", beta_scalar, (learn_beta and not beta_is_vector)),
 			("beta_vector", beta_vector, (learn_beta and beta_is_vector)),
 		]:
-			self._register_tensor(n, t, l)
+			register_tensor(n, t, l)
 
 		self.zero_states()
 
@@ -41,7 +61,8 @@ class Readout(BaseModule):
 		self.mem = None
 
 	def detach_states(self):
-		self.mem = self.mem.detach()
+		if self.mem is not None:
+			self.mem = self.mem.detach()
 
 	def forward(self, x):
 		if self.mem is None:
