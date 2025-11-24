@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracetorch"
-version = "0.3.0"
+version = "0.4.0"
 authors = [{ name = "Yegor Men", email = "yegor.mn@gmail.com" }]
-description = "An extension to PyTorch: SNN layers that function on traces."
+description = "A strict, ergonomic and \"just works\" Spiking Neural Network library for PyTorch."
 readme = "README.md"
 requires-python = ">=3.8"
-license = "Apache-2.0"
+license = "MIT"
 dependencies = ["torch", "numpy", "matplotlib"]
 classifiers = [
     "Programming Language :: Python :: 3",
