@@ -5,49 +5,49 @@
 
 # traceTorch
 
-A highly opinionated, "just works" spiking neural network library for PyTorch.
+A strict, ergonomic and "just works" Spiking Neural Network library for PyTorch.
 
-Written primarily for one person (me). Public because maybe you think the same way.
+traceTorch is designed to eliminate the boilerplate, shape errors, and gradient issues common in SNN development. It
+treats spiking neurons as first-class PyTorch citizens that handle their own state, broadcasting, and constraints
+automatically.
 
-## What is traceTorch?
+## Why traceTorch?
 
-traceTorch is a minimalistic SNN library for PyTorch, designed to "just work" out of the box for most use cases, but at
-the same time not being restrictive or cumbersome with nonstandard scenarios. It should be simple and intuitive, as if
-it was a continuation of PyTorch. With that in mind, traceTorch follows the following "rules":
+Existing SNN libraries often feel restrictive or require verbose state management. traceTorch follows a different
+philosophy:
 
-1. Positive signals are fundamentally excitatory, negative signals are fundamentally inhibitory.
-2. Parameters that have to be restricted to some range are done so functionally, no clamping allowed.
-3. The same neuron class must be usable for many various architectures and handle reshaping easily.
-4. Fixed, scalar, or per-neuron learning mustn't rely on `if` statement branching, should be conceptually clean.
-5. Hidden state management should be simple, the user shouldn't have to write extra boilerplate.
-6. Tracking of hidden states and parameters must be simple and easily interpretable/usable.
+- **Automatic State Management:** No need to manually pass hidden states through `.forward()`, each layer manages its
+  own hidden states, and calling `.zero_states()` on a traceTorch model recursively clears _all_ the hidden states the
+  entire model uses, no matter how deeply hidden they are.
+- **Lazy Initialization:** Hidden states are initialized as `None` and allocated dynamically based on the input shape.
+  This completely eliminates "Batch Size Mismatch" errors during inference.
+- **Smooth Constraints:** Parameters like decay ($\beta$) and thresholds are constrained via Sigmoid and Softplus
+  respectively. No hard clamping, meaning that gradients flow smoothly and accurately everywhere.
+- **Dimension Agnostic:** Whether you are working with `[Time, Batch, Features]` or `[Batch, Channels, Height, Width]`
+  tensors, layers _just_ work. Change a single `dim` argument during layer initialization to indicate the target
+  dimension the layer acts on. Defaults to `-1` for MLP, `-3` would work for CNN (channels are 3rd last in
+  `[B, C, H, W]` or `[C, H, W]`).
+- **Rank Based Parameters:** Instead of messy flags like `*_is_vector` or `is_shared`, traceTorch uses a single `*_rank`
+  integer to define the parameter scope: 0 for a scalar (parameter is shared across the layer), 1 for a vector (
+  per-neuron parameter), 2 for a matrix (dense all-to-all connections for recurrent layers).
 
 ## Installation
 
-traceTorch is a PyPI library, which can be found [here](https://pypi.org/project/tracetorch/).
-
-You can install it via pip. Requirements for the library are listed in `requirements.txt`.
+traceTorch is a PyPI library found [here](https://pypi.org/project/tracetorch/). Requirements are listed in
+`requirements.txt`.
 
 ```bash
 pip install tracetorch
 ```
 
-To use, it is recommended to import as such:
+## Quick Start
 
-```python
-import tracetorch as tt
-from tracetorch import snn
-```
+Making a traceTorch model is barely any different from PyTorch models. Here's how:
 
-## Documentation and examples
+### 1. The "zero-boilerplate" module
 
-The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It covers the modules and has a
-couple tutorials on how to make your own models. All the tutorials are made to recreate the code found in `examples/`.
-They are numbered in the recommended order of completion, the `.py` files are ready to run. It's recommended to (at
-least briefly) look at `T0_getting_started.ipynb` to familiarize with the API. Everything you need to make your own
-models is in there.
-
-Here's some dummy code as to how traceTorch looks like:
+Inherit from `tracetorch.snn.TTModule` instead of `pytorch.nn.Module`. This gives your model powerful recursive methods
+like `zero_states()` and `detach_states()` for free, while still integrating with other PyTorch `nn.Module`.
 
 ```python
 import torch
@@ -55,28 +55,65 @@ from torch import nn
 import tracetorch as tt
 from tracetorch import snn
 
-model = snn.Sequential(
-	nn.Conv2d(3, 32, 5),
-	snn.LIF(32, 0.9, 1.0, view_tuple=(-1, 1, 1)),  # per-channel, 0.9 decay, 1.0 threshold
-	nn.Conv2d(32, 64, 5),
-	snn.LIF(64, torch.randn(64), 1.0, learn_beta=False, view_tuple=(-1, 1, 1)),  # fixed custom decays
-	nn.Flatten(),
-	nn.LazyLinear(64),
-	snn.LIF(64, 0.5, torch.randn(64), learn_threshold=False),  # Fixed custom thresholds
-	nn.Linear(64, 10),
-	snn.Readout(10, 0.9, beta_is_vector=False),  # shared scalar decay of 0.9, learnable
-	nn.Softmax(-1)
-).cuda()
 
+class ConvSNN(snn.TTModule):
+	def __init__(self):
+		super().__init__()
+		self.net = nn.Sequential(
+			nn.Conv2d(1, 32, 3),
+			# dim=-3 tells the layer that the 3rd-to-last dimension is the channel dim.
+			# This works for (B, C, H, W) AND unbatched (C, H, W) inputs automatically.
+			snn.LIF(num_neurons=32, beta=0.9, dim=-3),
+
+			nn.Flatten(),
+			nn.Linear(32 * 26 * 26, 10),
+
+			# Readout layer with learnable scalar decay
+			snn.Readout(num_neurons=10, beta=0.8, beta_rank=0)
+		)
+
+	def forward(self, x):
+		return self.net(x)
+```
+
+### 2. The Training Loop
+
+State management is easily handled outside the forward pass. Simply call `.zero_states()` on the model to reset all
+hidden states to `None`, or call `.detach_states()` to detach the current hidden states (used in truncated BPTT or for
+online learning).
+
+```python
+model = ConvSNN().cuda()
+optimizer = torch.optim.AdamW(model.parameters(), lr=0.005)
+loss_fn = tt.loss.soft_cross_entropy  # Handles non-onehot targets gracefully
+
+# Training Step
 for x, y in loader:
-	x, y = x.to(device), y.to(device)
-	for _ in range(num_steps):
-		out = net(x)  # normal forward, nothing else
-	loss = loss_fn(out, y)
+	x, y = x.cuda(), y.cuda()
+	model.train()
+
+	# Time loop
+	spikes = []
+	for step in range(num_timesteps):
+		# Just pass x. No state tuples to manage.
+		spikes.append(model(x))
+
+	# Stack output and compute loss
+	output = torch.stack(spikes)
+	loss = loss_fn(output.mean(0), y)  # Rate coding example
+
 	loss.backward()
 	optimizer.step()
-	model.zero_states()  # resets to None for the next batch
+	optimizer.zero_grad()
+
+	# Crucial: Reset hidden states for the next batch
+	model.zero_states() 
 ```
+
+## Documentation
+
+The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It primarily focuses on how the
+modules work on the backend, although there are a few tutorials there that recreate the code found in `examples/`.
 
 ## Authors
 
