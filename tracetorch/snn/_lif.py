@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from .. import functional
+from .. import functional as tt_functional
 from ._ttmodule import TTModule
 
 
@@ -10,60 +10,57 @@ class LIF(TTModule):
 			num_neurons: int,
 			beta: float = 0.9,
 			threshold: float = 1.0,
-			view_tuple: tuple[int, ...] = (-1,),
-			surrogate_function=functional.atan_surrogate(2.0),
+			dim: int = -1,
+			beta_rank: int = 1,
+			threshold_rank: int = 1,
 			learn_beta: bool = True,
 			learn_threshold: bool = True,
-			beta_is_vector: bool = True,
-			threshold_is_vector: bool = True,
+			surrogate_function=tt_functional.atan_surrogate(2.0),
 	):
 		super().__init__()
-		self.out_features = int(num_neurons)
+		self.num_neurons = int(num_neurons)
+		self.dim = int(dim)
+		self.beta_rank = int(beta_rank)
+		self.threshold_rank = int(threshold_rank)
+		self.learn_beta = bool(learn_beta)
+		self.learn_threshold = bool(learn_threshold)
 		self.surrogate_function = surrogate_function
-		self.view_tuple = view_tuple
 
 		with torch.no_grad():
-			if isinstance(beta, torch.Tensor):
-				# if user provided a custom beta
-				if beta.ndim == 0:  # beta is scalar
-					beta_scalar = functional.sigmoid_inverse(beta)
-					beta_vector = torch.ones(num_neurons)
-					beta_is_vector = False  # override in case it's wrong
+			if isinstance(beta, torch.Tensor):  # user provided their own beta tensor
+				if beta.ndim == 0:  # scalar
+					self.beta_rank = 0
+				elif beta.ndim == 1:
+					assert (beta.numel() == num_neurons), "beta must have num_neurons number of elements"
+					self.beta_rank = 1
 				else:
-					assert (beta.ndim == 1) and (beta.numel() == num_neurons)  # beta must be a vector
-					beta_scalar = torch.tensor(1.)
-					beta_vector = functional.sigmoid_inverse(beta)
-					beta_is_vector = True  # override in case it's wrong
-			else:
+					raise ValueError(f"rank (.ndim) of provided beta is not 0 (scalar) or 1 (vector)")
+				beta_tensor = tt_functional.sigmoid_inverse(beta)
+			else:  # user wants beta tensor generated
 				beta = float(beta)
-				assert 0.0 < beta < 1.0  # beta must be in (0,1)
-				if beta_is_vector:  # want beta to be a vector
-					beta_scalar = torch.tensor(1.)
-					beta_vector = functional.sigmoid_inverse(torch.full((num_neurons,), beta))
-				else:  # want beta to be a scalar
-					beta_scalar = functional.sigmoid_inverse(torch.tensor(beta))
-					beta_vector = torch.ones(num_neurons)
-
-			if isinstance(threshold, torch.Tensor):
-				# if user provided a custom threshold
-				if threshold.ndim == 0:  # threshold is scalar
-					threshold_scalar = functional.softplus_inverse(threshold)
-					threshold_vector = torch.ones(num_neurons)
-					threshold_is_vector = False  # override in case it's wrong
+				if self.beta_rank == 0:
+					beta_tensor = tt_functional.sigmoid_inverse(torch.tensor(beta))
+				elif self.beta_rank == 1:
+					beta_tensor = tt_functional.sigmoid_inverse(torch.full([self.num_neurons], beta))
 				else:
-					assert (threshold.ndim == 1) and (threshold.numel() == num_neurons)  # threshold must be a vector
-					threshold_scalar = torch.tensor(1.)
-					threshold_vector = functional.softplus_inverse(threshold)
-					threshold_is_vector = True  # override in case it's wrong
+					raise ValueError("beta_rank is not 0 (scalar) or 1 (vector)")
+
+			if isinstance(threshold, torch.Tensor):  # user provided their own threshold tensor
+				if threshold.ndim == 0:  # scalar
+					self.threshold_rank = 0
+				elif threshold.ndim == 1:  # vector
+					assert (threshold.numel() == num_neurons), "threshold must have num_neurons number of elements"
+				else:
+					raise ValueError(f"rank (.ndim) of provided threshold is not 0 (scalar) or 1 (vector)")
+				threshold_tensor = tt_functional.softplus_inverse(threshold)
 			else:
 				threshold = float(threshold)
-				assert 0.0 < threshold  # threshold must be in (0,inf)
-				if threshold_is_vector:  # want threshold to be a vector
-					threshold_scalar = torch.tensor(1.)
-					threshold_vector = functional.softplus_inverse(torch.full((num_neurons,), threshold))
-				else:  # want threshold to be a scalar
-					threshold_scalar = functional.softplus_inverse(torch.tensor(threshold))
-					threshold_vector = torch.ones(num_neurons)
+				if self.threshold_rank == 0:
+					threshold_tensor = tt_functional.softplus_inverse(torch.tensor(threshold))
+				elif self.threshold_rank == 1:
+					threshold_tensor = tt_functional.softplus_inverse(torch.full([self.num_neurons], threshold))
+				else:
+					raise ValueError("threshold_rank is not 0 (scalar) or 1 (vector)")
 
 		def register_tensor(name: str, tensor: torch.Tensor, learn: bool):
 			if learn:
@@ -71,23 +68,18 @@ class LIF(TTModule):
 			else:
 				self.register_buffer(name, tensor.detach().clone())
 
-		for (n, t, l) in [
-			("beta_scalar", beta_scalar, (learn_beta and not beta_is_vector)),
-			("beta_vector", beta_vector, (learn_beta and beta_is_vector)),
-			("threshold_scalar", threshold_scalar, (learn_threshold and not threshold_is_vector)),
-			("threshold_vector", threshold_vector, (learn_threshold and threshold_is_vector))
-		]:
-			register_tensor(n, t, l)
+		register_tensor("raw_beta", beta_tensor, learn_beta)
+		register_tensor("raw_threshold", threshold_tensor, learn_threshold)
 
 		self.zero_states()
 
 	@property
 	def beta(self):
-		return nn.functional.sigmoid(self.beta_vector * self.beta_scalar)
+		return nn.functional.sigmoid(self.raw_beta)
 
 	@property
 	def threshold(self):
-		return nn.functional.softplus(self.threshold_vector * self.threshold_scalar)
+		return nn.functional.softplus(self.raw_threshold)
 
 	def zero_states(self):
 		self.mem = None
@@ -100,11 +92,14 @@ class LIF(TTModule):
 		if self.mem is None:
 			self.mem = torch.zeros_like(x)
 
-		beta = self.beta.view(self.view_tuple)
-		threshold = self.threshold.view(self.view_tuple)
+		moved_x = x.movedim(self.dim, -1)
+		moved_mem = self.mem.movedim(self.dim, -1)
 
-		self.mem = self.mem * beta + x
-		out_spikes = self.surrogate_function(self.mem - threshold)
-		self.mem = self.mem - out_spikes * threshold
+		moved_mem = moved_mem * self.beta + moved_x
+		moved_out_spikes = self.surrogate_function(moved_mem - self.threshold)
+		moved_mem = moved_mem - moved_out_spikes * self.threshold
+
+		self.mem = moved_mem.movedim(-1, self.dim)
+		out_spikes = moved_out_spikes.movedim(-1, self.dim)
 
 		return out_spikes
