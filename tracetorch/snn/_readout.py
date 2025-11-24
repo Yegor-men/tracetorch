@@ -22,13 +22,13 @@ class Readout(TTModule):
 		with torch.no_grad():
 			if isinstance(beta, torch.Tensor):  # user provided their own beta tensor
 				if beta.ndim == 0:  # scalar
-					self.beta_rank = 0
+					pass
 				elif beta.ndim == 1:
 					assert (beta.numel() == num_neurons), "beta must have num_neurons number of elements"
-					self.beta_rank = 1
 				else:
 					raise ValueError(f"rank (.ndim) of provided beta is not 0 (scalar) or 1 (vector)")
 				beta_tensor = tt_functional.sigmoid_inverse(beta)
+				self.beta_rank = beta_tensor.ndim
 			else:  # user wants beta tensor generated
 				beta = float(beta)
 				if self.beta_rank == 0:
@@ -44,7 +44,7 @@ class Readout(TTModule):
 			else:
 				self.register_buffer(name, tensor.detach().clone())
 
-		register_tensor("raw_beta", beta_tensor, learn_beta)
+		register_tensor("raw_beta", beta_tensor, self.learn_beta)
 
 		self.zero_states()
 

@@ -20,7 +20,11 @@ class SNN(snn.TTModule):
 			snn.LIF(16, 0.9, 1.0, -3),
 			nn.Flatten(),
 			nn.LazyLinear(16),
-			snn.LIF(16, 0.9, 1.0),
+			snn.SLIF(16, 0.5, 0.9, 1.0),
+			nn.Linear(16, 16),
+			snn.RLIF(16, 0.9, 0.0, 0.0, 1.0),
+			nn.Linear(16, 16),
+			snn.SRLIF(16, 0.5, 0.9, 0.0, 0.0, 1.0),
 			nn.Linear(16, n_labels),
 			snn.Readout(n_labels, 0.9),
 			nn.Softmax(-1)

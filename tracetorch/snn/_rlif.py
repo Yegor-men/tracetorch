@@ -4,16 +4,22 @@ from .. import functional as tt_functional
 from ._ttmodule import TTModule
 
 
-class LIF(TTModule):
+class RLIF(TTModule):
 	def __init__(
 			self,
 			num_neurons: int,
 			beta: float = 0.9,
+			weight: float = 0.0,
+			bias: float = 0.0,
 			threshold: float = 1.0,
 			dim: int = -1,
 			beta_rank: int = 1,
+			weight_rank: int = 2,
+			bias_rank: int = 1,
 			threshold_rank: int = 1,
 			learn_beta: bool = True,
+			learn_weight: bool = True,
+			learn_bias: bool = True,
 			learn_threshold: bool = True,
 			surrogate_function=tt_functional.atan_surrogate(2.0),
 	):
@@ -21,8 +27,12 @@ class LIF(TTModule):
 		self.num_neurons = int(num_neurons)
 		self.dim = int(dim)
 		self.beta_rank = int(beta_rank)
+		self.weight_rank = int(weight_rank)
+		self.bias_rank = int(bias_rank)
 		self.threshold_rank = int(threshold_rank)
 		self.learn_beta = bool(learn_beta)
+		self.learn_weight = bool(learn_weight)
+		self.learn_bias = bool(learn_bias)
 		self.learn_threshold = bool(learn_threshold)
 		self.surrogate_function = surrogate_function
 
@@ -44,6 +54,46 @@ class LIF(TTModule):
 					beta_tensor = tt_functional.sigmoid_inverse(torch.full([self.num_neurons], beta))
 				else:
 					raise ValueError("beta_rank is not 0 (scalar) or 1 (vector)")
+
+			if isinstance(weight, torch.Tensor):  # user provided their own weight tensor
+				if weight.ndim == 0:  # scalar
+					pass
+				elif weight.ndim == 1:  # vector
+					assert (weight.numel() == num_neurons), "weight must have num_neurons number of elements"
+				elif weight.ndim == 2:  # matrix
+					assert (weight[0].numel() == weight[1].numel() == num_neurons), "weight must be square matrix"
+				else:
+					raise ValueError(f"rank (.ndim) of provided weight is not 0 (scalar) or 1 (vector) or 2 (matrix)")
+				weight_tensor = weight
+				self.weight_rank = weight_tensor.ndim
+			else:
+				weight = float(weight)
+				if self.weight_rank == 0:
+					weight_tensor = torch.tensor(weight)
+				elif self.weight_rank == 1:
+					weight_tensor = torch.full([self.num_neurons], weight)
+				elif self.weight_rank == 2:
+					weight_tensor = torch.full([self.num_neurons, self.num_neurons], weight)
+				else:
+					raise ValueError("weight_rank is not 0 (scalar) or 1 (vector) or 2 (matrix)")
+
+			if isinstance(bias, torch.Tensor):  # user provided their own bias tensor
+				if bias.ndim == 0:  # scalar
+					pass
+				elif bias.ndim == 1:  # vector
+					assert (bias.numel() == num_neurons), "bias must have num_neurons number of elements"
+				else:
+					raise ValueError(f"rank (.ndim) of provided bias is not 0 (scalar) or 1 (vector)")
+				bias_tensor = bias
+				self.bias_rank = bias_tensor.ndim
+			else:
+				bias = float(bias)
+				if self.bias_rank == 0:
+					bias_tensor = torch.tensor(bias)
+				elif self.bias_rank == 1:
+					bias_tensor = torch.full([self.num_neurons], bias)
+				else:
+					raise ValueError("bias_rank is not 0 (scalar) or 1 (vector)")
 
 			if isinstance(threshold, torch.Tensor):  # user provided their own threshold tensor
 				if threshold.ndim == 0:  # scalar
@@ -70,6 +120,8 @@ class LIF(TTModule):
 				self.register_buffer(name, tensor.detach().clone())
 
 		register_tensor("raw_beta", beta_tensor, self.learn_beta)
+		register_tensor("raw_weight", weight_tensor, self.learn_weight)
+		register_tensor("raw_bias", bias_tensor, self.learn_bias)
 		register_tensor("raw_threshold", threshold_tensor, self.learn_threshold)
 
 		self.zero_states()
@@ -79,28 +131,47 @@ class LIF(TTModule):
 		return nn.functional.sigmoid(self.raw_beta)
 
 	@property
+	def weight(self):
+		return self.raw_weight
+
+	@property
+	def bias(self):
+		return self.raw_bias
+
+	@property
 	def threshold(self):
 		return nn.functional.softplus(self.raw_threshold)
 
 	def zero_states(self):
 		self.mem = None
+		self.prev_output = None
 
 	def detach_states(self):
 		if self.mem is not None:
 			self.mem = self.mem.detach()
+		if self.prev_output is not None:
+			self.prev_output = self.prev_output.detach()
 
 	def forward(self, x):
 		if self.mem is None:
 			self.mem = torch.zeros_like(x)
+		if self.prev_output is None:
+			self.prev_output = torch.zeros_like(x)
 
 		moved_x = x.movedim(self.dim, -1)
 		moved_mem = self.mem.movedim(self.dim, -1)
+		moved_prev_output = self.prev_output.movedim(self.dim, -1)
 
 		moved_mem = moved_mem * self.beta + moved_x
+		if self.weight_rank == 2:
+			moved_mem = moved_mem + moved_prev_output @ self.weight + self.bias
+		else:
+			moved_mem = moved_mem + moved_prev_output * self.weight + self.bias
 		moved_out_spikes = self.surrogate_function(moved_mem - self.threshold)
 		moved_mem = moved_mem - moved_out_spikes * self.threshold
 
-		self.mem = moved_mem.movedim(-1, self.dim)
 		out_spikes = moved_out_spikes.movedim(-1, self.dim)
+		self.mem = moved_mem.movedim(-1, self.dim)
+		self.prev_output = out_spikes
 
 		return out_spikes
