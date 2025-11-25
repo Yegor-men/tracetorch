@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracetorch"
-version = "0.4.0"
+version = "0.5.0"
 authors = [{ name = "Yegor Men", email = "yegor.mn@gmail.com" }]
-description = "A strict, ergonomic and \"just works\" Spiking Neural Network library for PyTorch."
+description = "A strict, ergonomic, and powerful Spiking Neural Network (SNN) library for PyTorch."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.6"
 license = "MIT"
 dependencies = ["torch", "numpy", "matplotlib"]
 classifiers = [
@@ -26,4 +26,4 @@ Documentation = "https://yegor-men.github.io/tracetorch/"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["tracetorch*"]
-exclude = ["media*", "examples*", "docs*"]
+exclude = ["docs*", "examples*", "introduction*", "media*"]

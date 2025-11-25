@@ -4,9 +4,19 @@ traceTorch Documentation
 .. image:: _static/tracetorch_banner.png
    :alt: traceTorch banner image
 
-``traceTorch`` is a PyTorch-based library built on the principles of spiking neural networks, replacing the PyTorch
-default backpropagation through time with lightweight, per-layer input traces, enabling biologically inspired, constant
-time and memory consumption learning on arbitrarily long or even streaming sequences.
+traceTorch is bult around a single, highly compositional neuron superclass, replacing the restrictive "layer zoo" of
+countless disjoint neuron types with the ``LeakyIntegrator``. This design encapsulates a massive range of SNN dynamics:
+
+- synaptic and recurrent filtering
+- rank-based parameter scoping for scalar, per-neuron or matrix weights
+- optional Exponential Moving Average (EMA) on any hidden state
+- arbitrary recurrence routing to any hidden state
+- flexible polarity for spike outputs: positive and/or negative
+
+All into declarative configuration on one class. By abstracting this complexity, traceTorch provides both the robust
+simplicity required for fast prototyping via familiar wrappers (``LIF``, ``RLIF``, ``SLIF``, ``Readout``, etc.) and the
+unprecedented flexibility required for real research.
+
 
 .. toctree::
    :maxdepth: 2

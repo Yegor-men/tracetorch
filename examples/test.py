@@ -17,17 +17,16 @@ class SNN(snn.TTModule):
 
 		self.mlp = nn.Sequential(
 			nn.Conv2d(c, 16, 3),
-			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}, dim=-3),
+			snn.LIF(16, 0.9, 1.0, dim=-3),
 			nn.Flatten(),
 			nn.LazyLinear(16),
-			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}, neg_threshold_setup={}, gamma_setup={},
-								weight_setup={}),
+			snn.RLIF(16, 0.9, 0.9, 1.0),
 			nn.Linear(16, 16),
-			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}),
+			snn.SLIF(16, 0.1, 0.9, 1.0),
 			nn.Linear(16, 16),
-			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}),
+			snn.SRLIF(16, 0.1, 0.9, 0.1, 1.0),
 			nn.Linear(16, n_labels),
-			snn.LeakyIntegrator(n_labels, beta_setup={"rank": 0, "use_averaging": True}),
+			snn.Readout(n_labels, 0.9),
 			nn.Softmax(-1)
 		)
 
@@ -51,7 +50,7 @@ optimizer = torch.optim.AdamW(model.parameters(), 1e-2)
 
 losses = []
 
-# loss_fn = nn.functional.mse_loss
+# loss_fn = snn.functional.mse_loss
 loss_fn = tt.loss.soft_cross_entropy  # the more flexible variant of cross-entropy for not only onehot vectors
 
 for epoch in tqdm(range(num_epochs), desc="TRAIN", total=num_epochs):

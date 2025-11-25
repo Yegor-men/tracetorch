@@ -1,4 +1,4 @@
 Loss modules
 ============
 
-The following section is dedicated to the various plotting related abilities
+The following section is dedicated to the various ``loss`` modules found in ``traceTorch``.

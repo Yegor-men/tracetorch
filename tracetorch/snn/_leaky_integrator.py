@@ -13,7 +13,7 @@ class DecayConfig(TypedDict, total=False):
 
 
 DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
-DEFAULT_ALPHA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
+DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "use_averaging": False, "learnable": True}
 DEFAULT_GAMMA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
 
 
