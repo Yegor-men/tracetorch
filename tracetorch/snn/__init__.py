@@ -5,3 +5,5 @@ from ._slif import SLIF
 from ._rlif import RLIF
 from ._srlif import SRLIF
 from ._rslif import RSLIF
+
+from ._lif_super import LIFSuper
