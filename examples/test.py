@@ -15,33 +15,19 @@ class SNN(snn.TTModule):
 	def __init__(self, c, n_labels):
 		super().__init__()
 
-		# self.mlp = nn.Sequential(
-		# 	nn.Conv2d(c, 16, 3),
-		# 	snn.LIF(16, 0.9, 1.0, -3),
-		# 	nn.Flatten(),
-		# 	nn.LazyLinear(16),
-		# 	snn.SLIF(16, 0.5, 0.9, 1.0),
-		# 	nn.Linear(16, 16),
-		# 	snn.RLIF(16, 0.9, 0.0, 0.0, 1.0),
-		# 	nn.Linear(16, 16),
-		# 	snn.SRLIF(16, 0.5, 0.9, 0.0, 0.0, 1.0),
-		# 	nn.Linear(16, n_labels),
-		# 	snn.Readout(n_labels, 0.9),
-		# 	nn.Softmax(-1)
-		# )
-
 		self.mlp = nn.Sequential(
 			nn.Conv2d(c, 16, 3),
-			snn.LIFSuper(16, beta_setup={}, pos_threshold_setup={}, dim=-3),
+			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}, dim=-3),
 			nn.Flatten(),
 			nn.LazyLinear(16),
-			snn.LIFSuper(16, beta_setup={}, pos_threshold_setup={}, neg_threshold_setup={}, gamma_setup={}, weight_setup={}),
+			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}, neg_threshold_setup={}, gamma_setup={},
+								weight_setup={}),
 			nn.Linear(16, 16),
-			snn.LIFSuper(16, beta_setup={}, pos_threshold_setup={}),
+			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}),
 			nn.Linear(16, 16),
-			snn.LIFSuper(16, beta_setup={}, pos_threshold_setup={}),
+			snn.LeakyIntegrator(16, beta_setup={}, pos_threshold_setup={}),
 			nn.Linear(16, n_labels),
-			snn.LIFSuper(n_labels, beta_setup={"rank": 0}),
+			snn.LeakyIntegrator(n_labels, beta_setup={"rank": 0, "use_averaging": True}),
 			nn.Softmax(-1)
 		)
 

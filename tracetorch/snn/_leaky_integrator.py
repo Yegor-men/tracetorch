@@ -8,12 +8,13 @@ from .. import functional as tt_functional
 class DecayConfig(TypedDict, total=False):
 	value: Union[float, torch.Tensor]
 	rank: Literal[0, 1]
+	use_averaging: bool
 	learnable: bool
 
 
-DEFAULT_BETA = {"value": 0.9, "rank": 1, "learnable": True}
-DEFAULT_ALPHA = {"value": 0.9, "rank": 1, "learnable": True}
-DEFAULT_GAMMA = {"value": 0.9, "rank": 1, "learnable": True}
+DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
+DEFAULT_ALPHA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
+DEFAULT_GAMMA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
 
 
 class ThresholdConfig(TypedDict, total=False):
@@ -47,7 +48,7 @@ class BiasConfig(TypedDict, total=False):
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "connect_to": "rec", "learnable": True}
 
 
-class LIFSuper(TTModule):
+class LeakyIntegrator(TTModule):
 	def __init__(
 			self,
 			num_neurons: int,
@@ -73,6 +74,7 @@ class LIFSuper(TTModule):
 		beta_cfg = {**DEFAULT_BETA, **(beta_setup or {})}
 		self._setup_decay("beta", beta_cfg)
 		self.mem = None
+		setattr(self, f"mem_is_ema", beta_cfg["use_averaging"])
 
 		# OPTIONAL
 		self.use_alpha = alpha_setup is not None
@@ -80,12 +82,14 @@ class LIFSuper(TTModule):
 			alpha_cfg = {**DEFAULT_ALPHA, **(alpha_setup or {})}
 			self._setup_decay("alpha", alpha_cfg)
 			self.syn = None
+			setattr(self, f"syn_is_ema", alpha_cfg["use_averaging"])
 
 		self.use_gamma = gamma_setup is not None
 		if self.use_gamma:
 			gamma_cfg = {**DEFAULT_GAMMA, **(gamma_setup or {})}
 			self._setup_decay("gamma", gamma_cfg)
 			self.rec = None
+			setattr(self, f"rec_is_ema", gamma_cfg["use_averaging"])
 
 		self.use_pos_threshold = pos_threshold_setup is not None
 		if self.use_pos_threshold:
@@ -119,9 +123,6 @@ class LIFSuper(TTModule):
 				assert self.use_alpha, "bias wants to record to syn, but alpha decay isn't initialized"
 			if self.bias_connect == "rec":
 				assert self.use_gamma, "bias wants to record to syn, but gamma decay isn't initialized"
-
-		# if no thresholds are set, then the layer is automatically a readout (EMA) layer
-		self.is_readout = not (self.use_pos_threshold or self.use_neg_threshold)
 
 		# gamma should only be used if it's actually being recorded into
 		if self.use_gamma:
@@ -330,20 +331,25 @@ class LIFSuper(TTModule):
 				rec_delta = rec_delta + self.bias
 
 		if self.use_gamma:
+			if self.rec_is_ema:
+				rec_delta = rec_delta / self.gamma
 			rec_moved = rec_moved * self.gamma + rec_delta
 			mem_delta = mem_delta + rec_delta
 			self.rec = rec_moved.movedim(-1, self.dim)
 
 		if self.use_alpha:
+			if self.syn_is_ema:
+				syn_delta = syn_delta / self.alpha
 			syn_moved = syn_moved * self.alpha + syn_delta
 			mem_delta = mem_delta + syn_moved
 			self.syn = syn_moved.movedim(-1, self.dim)
 
-		if self.is_readout:
-			mem_moved = mem_moved * self.beta + mem_delta / self.beta
-			output = mem_moved
-		else:
-			mem_moved = mem_moved * self.beta + mem_delta
+		if self.mem_is_ema:
+			mem_delta = mem_delta / self.beta
+
+		mem_moved = mem_moved * self.beta + mem_delta
+
+		if self.use_pos_threshold or self.use_neg_threshold:
 			output = torch.zeros_like(mem_moved)
 			if self.use_pos_threshold:
 				pos_spikes = self.pos_surrogate(mem_moved - self.pos_threshold)
@@ -353,6 +359,8 @@ class LIFSuper(TTModule):
 				neg_spikes = -self.neg_surrogate(self.neg_threshold - mem_moved)  # self.neg_threshold is negative
 				mem_moved = mem_moved + neg_spikes * self.neg_threshold  # both are negative, create positive delta
 				output = output + neg_spikes
+		else:
+			output = mem_moved
 
 		output = output.movedim(-1, self.dim)
 		self.mem = mem_moved.movedim(-1, self.dim)
