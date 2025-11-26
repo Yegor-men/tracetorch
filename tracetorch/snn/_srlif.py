@@ -1,34 +1,40 @@
-from typing import Union, Literal
-import torch
-from torch import nn
 from ._leaky_integrator import LeakyIntegrator
-from .. import functional as tt_functional
+from ._leaky_integrator import DEFAULT_ALPHA
+from ._leaky_integrator import DEFAULT_BETA
+from ._leaky_integrator import DEFAULT_GAMMA
+from ._leaky_integrator import DEFAULT_POS_THRESH
+# from ._leaky_integrator import DEFAULT_NEG_THRESH
+from ._leaky_integrator import DEFAULT_WEIGHT
+from ._leaky_integrator import DEFAULT_BIAS
+
+from typing import Union, Literal, Any
+import torch
 
 
 class SRLIF(LeakyIntegrator):
 	def __init__(
 			self,
 			num_neurons: int,
-			alpha: Union[float, torch.Tensor] = 0.5,
-			beta: Union[float, torch.Tensor] = 0.9,
-			gamma: Union[float, torch.Tensor] = 0.9,
-			threshold: Union[float, torch.Tensor] = 1.0,
-			weight: Union[float, torch.Tensor] = 0.0,
-			bias: Union[float, torch.Tensor] = 0.0,
+			alpha: Union[float, torch.Tensor] = DEFAULT_ALPHA["value"],
+			beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
+			gamma: Union[float, torch.Tensor] = DEFAULT_GAMMA["value"],
+			threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			weight: Union[float, torch.Tensor] = DEFAULT_WEIGHT["value"],
+			bias: Union[float, torch.Tensor] = DEFAULT_BIAS["value"],
 			dim: int = -1,
-			alpha_rank: Literal[0, 1] = 1,
-			beta_rank: Literal[0, 1] = 1,
-			gamma_rank: Literal[0, 1] = 1,
-			threshold_rank: Literal[0, 1] = 1,
-			weight_rank: Literal[0, 1, 2] = 2,
-			bias_rank: Literal[0, 1] = 1,
-			learn_alpha: bool = True,
-			learn_beta: bool = True,
-			learn_gamma: bool = True,
-			learn_threshold: bool = True,
-			learn_weight: bool = True,
-			learn_bias: bool = True,
-			surrogate_derivative=tt_functional.atan_surrogate(2.0)
+			alpha_rank: Literal[0, 1] = DEFAULT_ALPHA["rank"],
+			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
+			gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
+			threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
+			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
+			learn_alpha: bool = DEFAULT_ALPHA["learnable"],
+			learn_beta: bool = DEFAULT_BETA["learnable"],
+			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
+			learn_threshold: bool = DEFAULT_POS_THRESH["learnable"],
+			learn_weight: bool = DEFAULT_WEIGHT["learnable"],
+			learn_bias: bool = DEFAULT_BIAS["learnable"],
+			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
 	):
 		alpha_setup = {
 			"value": alpha,

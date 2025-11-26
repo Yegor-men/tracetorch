@@ -1,9 +1,9 @@
 from ._leaky_integrator import LeakyIntegrator
-# from ._leaky_integrator import DEFAULT_ALPHA
+from ._leaky_integrator import DEFAULT_ALPHA
 from ._leaky_integrator import DEFAULT_BETA
 from ._leaky_integrator import DEFAULT_GAMMA
 from ._leaky_integrator import DEFAULT_POS_THRESH
-# from ._leaky_integrator import DEFAULT_NEG_THRESH
+from ._leaky_integrator import DEFAULT_NEG_THRESH
 from ._leaky_integrator import DEFAULT_WEIGHT
 from ._leaky_integrator import DEFAULT_BIAS
 
@@ -11,28 +11,42 @@ from typing import Union, Literal, Any
 import torch
 
 
-class RLIF(LeakyIntegrator):
+class BSRLIF(LeakyIntegrator):
 	def __init__(
 			self,
 			num_neurons: int,
+			alpha: Union[float, torch.Tensor] = DEFAULT_ALPHA["value"],
 			beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
 			gamma: Union[float, torch.Tensor] = DEFAULT_GAMMA["value"],
-			threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			pos_threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			neg_threshold: Union[float, torch.Tensor] = DEFAULT_NEG_THRESH["value"],
 			weight: Union[float, torch.Tensor] = DEFAULT_WEIGHT["value"],
 			bias: Union[float, torch.Tensor] = DEFAULT_BIAS["value"],
 			dim: int = -1,
+			alpha_rank: Literal[0, 1] = DEFAULT_ALPHA["rank"],
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
 			gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
-			threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			neg_threshold_rank: Literal[0, 1] = DEFAULT_NEG_THRESH["rank"],
 			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
+			learn_alpha: bool = DEFAULT_ALPHA["learnable"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
-			learn_threshold: bool = DEFAULT_POS_THRESH["learnable"],
+			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
+			learn_neg_threshold: bool = DEFAULT_NEG_THRESH["learnable"],
 			learn_weight: bool = DEFAULT_WEIGHT["learnable"],
 			learn_bias: bool = DEFAULT_BIAS["learnable"],
-			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
+			pos_surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
+			neg_surrogate_derivative: Any = DEFAULT_NEG_THRESH["surrogate"],
 	):
+		alpha_setup = {
+			"value": alpha,
+			"rank": alpha_rank,
+			"use_averaging": False,
+			"learnable": learn_alpha,
+		}
+
 		beta_setup = {
 			"value": beta,
 			"rank": beta_rank,
@@ -48,10 +62,17 @@ class RLIF(LeakyIntegrator):
 		}
 
 		pos_threshold_setup = {
-			"value": threshold,
-			"rank": threshold_rank,
-			"surrogate": surrogate_derivative,
-			"learnable": learn_threshold,
+			"value": pos_threshold,
+			"rank": pos_threshold_rank,
+			"surrogate": pos_surrogate_derivative,
+			"learnable": learn_pos_threshold,
+		}
+
+		neg_threshold_setup = {
+			"value": neg_threshold,
+			"rank": neg_threshold_rank,
+			"surrogate": neg_surrogate_derivative,
+			"learnable": learn_neg_threshold,
 		}
 
 		weight_setup = {
@@ -71,11 +92,11 @@ class RLIF(LeakyIntegrator):
 		super().__init__(
 			num_neurons=num_neurons,
 			dim=dim,
-			alpha_setup=None,
+			alpha_setup=alpha_setup,
 			beta_setup=beta_setup,
 			gamma_setup=gamma_setup,
 			pos_threshold_setup=pos_threshold_setup,
-			neg_threshold_setup=None,
+			neg_threshold_setup=neg_threshold_setup,
 			weight_setup=weight_setup,
 			bias_setup=bias_setup,
 		)

@@ -12,20 +12,11 @@ class DecayConfig(TypedDict, total=False):
 	learnable: bool
 
 
-DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
-DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "use_averaging": False, "learnable": True}
-DEFAULT_GAMMA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
-
-
 class ThresholdConfig(TypedDict, total=False):
 	value: Union[float, torch.Tensor]
 	rank: Literal[0, 1]
 	surrogate: Any  # has to be a surrogate function
 	learnable: bool
-
-
-DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
-DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
 
 
 class WeightConfig(TypedDict, total=False):
@@ -35,9 +26,6 @@ class WeightConfig(TypedDict, total=False):
 	learnable: bool
 
 
-DEFAULT_WEIGHT = {"value": 0.0, "rank": 2, "connect_to": "rec", "learnable": True}
-
-
 class BiasConfig(TypedDict, total=False):
 	value: Union[float, torch.Tensor]
 	rank: Literal[0, 1]
@@ -45,6 +33,12 @@ class BiasConfig(TypedDict, total=False):
 	learnable: bool
 
 
+DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
+DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "use_averaging": False, "learnable": True}
+DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "use_averaging": False, "learnable": True}
+DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
+DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
+DEFAULT_WEIGHT = {"value": 0.0, "rank": 2, "connect_to": "rec", "learnable": True}
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "connect_to": "rec", "learnable": True}
 
 
@@ -52,18 +46,15 @@ class LeakyIntegrator(TTModule):
 	def __init__(
 			self,
 			num_neurons: int,
-			# Mandatory (config objects, but mandatory arguments)
-			beta_setup: DecayConfig,
+			dim: int = -1,
 
-			# Optional Features (type hint with Optional[])
 			alpha_setup: Optional[DecayConfig] = None,
+			beta_setup: DecayConfig = DEFAULT_BETA,
 			gamma_setup: Optional[DecayConfig] = None,
 			pos_threshold_setup: Optional[ThresholdConfig] = None,
 			neg_threshold_setup: Optional[ThresholdConfig] = None,
 			weight_setup: Optional[WeightConfig] = None,
 			bias_setup: Optional[BiasConfig] = None,
-
-			dim: int = -1,
 	):
 		super().__init__()
 		self.num_neurons = int(num_neurons)

@@ -8,7 +8,7 @@ truncated BPTT or online learning.
 
 ``traceTorch`` presents `tracetorch.snn.TTModule`, a replacement to ``pytorch.nn.Module`` which provides you with two
 methods: ``.zero_states()`` which sets the states to ``None`` and readies them for the next batch, and ``.detach_states()``
-which detaches all the hidden states. Both these methods recursively search not just the attributes in the class instances,
-but _all_ the attributes' attributes, and so on. It goes through the entire tree of the class instance, meaning that it
-will find _all_ the hidden states no matter how far they've been hidden, no matter the architecture. Just initialize
-your model to use ``snn.TTModule`` instead of ``nn.Module`` and you're good to go.
+which detaches all the hidden states from the computation graph. Both these methods recursively search not just the
+attributes in the class instances, but _all_ the attributes' attributes, and so on. It goes through the entire tree of
+the class instance, meaning that it will find _all_ the hidden states no matter how far they've been hidden, no matter
+the architecture. Just initialize your model to use ``snn.TTModule`` instead of ``nn.Module`` and you're good to go.

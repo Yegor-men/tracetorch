@@ -3,7 +3,7 @@ from ._leaky_integrator import LeakyIntegrator
 from ._leaky_integrator import DEFAULT_BETA
 # from ._leaky_integrator import DEFAULT_GAMMA
 from ._leaky_integrator import DEFAULT_POS_THRESH
-# from ._leaky_integrator import DEFAULT_NEG_THRESH
+from ._leaky_integrator import DEFAULT_NEG_THRESH
 # from ._leaky_integrator import DEFAULT_WEIGHT
 # from ._leaky_integrator import DEFAULT_BIAS
 
@@ -11,19 +11,22 @@ from typing import Union, Literal, Any
 import torch
 
 
-class LIF(LeakyIntegrator):
+class BLIF(LeakyIntegrator):
 	def __init__(
 			self,
 			num_neurons: int,
 			beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
-			threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			pos_threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			neg_threshold: Union[float, torch.Tensor] = DEFAULT_NEG_THRESH["value"],
 			dim: int = -1,
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
-			threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			neg_threshold_rank: Literal[0, 1] = DEFAULT_NEG_THRESH["rank"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
-			learn_threshold: bool = DEFAULT_POS_THRESH["learnable"],
-			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
-
+			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
+			learn_neg_threshold: bool = DEFAULT_NEG_THRESH["learnable"],
+			pos_surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
+			neg_surrogate_derivative: Any = DEFAULT_NEG_THRESH["surrogate"],
 	):
 		beta_setup = {
 			"value": beta,
@@ -33,10 +36,17 @@ class LIF(LeakyIntegrator):
 		}
 
 		pos_threshold_setup = {
-			"value": threshold,
-			"rank": threshold_rank,
-			"surrogate": surrogate_derivative,
-			"learnable": learn_threshold,
+			"value": pos_threshold,
+			"rank": pos_threshold_rank,
+			"surrogate": pos_surrogate_derivative,
+			"learnable": learn_pos_threshold,
+		}
+
+		neg_threshold_setup = {
+			"value": neg_threshold,
+			"rank": neg_threshold_rank,
+			"surrogate": neg_surrogate_derivative,
+			"learnable": learn_neg_threshold,
 		}
 
 		super().__init__(
@@ -46,7 +56,7 @@ class LIF(LeakyIntegrator):
 			beta_setup=beta_setup,
 			gamma_setup=None,
 			pos_threshold_setup=pos_threshold_setup,
-			neg_threshold_setup=None,
+			neg_threshold_setup=neg_threshold_setup,
 			weight_setup=None,
 			bias_setup=None,
 		)
