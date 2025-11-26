@@ -126,8 +126,8 @@ class LeakyIntegrator(TTModule):
 
 		# gamma should only be used if it's actually being recorded into
 		if self.use_gamma:
-			assert self.use_weight or self.use_bias, "gamma initialized, but neither weight nor bias used for recurrence"
-			assert self.weight_connect or self.bias_connect == "rec", "gamma initialized, but never used by recurrence"
+			assert (self.use_weight and self.weight_connect == "rec") or (self.use_bias and self.bias_connect == "rec"), \
+				"gamma initialized, but never used by recurrence"
 
 	def zero_states(self):
 		self.mem = None
@@ -267,7 +267,7 @@ class LeakyIntegrator(TTModule):
 
 	@property
 	def neg_threshold(self):
-		return - nn.functional.sigmoid(self.raw_neg_threshold)
+		return - nn.functional.softplus(self.raw_neg_threshold)
 
 	@property
 	def weight(self):
@@ -332,20 +332,20 @@ class LeakyIntegrator(TTModule):
 
 		if self.use_gamma:
 			if self.rec_is_ema:
-				rec_delta = rec_delta / self.gamma
+				rec_delta = rec_delta * (1 - self.gamma)
 			rec_moved = rec_moved * self.gamma + rec_delta
 			mem_delta = mem_delta + rec_delta
 			self.rec = rec_moved.movedim(-1, self.dim)
 
 		if self.use_alpha:
 			if self.syn_is_ema:
-				syn_delta = syn_delta / self.alpha
+				syn_delta = syn_delta * (1 - self.alpha)
 			syn_moved = syn_moved * self.alpha + syn_delta
 			mem_delta = mem_delta + syn_moved
 			self.syn = syn_moved.movedim(-1, self.dim)
 
 		if self.mem_is_ema:
-			mem_delta = mem_delta / self.beta
+			mem_delta = mem_delta * (1 - self.beta)
 
 		mem_moved = mem_moved * self.beta + mem_delta
 
