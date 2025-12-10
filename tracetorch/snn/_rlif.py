@@ -17,18 +17,18 @@ class RLIF(LeakyIntegrator):
 			num_neurons: int,
 			beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
 			gamma: Union[float, torch.Tensor] = DEFAULT_GAMMA["value"],
-			threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			pos_threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
 			weight: Union[float, torch.Tensor] = DEFAULT_WEIGHT["value"],
 			bias: Union[float, torch.Tensor] = DEFAULT_BIAS["value"],
 			dim: int = -1,
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
 			gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
-			threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
 			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
-			learn_threshold: bool = DEFAULT_POS_THRESH["learnable"],
+			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
 			learn_weight: bool = DEFAULT_WEIGHT["learnable"],
 			learn_bias: bool = DEFAULT_BIAS["learnable"],
 			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
@@ -48,10 +48,10 @@ class RLIF(LeakyIntegrator):
 		}
 
 		pos_threshold_setup = {
-			"value": threshold,
-			"rank": threshold_rank,
+			"value": pos_threshold,
+			"rank": pos_threshold_rank,
 			"surrogate": surrogate_derivative,
-			"learnable": learn_threshold,
+			"learnable": learn_pos_threshold,
 		}
 
 		weight_setup = {

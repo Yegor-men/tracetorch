@@ -17,14 +17,14 @@ class SLIF(LeakyIntegrator):
 			num_neurons: int,
 			alpha: Union[float, torch.Tensor] = DEFAULT_ALPHA["value"],
 			beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
-			threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
+			pos_threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
 			dim: int = -1,
 			alpha_rank: Literal[0, 1] = DEFAULT_ALPHA["rank"],
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
-			threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
 			learn_alpha: bool = DEFAULT_ALPHA["learnable"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
-			learn_threshold: bool = DEFAULT_POS_THRESH["learnable"],
+			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
 			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
 	):
 		alpha_setup = {
@@ -42,10 +42,10 @@ class SLIF(LeakyIntegrator):
 		}
 
 		pos_threshold_setup = {
-			"value": threshold,
-			"rank": threshold_rank,
+			"value": pos_threshold,
+			"rank": pos_threshold_rank,
 			"surrogate": surrogate_derivative,
-			"learnable": learn_threshold,
+			"learnable": learn_pos_threshold,
 		}
 
 		super().__init__(

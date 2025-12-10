@@ -38,7 +38,7 @@ DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "use_averaging": False, "learnable": T
 DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "use_averaging": False, "learnable": True}
 DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
 DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
-DEFAULT_WEIGHT = {"value": 0.0, "rank": 2, "connect_to": "rec", "learnable": True}
+DEFAULT_WEIGHT = {"value": 0.0, "rank": 1, "connect_to": "rec", "learnable": True}
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "connect_to": "rec", "learnable": True}
 
 
