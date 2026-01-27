@@ -13,10 +13,12 @@ import urllib.request
 from tqdm import tqdm
 
 # ---------------------- basic config ----------------------
-device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
 if torch.cuda.is_available():
+    device = "cuda"
     torch.cuda.manual_seed_all(0)
+else:
+    device = "cpu"
 
 DATA_DIR = "data"
 SHAKESPEARE_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
@@ -38,14 +40,27 @@ def download_with_progress(url, path):
     print("Done.")
 
 
-class ConcatByteDataset(Dataset):
-    def __init__(self, seq_len=256, batch_size=32, split="train", use_bookcorpus=False):
-        self.seq_len = seq_len
-        self.batch_size = batch_size
+def collate_time_major(batch):
+    # batch: list of tuples (x: [L], y: [L]) of length B
+    xs = torch.stack([b[0] for b in batch], dim=0)  # [B, L]
+    ys = torch.stack([b[1] for b in batch], dim=0)  # [B, L]
+    # transpose to [L, B]
+    return xs.transpose(0, 1).contiguous(), ys.transpose(0, 1).contiguous()
 
-        # Load and concat (same as before)
+
+class ConcatByteSlices(Dataset):
+    """
+    Dataset of ALL valid length-(seq_len+1) slices from the concatenated byte stream.
+    Each __getitem__ returns (x, y) where x,y are 1D tensors of length seq_len.
+    Use DataLoader(batch_size=B, collate_fn=collate_time_major) to get [L, B] time-major batches.
+    """
+
+    def __init__(self, seq_len=512, split="train", use_bookcorpus=False):
+        self.seq_len = int(seq_len)
+        self.seq_len_plus1 = self.seq_len + 1
+
+        # load file same as before
         if use_bookcorpus:
-            print("Loading BookCorpus subset...")
             ds = load_dataset("bookcorpus", split="train[:50000]")
             texts = [item['text'] for item in ds]
         else:
@@ -59,53 +74,62 @@ class ConcatByteDataset(Dataset):
             all_bytes.extend(text.encode('utf-8'))
             all_bytes.extend(sep)
 
-        full_data = torch.tensor(list(all_bytes), dtype=torch.long)
-        print(f"Total bytes: {len(full_data):,}")
+        self.data = torch.tensor(list(all_bytes), dtype=torch.long)
+        print(f"Total bytes: {len(self.data):,}")
 
-        # Split
-        split_idx = int(len(full_data) * 0.9)
+        # all possible start positions where we can take seq_len+1 bytes
+        max_start = len(self.data) - self.seq_len_plus1
+        if max_start < 0:
+            raise ValueError("Not enough data for the requested seq_len")
+
+        starts = torch.arange(0, max_start + 1, dtype=torch.long)
+
+        # train/val split by contiguous ranges of starts (keeps val on later text)
+        split_idx = int(len(starts) * 0.9)
         if split == "train":
-            self.data = full_data[:split_idx]
+            self.starts = starts[:split_idx]
         elif split == "val":
-            self.data = full_data[split_idx:]
+            self.starts = starts[split_idx:]
         else:
             raise ValueError("split must be 'train' or 'val'")
 
     def __len__(self):
-        # Number of full batches we can make
-        return (len(self.data) - self.seq_len) // (self.batch_size * self.seq_len)
+        return int(self.starts.numel())
 
     def __getitem__(self, idx):
-        # Start of this batch of sequences
-        start = idx * self.batch_size * self.seq_len
-
-        # Take enough bytes for one full batch of sequences + 1 for targets
-        num_bytes_needed = self.batch_size * (self.seq_len + 1)
-        chunk = self.data[start: start + num_bytes_needed]
-
-        # If short (end of data), pad with zeros
-        if len(chunk) < num_bytes_needed:
-            padding = torch.zeros(num_bytes_needed - len(chunk), dtype=torch.long)
-            chunk = torch.cat([chunk, padding])
-
-        # Reshape to [B, L+1]
-        chunk = chunk.view(self.batch_size, self.seq_len + 1)
-
-        # Transpose to time-major: [L+1, B]
-        chunk = chunk.t()
-
-        x = chunk[:-1, :]  # [L, B]
-        y = chunk[1:, :]  # [L, B]
-
+        if idx < 0:
+            idx = len(self) + idx
+        s = int(self.starts[idx])
+        seg = self.data[s: s + self.seq_len_plus1]  # shape [L+1]
+        x = seg[:-1].clone()  # length L
+        y = seg[1:].clone()  # length L
         return x, y
 
 
-use_bookcorpus = False
-train_dataset = ConcatByteDataset(seq_len=256, batch_size=32, split="train", use_bookcorpus=use_bookcorpus)
-val_dataset = ConcatByteDataset(seq_len=256, batch_size=32, split="val", use_bookcorpus=use_bookcorpus)
+seq_len = 256
+batch_size = 128
 
-train_dataloader = DataLoader(train_dataset, batch_size=None, shuffle=True)
-val_dataloader = DataLoader(val_dataset, batch_size=None, shuffle=False)
+use_bookcorpus = False
+train_dataset = ConcatByteSlices(seq_len=seq_len, split="train", use_bookcorpus=use_bookcorpus)
+val_dataset = ConcatByteSlices(seq_len=seq_len, split="val", use_bookcorpus=use_bookcorpus)
+
+train_dataloader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    collate_fn=collate_time_major,
+    drop_last=True,
+    num_workers=0  # <- no multiprocessing, simplest and reliable
+)
+
+val_dataloader = DataLoader(
+    val_dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    collate_fn=collate_time_major,
+    drop_last=False,
+    num_workers=0  # <- keep sync single-process loading
+)
 
 
 # ---------------------- generation / sampling helpers (defined once) ----------------------
@@ -295,19 +319,35 @@ class SNNLM(snn.TTModule):
             nn.Dropout(emb_dropout),
             nn.Linear(embed_dim, hidden_dim)
         )
+        nn.init.xavier_uniform_(self.emb[-1].weight)
+        nn.init.zeros_(self.emb[-1].bias)
 
         layers = []
         for _ in range(num_layers):
-            layers.append(snn.BSRLIF(hidden_dim))
-            layers.append(nn.Linear(hidden_dim, hidden_dim, bias=False))
-        layers.append(snn.SRReadout(hidden_dim, beta_rank=1))
+            layers.append(snn.BSRLIF(
+                hidden_dim,
+                alpha=torch.rand(hidden_dim),
+                beta=torch.rand(hidden_dim),
+                gamma=torch.rand(hidden_dim),
+            ))
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            nn.init.normal_(layers[-1].weight, 0.0, 0.01)
+            nn.init.zeros_(layers[-1].bias)
 
         self.net = nn.Sequential(*layers)
 
         self.dec = nn.Sequential(
-            nn.Dropout(dec_dropout),
+            # snn.SRReadout(
+            #     hidden_dim,
+            #     alpha=torch.rand(hidden_dim),
+            #     beta=torch.rand(hidden_dim),
+            #     gamma=torch.rand(hidden_dim),
+            # ),
+            # nn.Dropout(dec_dropout),
             nn.Linear(hidden_dim, 256)
         )
+        nn.init.xavier_uniform_(self.dec[-1].weight)
+        nn.init.zeros_(self.dec[-1].bias)
 
     def forward(self, x):
         emb_byte = self.emb(x)
@@ -317,15 +357,15 @@ class SNNLM(snn.TTModule):
         return pred_byte
 
 
-model = SNNLM(32, 512, 4).to(device)
-print(f"\n\nNum params: {model.get_param_count():,}")
+model = SNNLM(256, 1024, 5).to(device)
+print(f"\nNum params: {model.get_param_count():,}")
 print(f"num batches: {len(train_dataloader):,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
 loss_fn = nn.CrossEntropyLoss()
-num_epochs = 10
+num_epochs = 1
 
 
-def add_byte_noise(tensor: torch.Tensor, p: float = 0.05, device=None) -> torch.Tensor:
+def add_byte_noise(tensor: torch.Tensor, p: float = 0, device=None) -> torch.Tensor:
     if p <= 0:
         return tensor
     if device is None:
@@ -357,6 +397,7 @@ for e in range(num_epochs):
         x = add_byte_noise(x)
 
         model.detach_states()
+        model.zero_states()
         running_loss = 0.0
 
         for t in range(x.size(0)):
@@ -369,7 +410,7 @@ for e in range(num_epochs):
         train_losses.append(running_loss.item())
         train_loss += train_losses[-1]
 
-        optimizer.zero_grad()
+        model.zero_grad()
         running_loss.backward()
         optimizer.step()
         optimizer_steps += 1
@@ -379,17 +420,18 @@ for e in range(num_epochs):
             plt.plot(train_losses)
             plt.show()
 
-    train_loss /= len(train_dataloader)
+        if (optimizer_steps + 1) % 100 == 0:
+            # sample config example: temperature + top_k
+            sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
+            out_fn = os.path.join("data", f"generated_epoch_{e}.txt")
+            save_generation_file(model, out_fn, gen_length=100, sample_config=sample_cfg)
+            print(f"Saved generation to {out_fn}")
 
-    # ---------------------- generation & save to file ----------------------
-    # sample config example: temperature + top_k
-    sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
-    out_fn = os.path.join("data", f"generated_epoch_{e}.txt")
-    save_generation_file(model, out_fn, gen_length=100, sample_config=sample_cfg)
-    print(f"Saved generation to {out_fn}")
+    train_loss /= len(train_dataloader)
 
     # ---------------------- TEST ----------------------
     test_loss = 0
+    model.eval()
     with torch.no_grad():
         for x, y in tqdm(val_dataloader, total=len(val_dataloader), desc=f"TEST - E{e}"):
             x = x.to(device)  # [B, L]
