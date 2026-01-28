@@ -107,7 +107,7 @@ class ConcatByteSlices(Dataset):
 
 
 seq_len = 256
-batch_size = 128
+batch_size = 64
 
 use_bookcorpus = False
 train_dataset = ConcatByteSlices(seq_len=seq_len, split="train", use_bookcorpus=use_bookcorpus)
@@ -302,6 +302,22 @@ def save_generation_file(model, out_path, gen_length=200, sample_config=None, ex
 
 # ---------------------- build data & model ----------------------
 
+class ResidualSpike(snn.TTModule):
+    def __init__(self, hidden_dim):
+        super().__init__()
+        self.lif = snn.BSRLIF(
+            hidden_dim,
+            alpha=torch.rand(hidden_dim),
+            beta=torch.rand(hidden_dim),
+            gamma=torch.rand(hidden_dim),
+        )
+        self.lin = nn.Linear(hidden_dim, hidden_dim)
+        nn.init.normal_(self.lin.weight, 0.0, 0.01)
+        nn.init.zeros_(self.lin.bias)
+
+    def forward(self, x):
+        return x + self.lin(self.lif(x))
+
 
 class SNNLM(snn.TTModule):
     def __init__(
@@ -322,26 +338,15 @@ class SNNLM(snn.TTModule):
         nn.init.xavier_uniform_(self.emb[-1].weight)
         nn.init.zeros_(self.emb[-1].bias)
 
-        layers = []
-        for _ in range(num_layers):
-            layers.append(snn.BSRLIF(
-                hidden_dim,
-                alpha=torch.rand(hidden_dim),
-                beta=torch.rand(hidden_dim),
-                gamma=torch.rand(hidden_dim),
-            ))
-            layers.append(nn.Linear(hidden_dim, hidden_dim))
-            nn.init.normal_(layers[-1].weight, 0.0, 0.01)
-            nn.init.zeros_(layers[-1].bias)
-
+        layers = [ResidualSpike(hidden_dim) for _ in range(num_layers)]
         self.net = nn.Sequential(*layers)
 
         self.dec = nn.Sequential(
             # snn.SRReadout(
             #     hidden_dim,
-            #     alpha=torch.rand(hidden_dim),
-            #     beta=torch.rand(hidden_dim),
-            #     gamma=torch.rand(hidden_dim),
+            #     alpha=torch.rand(hidden_dim) /2,
+            #     beta=torch.rand(hidden_dim) / 2,
+            #     gamma=torch.rand(hidden_dim) / 2,
             # ),
             # nn.Dropout(dec_dropout),
             nn.Linear(hidden_dim, 256)
@@ -357,10 +362,10 @@ class SNNLM(snn.TTModule):
         return pred_byte
 
 
-model = SNNLM(256, 1024, 5).to(device)
+model = SNNLM(256, 256, 10).to(device)
 print(f"\nNum params: {model.get_param_count():,}")
 print(f"num batches: {len(train_dataloader):,}")
-optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
 loss_fn = nn.CrossEntropyLoss()
 num_epochs = 1
 
@@ -415,8 +420,12 @@ for e in range(num_epochs):
         optimizer.step()
         optimizer_steps += 1
 
-        if (optimizer_steps + 1) % 10 == 0:
-            plt.title("LOSS")
+        if (optimizer_steps) % 10 == 0 and optimizer_steps != 0:
+            avg_loss = sum(train_losses[-10:]) / 10
+            bits_per_byte = avg_loss / math.log(2)
+            perplex = math.exp(avg_loss)
+            plt.title(
+                f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:5f} | PERPLEXITY: {perplex:.1f}")
             plt.plot(train_losses)
             plt.show()
 
