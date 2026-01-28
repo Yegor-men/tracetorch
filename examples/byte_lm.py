@@ -390,6 +390,7 @@ def add_byte_noise(tensor: torch.Tensor, p: float = 0, device=None) -> torch.Ten
 
 train_losses = []
 optimizer_steps = 0
+timestep_losses = [0 for _ in range(seq_len)]
 
 for e in range(num_epochs):
     # TRAIN
@@ -410,6 +411,8 @@ for e in range(num_epochs):
             model_output = model(x_t)
             loss = loss_fn(model_output, y_t)
             running_loss = running_loss + loss
+            timestep_losses[t] *= 0.95
+            timestep_losses[t] += loss.item() * 0.05
 
         running_loss = running_loss / x.size(0)
         train_losses.append(running_loss.item())
@@ -427,6 +430,10 @@ for e in range(num_epochs):
             plt.title(
                 f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:5f} | PERPLEXITY: {perplex:.1f}")
             plt.plot(train_losses)
+            plt.show()
+
+            plt.title(f"Timestep losses")
+            plt.plot(timestep_losses)
             plt.show()
 
         if (optimizer_steps + 1) % 100 == 0:
