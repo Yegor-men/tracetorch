@@ -5,12 +5,11 @@ from torch.utils.data import Dataset, DataLoader
 from datasets import load_dataset
 import tracetorch as tt
 from tracetorch import snn
-import urllib.request
 import math
 import matplotlib.pyplot as plt
 import os
-import urllib.request
 from tqdm import tqdm
+import bisect
 
 # ---------------------- basic config ----------------------
 torch.manual_seed(0)
@@ -20,116 +19,91 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
 
-DATA_DIR = "data"
-SHAKESPEARE_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
-SHAKESPEARE_PATH = os.path.join(DATA_DIR, "tiny_shakespeare.txt")
 
+class WikiTextDataset(Dataset):
+    def __init__(self, data_dir='data', split='train', seq_len=512, max_samples=None):
+        self.seq_len = seq_len
+        self.split = split
+        self.max_samples = max_samples
+        config_name = 'wikitext-103-raw-v1'
+        ds = load_dataset('Salesforce/wikitext', config_name, cache_dir=data_dir)
+        hf_split = 'train' if split == 'train' else 'validation'  # Using validation as test
+        self.dataset = ds[hf_split]
 
-def download_with_progress(url, path):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if os.path.exists(path):
-        print(f"Using cached {path}")
-        return
-    print(f"Downloading {url} → {path}")
-    with tqdm(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc="Download") as t:
-        def reporthook(bnum, bsize, tsize):
-            t.total = tsize
-            t.update(bsize)
+        # Compute lengths for valid rows
+        self.lengths = []
+        self.valid_indices = []
+        for i in tqdm(range(len(self.dataset)), desc=f"Computing byte lengths for {split}"):
+            text = self.dataset[i]['text']
+            byte_len = len(text.encode('utf-8'))
+            if byte_len >= self.seq_len + 1:
+                self.valid_indices.append(i)
+                self.lengths.append(byte_len)
 
-        urllib.request.urlretrieve(url, path, reporthook=reporthook)
-    print("Done.")
+        if not self.lengths:
+            raise ValueError(f"No rows long enough for seq_len={self.seq_len} in {split}")
 
-
-def collate_time_major(batch):
-    # batch: list of tuples (x: [L], y: [L]) of length B
-    xs = torch.stack([b[0] for b in batch], dim=0)  # [B, L]
-    ys = torch.stack([b[1] for b in batch], dim=0)  # [B, L]
-    # transpose to [L, B]
-    return xs.transpose(0, 1).contiguous(), ys.transpose(0, 1).contiguous()
-
-
-class ConcatByteSlices(Dataset):
-    """
-    Dataset of ALL valid length-(seq_len+1) slices from the concatenated byte stream.
-    Each __getitem__ returns (x, y) where x,y are 1D tensors of length seq_len.
-    Use DataLoader(batch_size=B, collate_fn=collate_time_major) to get [L, B] time-major batches.
-    """
-
-    def __init__(self, seq_len=512, split="train", use_bookcorpus=False):
-        self.seq_len = int(seq_len)
-        self.seq_len_plus1 = self.seq_len + 1
-
-        # load file same as before
-        if use_bookcorpus:
-            ds = load_dataset("bookcorpus", split="train[:50000]")
-            texts = [item['text'] for item in ds]
-        else:
-            download_with_progress(SHAKESPEARE_URL, SHAKESPEARE_PATH)
-            with open(SHAKESPEARE_PATH, "r", encoding="utf-8") as f:
-                texts = [f.read()]
-
-        sep = "\n\n---\n\n".encode('utf-8')
-        all_bytes = bytearray()
-        for text in texts:
-            all_bytes.extend(text.encode('utf-8'))
-            all_bytes.extend(sep)
-
-        self.data = torch.tensor(list(all_bytes), dtype=torch.long)
-        print(f"Total bytes: {len(self.data):,}")
-
-        # all possible start positions where we can take seq_len+1 bytes
-        max_start = len(self.data) - self.seq_len_plus1
-        if max_start < 0:
-            raise ValueError("Not enough data for the requested seq_len")
-
-        starts = torch.arange(0, max_start + 1, dtype=torch.long)
-
-        # train/val split by contiguous ranges of starts (keeps val on later text)
-        split_idx = int(len(starts) * 0.9)
-        if split == "train":
-            self.starts = starts[:split_idx]
-        elif split == "val":
-            self.starts = starts[split_idx:]
-        else:
-            raise ValueError("split must be 'train' or 'val'")
+        # Compute valid start counts per row (len - seq_len)
+        self.start_counts = [l - self.seq_len for l in self.lengths]  # Each >=1 since filtered
+        self.cum_starts = torch.cumsum(torch.tensor(self.start_counts), dim=0)
+        self.total_valid_starts = self.cum_starts[-1].item()
+        print(
+            f"Loaded {split} split with {len(self.valid_indices)} valid rows, total valid starts: {self.total_valid_starts}")
 
     def __len__(self):
-        return int(self.starts.numel())
+        if self.max_samples is not None:
+            return self.max_samples
+        return 1000000  # Large for train, but limit via max_samples
 
     def __getitem__(self, idx):
-        if idx < 0:
-            idx = len(self) + idx
-        s = int(self.starts[idx])
-        seg = self.data[s: s + self.seq_len_plus1]  # shape [L+1]
-        x = seg[:-1].clone()  # length L
-        y = seg[1:].clone()  # length L
-        return x, y
+        # Random valid start position
+        start_pos = torch.randint(0, self.total_valid_starts, (1,)).item()
+
+        # Find local row idx
+        local_row_idx = bisect.bisect_right(self.cum_starts.tolist(), start_pos)
+
+        # Get actual dataset index
+        ds_idx = self.valid_indices[local_row_idx]
+
+        text = self.dataset[ds_idx]['text']
+        byte_text = text.encode('utf-8')
+
+        # Local start within this text
+        prev_cum_starts = 0 if local_row_idx == 0 else self.cum_starts[local_row_idx - 1].item()
+        local_start = start_pos - prev_cum_starts
+
+        slice_bytes = byte_text[local_start:local_start + self.seq_len + 1]
+        tensor = torch.tensor(list(slice_bytes), dtype=torch.long)
+        return tensor[:-1], tensor[1:]  # X: [seq_len], Y: [seq_len] shifted
 
 
-seq_len = 256
-batch_size = 64
+# Custom collate to stack into [L, B]
+def collate_fn(batch):
+    X, Y = zip(*batch)
+    X = torch.stack(X).T  # [L, B]
+    Y = torch.stack(Y).T  # [L, B]
+    return X, Y
 
-use_bookcorpus = False
-train_dataset = ConcatByteSlices(seq_len=seq_len, split="train", use_bookcorpus=use_bookcorpus)
-val_dataset = ConcatByteSlices(seq_len=seq_len, split="val", use_bookcorpus=use_bookcorpus)
 
-train_dataloader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    collate_fn=collate_time_major,
-    drop_last=True,
-    num_workers=0  # <- no multiprocessing, simplest and reliable
-)
+# Usage example
+def get_dataloaders(batch_size=64, seq_len=512, num_workers=0,
+                    data_dir='data'):  # Set num_workers=0 to avoid multiprocessing issues if needed
+    # For train: 1000 batches → max_samples = 1000 * batch_size
+    train_max_samples = 1000 * batch_size
+    # For val: 100 batches → 100 * batch_size
+    val_max_samples = 100 * batch_size
 
-val_dataloader = DataLoader(
-    val_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    collate_fn=collate_time_major,
-    drop_last=False,
-    num_workers=0  # <- keep sync single-process loading
-)
+    train_ds = WikiTextDataset(data_dir=data_dir, split='train', seq_len=seq_len, max_samples=train_max_samples)
+    test_ds = WikiTextDataset(data_dir=data_dir, split='test', seq_len=seq_len, max_samples=val_max_samples)
+
+    # DataLoader with random sampling each time
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False,
+                              # Shuffle not needed since random in getitem
+                              num_workers=num_workers, collate_fn=collate_fn)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
+                             num_workers=num_workers, collate_fn=collate_fn)
+
+    return train_loader, test_loader
 
 
 # ---------------------- generation / sampling helpers (defined once) ----------------------
@@ -362,14 +336,6 @@ class SNNLM(snn.TTModule):
         return pred_byte
 
 
-model = SNNLM(256, 256, 10).to(device)
-print(f"\nNum params: {model.get_param_count():,}")
-print(f"num batches: {len(train_dataloader):,}")
-optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
-loss_fn = nn.CrossEntropyLoss()
-num_epochs = 1
-
-
 def add_byte_noise(tensor: torch.Tensor, p: float = 0, device=None) -> torch.Tensor:
     if p <= 0:
         return tensor
@@ -388,17 +354,36 @@ def add_byte_noise(tensor: torch.Tensor, p: float = 0, device=None) -> torch.Ten
     return noised
 
 
-train_losses = []
-optimizer_steps = 0
-timestep_losses = [0 for _ in range(seq_len)]
+if __name__ == '__main__':
+    batch_size = 64
+    seq_len = 512
+    train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=4)  # Try 4, if issues set 0
 
-for e in range(num_epochs):
+    model = SNNLM(256, 256, 10).to(device)
+    print(f"\nNum params: {model.get_param_count():,}")
+    print(f"num batches: {len(train_dataloader):,}")
+
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
+    loss_fn = nn.CrossEntropyLoss()
+
+    train_losses = []
+    optimizer_steps = 0
+    timestep_losses = [0 for _ in range(seq_len)]
+
+    total_steps = 1000  # Or len(train_dataloader) if you want to use it
+
+    # Get infinite iterator (but since len finite, will stop if using for enumerate, but we use range)
+    train_iter = iter(train_dataloader)
+
     # TRAIN
     model.train()
-    model.zero_states()
-    train_loss = 0
-    for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
-        x = x.to(device)  # [B, L]
+    for step in tqdm(range(total_steps), desc="Training"):
+        try:
+            x, y = next(train_iter)
+        except StopIteration:
+            train_iter = iter(train_dataloader)  # Reset if ends, but since len=1000, and steps=1000, no
+            x, y = next(train_iter)
+        x = x.to(device)  # [L, B]
         y = y.to(device)
         x = add_byte_noise(x)
 
@@ -409,26 +394,26 @@ for e in range(num_epochs):
         for t in range(x.size(0)):
             x_t, y_t = x[t], y[t]
             model_output = model(x_t)
-            loss = loss_fn(model_output, y_t)
-            running_loss = running_loss + loss
+            loss_t = loss_fn(model_output, y_t)
+            running_loss += loss_t
             timestep_losses[t] *= 0.95
-            timestep_losses[t] += loss.item() * 0.05
+            timestep_losses[t] += loss_t.item() * 0.05
 
         running_loss = running_loss / x.size(0)
-        train_losses.append(running_loss.item())
-        train_loss += train_losses[-1]
 
-        model.zero_grad()
+        optimizer.zero_grad()
         running_loss.backward()
         optimizer.step()
         optimizer_steps += 1
 
-        if (optimizer_steps) % 10 == 0 and optimizer_steps != 0:
+        train_losses.append(running_loss.item())
+
+        if optimizer_steps % 10 == 0 and optimizer_steps != 0:
             avg_loss = sum(train_losses[-10:]) / 10
             bits_per_byte = avg_loss / math.log(2)
             perplex = math.exp(avg_loss)
             plt.title(
-                f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:5f} | PERPLEXITY: {perplex:.1f}")
+                f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:.5f} | PERPLEXITY: {perplex:.1f}")
             plt.plot(train_losses)
             plt.show()
 
@@ -437,20 +422,20 @@ for e in range(num_epochs):
             plt.show()
 
         if (optimizer_steps + 1) % 100 == 0:
-            # sample config example: temperature + top_k
             sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
-            out_fn = os.path.join("data", f"generated_epoch_{e}.txt")
+            out_fn = os.path.join("data", f"generated_step_{optimizer_steps}.txt")
             save_generation_file(model, out_fn, gen_length=100, sample_config=sample_cfg)
             print(f"Saved generation to {out_fn}")
 
-    train_loss /= len(train_dataloader)
+    avg_train_loss = sum(train_losses) / len(train_losses)
 
     # ---------------------- TEST ----------------------
-    test_loss = 0
+    test_loss = 0.0
+    num_val_batches = len(val_dataloader)
     model.eval()
     with torch.no_grad():
-        for x, y in tqdm(val_dataloader, total=len(val_dataloader), desc=f"TEST - E{e}"):
-            x = x.to(device)  # [B, L]
+        for i, (x, y) in tqdm(enumerate(val_dataloader), total=num_val_batches, desc="Testing"):
+            x = x.to(device)  # [L, B]
             y = y.to(device)
 
             model.zero_states()
@@ -459,11 +444,12 @@ for e in range(num_epochs):
             for t in range(x.size(0)):
                 x_t, y_t = x[t], y[t]
                 model_output = model(x_t)
-                loss = loss_fn(model_output, y_t)
-                running_loss = running_loss + loss
+                loss_t = loss_fn(model_output, y_t)
+                running_loss += loss_t
 
             running_loss = running_loss / x.size(0)
             test_loss += running_loss.item()
-    test_loss /= len(val_dataloader)
 
-    print(f"TRAIN: {train_loss:.5f} | TEST: {test_loss:.5f}")
+    test_loss /= num_val_batches
+
+    print(f"TRAIN: {avg_train_loss:.5f} | TEST: {test_loss:.5f}")
