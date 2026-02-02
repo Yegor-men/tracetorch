@@ -20,6 +20,7 @@ class LIF(LeakyIntegrator):
 			dim: int = -1,
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
 			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
+			beta_ema: bool = DEFAULT_BETA["use_averaging"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
 			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
@@ -28,7 +29,7 @@ class LIF(LeakyIntegrator):
 		beta_setup = {
 			"value": beta,
 			"rank": beta_rank,
-			"use_averaging": False,
+			"use_averaging": beta_ema,
 			"learnable": learn_beta,
 		}
 

@@ -20,13 +20,14 @@ class SReadout(LeakyIntegrator):
             dim: int = -1,
             alpha_rank: Literal[0, 1] = DEFAULT_ALPHA["rank"],
             beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
+            alpha_ema: bool = DEFAULT_ALPHA["use_averaging"],
             learn_alpha: bool = DEFAULT_ALPHA["learnable"],
             learn_beta: bool = DEFAULT_BETA["learnable"],
     ):
         alpha_setup = {
             "value": alpha,
             "rank": alpha_rank,
-            "use_averaging": False,
+            "use_averaging": alpha_ema,
             "learnable": learn_alpha,
         }
 

@@ -28,6 +28,9 @@ class SRLIF(LeakyIntegrator):
 			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
 			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
+			alpha_ema: bool = DEFAULT_ALPHA["use_averaging"],
+			beta_ema: bool = DEFAULT_BETA["use_averaging"],
+			gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
 			learn_alpha: bool = DEFAULT_ALPHA["learnable"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
@@ -39,21 +42,21 @@ class SRLIF(LeakyIntegrator):
 		alpha_setup = {
 			"value": alpha,
 			"rank": alpha_rank,
-			"use_averaging": False,
+			"use_averaging": alpha_ema,
 			"learnable": learn_alpha,
 		}
 
 		beta_setup = {
 			"value": beta,
 			"rank": beta_rank,
-			"use_averaging": False,
+			"use_averaging": beta_ema,
 			"learnable": learn_beta,
 		}
 
 		gamma_setup = {
 			"value": gamma,
 			"rank": gamma_rank,
-			"use_averaging": False,
+			"use_averaging": gamma_ema,
 			"learnable": learn_gamma,
 		}
 

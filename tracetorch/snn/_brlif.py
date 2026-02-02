@@ -28,6 +28,8 @@ class BRLIF(LeakyIntegrator):
 			neg_threshold_rank: Literal[0, 1] = DEFAULT_NEG_THRESH["rank"],
 			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
+			beta_ema: bool = DEFAULT_BETA["use_averaging"],
+			gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
 			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
@@ -40,14 +42,14 @@ class BRLIF(LeakyIntegrator):
 		beta_setup = {
 			"value": beta,
 			"rank": beta_rank,
-			"use_averaging": False,
+			"use_averaging": beta_ema,
 			"learnable": learn_beta,
 		}
 
 		gamma_setup = {
 			"value": gamma,
 			"rank": gamma_rank,
-			"use_averaging": False,
+			"use_averaging": gamma_rank,
 			"learnable": learn_gamma,
 		}
 

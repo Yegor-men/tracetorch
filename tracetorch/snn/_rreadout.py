@@ -24,6 +24,7 @@ class RReadout(LeakyIntegrator):
             gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
             weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
             bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
+            gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
             learn_beta: bool = DEFAULT_BETA["learnable"],
             learn_gamma: bool = DEFAULT_GAMMA["learnable"],
             learn_weight: bool = DEFAULT_WEIGHT["learnable"],
@@ -39,7 +40,7 @@ class RReadout(LeakyIntegrator):
         gamma_setup = {
             "value": gamma,
             "rank": gamma_rank,
-            "use_averaging": False,
+            "use_averaging": gamma_ema,
             "learnable": learn_gamma,
         }
 

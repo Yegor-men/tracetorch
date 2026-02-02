@@ -26,6 +26,8 @@ class SRReadout(LeakyIntegrator):
             gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
             weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
             bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
+            alpha_ema: bool = DEFAULT_ALPHA["use_averaging"],
+            gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
             learn_alpha: bool = DEFAULT_ALPHA["learnable"],
             learn_beta: bool = DEFAULT_BETA["learnable"],
             learn_gamma: bool = DEFAULT_GAMMA["learnable"],
@@ -35,7 +37,7 @@ class SRReadout(LeakyIntegrator):
         alpha_setup = {
             "value": alpha,
             "rank": alpha_rank,
-            "use_averaging": False,
+            "use_averaging": alpha_ema,
             "learnable": learn_alpha,
         }
 
@@ -49,7 +51,7 @@ class SRReadout(LeakyIntegrator):
         gamma_setup = {
             "value": gamma,
             "rank": gamma_rank,
-            "use_averaging": False,
+            "use_averaging": gamma_ema,
             "learnable": learn_gamma,
         }
 
