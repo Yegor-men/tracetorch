@@ -1,3 +1,5 @@
+import copy
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -21,58 +23,50 @@ else:
 
 
 class WikiTextDataset(Dataset):
-    def __init__(self, data_dir='data', split='train', seq_len=512, max_samples=None):
+    def __init__(self, data_dir='data', split='train', seq_len=512):
         self.seq_len = seq_len
         self.split = split
-        self.max_samples = max_samples
         config_name = 'wikitext-103-raw-v1'
         ds = load_dataset('Salesforce/wikitext', config_name, cache_dir=data_dir)
-        hf_split = 'train' if split == 'train' else 'validation'  # Using validation as test
+        hf_split = 'train' if split == 'train' else 'validation'
         self.dataset = ds[hf_split]
 
-        # Compute lengths for valid rows
-        self.lengths = []
-        self.valid_indices = []
-        for i in tqdm(range(len(self.dataset)), desc=f"Computing byte lengths for {split}"):
+        # Pre-compute all valid (row_idx, start_offset) tuples
+        self.samples = []
+        for i in tqdm(range(len(self.dataset)), desc=f"Indexing {split} chunks"):
             text = self.dataset[i]['text']
+            # efficient length check without full decode (wikitext is ascii-ish, but utf-8 safe)
+            # strictly we should decode to be safe about byte boundaries, 
+            # but len(text.encode('utf-8')) is safer
             byte_len = len(text.encode('utf-8'))
+            
+            # We want patches of length seq_len + 1 (for input + target)
+            # We stride by seq_len (non-overlapping inputs)
+            # If a row is shorter than seq_len + 1, it's skipped.
             if byte_len >= self.seq_len + 1:
-                self.valid_indices.append(i)
-                self.lengths.append(byte_len)
+                # E.g. len=1025, seq=512. 
+                # start=0 -> 0..513 (valid)
+                # start=512 -> 512..1025 (valid)
+                # Range stops at byte_len - seq_len (inclusive if we want 1 byte target)
+                # The generator needs seq_len + 1 bytes total.
+                # So max start is: byte_len - (seq_len + 1)
+                for start in range(0, byte_len - self.seq_len, self.seq_len):
+                    self.samples.append((i, start))
 
-        if not self.lengths:
-            raise ValueError(f"No rows long enough for seq_len={self.seq_len} in {split}")
-
-        # Compute valid start counts per row (len - seq_len)
-        self.start_counts = [l - self.seq_len for l in self.lengths]  # Each >=1 since filtered
-        self.cum_starts = torch.cumsum(torch.tensor(self.start_counts), dim=0)
-        self.total_valid_starts = self.cum_starts[-1].item()
-        print(
-            f"Loaded {split} split with {len(self.valid_indices)} valid rows, total valid starts: {self.total_valid_starts}")
+        print(f"Loaded {split} split: {len(self.samples)} samples (chunks).")
 
     def __len__(self):
-        if self.max_samples is not None:
-            return self.max_samples
-        return 1000000  # Large for train, but limit via max_samples
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        # Random valid start position
-        start_pos = torch.randint(0, self.total_valid_starts, (1,)).item()
-
-        # Find local row idx
-        local_row_idx = bisect.bisect_right(self.cum_starts.tolist(), start_pos)
-
-        # Get actual dataset index
-        ds_idx = self.valid_indices[local_row_idx]
-
-        text = self.dataset[ds_idx]['text']
+        row_idx, start = self.samples[idx]
+        text = self.dataset[row_idx]['text']
         byte_text = text.encode('utf-8')
-
-        # Local start within this text
-        prev_cum_starts = 0 if local_row_idx == 0 else self.cum_starts[local_row_idx - 1].item()
-        local_start = start_pos - prev_cum_starts
-
-        slice_bytes = byte_text[local_start:local_start + self.seq_len + 1]
+        
+        # Slice the exact window
+        end = start + self.seq_len + 1
+        slice_bytes = byte_text[start:end]
+        
         tensor = torch.tensor(list(slice_bytes), dtype=torch.long)
         return tensor[:-1], tensor[1:]  # X: [seq_len], Y: [seq_len] shifted
 
@@ -86,20 +80,15 @@ def collate_fn(batch):
 
 
 # Usage example
-def get_dataloaders(batch_size=64, seq_len=512, num_workers=0,
-                    data_dir='data'):  # Set num_workers=0 to avoid multiprocessing issues if needed
-    # For train: 1000 batches → max_samples = 1000 * batch_size
-    train_max_samples = 1000 * batch_size
-    # For val: 100 batches → 100 * batch_size
-    val_max_samples = 100 * batch_size
+def get_dataloaders(batch_size=64, seq_len=512, num_workers=0, data_dir='data'):
+    # Train: full shuffle
+    train_ds = WikiTextDataset(data_dir=data_dir, split='train', seq_len=seq_len)
+    # Test: sequential is fine, or shuffle, doesn't matter much for eval
+    test_ds = WikiTextDataset(data_dir=data_dir, split='test', seq_len=seq_len)
 
-    train_ds = WikiTextDataset(data_dir=data_dir, split='train', seq_len=seq_len, max_samples=train_max_samples)
-    test_ds = WikiTextDataset(data_dir=data_dir, split='test', seq_len=seq_len, max_samples=val_max_samples)
-
-    # DataLoader with random sampling each time
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False,
-                              # Shuffle not needed since random in getitem
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, collate_fn=collate_fn)
+    
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
                              num_workers=num_workers, collate_fn=collate_fn)
 
@@ -224,9 +213,9 @@ def save_generation_file(model, out_path, gen_length=200, sample_config=None, ex
 
         if example_seeds is None:
             example_seeds = [
-                "To be, or not to be",
-                "Thrice the branded cat hath mewed",
-                "Shall I compare thee to a summer's day?"
+                "Skibidi Toilet (stylized as skibidi toilet) is an animated web series created by ",
+                "Walter Hartwell White, also known by his alias Heisenberg",
+                'Gustavo "Gus" Fring (Spanish pronunciation: [gusˈtaβo ˈfɾin]) is a fictional character portrayed by Giancarlo Esposito in the Breaking Bad crime drama franchise.'
             ]
 
         f.write("\n=== CUSTOM SEED EXAMPLES ===\n")
@@ -284,48 +273,43 @@ class ResidualSpike(snn.TTModule):
             alpha=torch.rand(hidden_dim),
             beta=torch.rand(hidden_dim),
             gamma=torch.rand(hidden_dim),
+            pos_threshold=torch.rand(hidden_dim),
+            neg_threshold=torch.rand(hidden_dim),
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.normal_(self.lin.weight, 0.0, 0.01)
         nn.init.zeros_(self.lin.bias)
 
     def forward(self, x):
-        return x + self.lin(self.lif(x))
+        spk = self.lif(x)
+        delta = self.lin(spk)
+        return x + delta
 
 
 class SNNLM(snn.TTModule):
     def __init__(
             self,
-            embed_dim: int,
             hidden_dim: int,
             num_layers: int,
-            emb_dropout: float = 0.05,
-            dec_dropout: float = 0.05,
+            emb_dropout: float = 0.1,
+            dec_dropout: float = 0.1,
     ):
         super().__init__()
 
         self.emb = nn.Sequential(
-            nn.Embedding(256, embed_dim),
+            nn.Embedding(256, hidden_dim),
             nn.Dropout(emb_dropout),
-            nn.Linear(embed_dim, hidden_dim)
         )
-        nn.init.xavier_uniform_(self.emb[-1].weight)
-        nn.init.zeros_(self.emb[-1].bias)
 
         layers = [ResidualSpike(hidden_dim) for _ in range(num_layers)]
         self.net = nn.Sequential(*layers)
 
         self.dec = nn.Sequential(
-            # snn.SRReadout(
-            #     hidden_dim,
-            #     alpha=torch.rand(hidden_dim) /2,
-            #     beta=torch.rand(hidden_dim) / 2,
-            #     gamma=torch.rand(hidden_dim) / 2,
-            # ),
-            # nn.Dropout(dec_dropout),
+            nn.Dropout(dec_dropout),
             nn.Linear(hidden_dim, 256)
         )
-        nn.init.xavier_uniform_(self.dec[-1].weight)
+        # nn.init.xavier_uniform_(self.dec[-1].weight)
+        nn.init.zeros_(self.dec[-1].weight)
         nn.init.zeros_(self.dec[-1].bias)
 
     def forward(self, x):
@@ -355,101 +339,141 @@ def add_byte_noise(tensor: torch.Tensor, p: float = 0, device=None) -> torch.Ten
 
 
 if __name__ == '__main__':
-    batch_size = 64
+    batch_size = 32
     seq_len = 512
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=4)  # Try 4, if issues set 0
 
-    model = SNNLM(256, 256, 10).to(device)
+    model = SNNLM(2048, 10).to(device)
+    # model.load_state_dict(torch.load("data/baseline_model_5200_step.pt"))
     print(f"\nNum params: {model.get_param_count():,}")
     print(f"num batches: {len(train_dataloader):,}")
 
-    optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
+    ema_model = copy.deepcopy(model)
+    ema_model.eval()
+    for param in ema_model.parameters():
+        param.requires_grad = False
+
+
+    @torch.no_grad()
+    def update_ema_model(model, ema_model, decay: float = 0.999):
+        for param, ema_param in zip(model.parameters(), ema_model.parameters()):
+            ema_param.data.mul_(decay).add_(param.data, alpha=1 - decay)
+
+
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
     loss_fn = nn.CrossEntropyLoss()
 
-    train_losses = []
     optimizer_steps = 0
-    timestep_losses = [0 for _ in range(seq_len)]
+    timestep_losses = [-math.log(1 / 256) for _ in range(seq_len)]
+    ema_timestep_losses = [-math.log(1 / 256) for _ in range(seq_len)]
 
-    total_steps = 1000  # Or len(train_dataloader) if you want to use it
+    total_steps = 10000 # Total optimizer steps desired (optional limit)
+    train_losses = []
+    ema_train_losses = []
 
-    # Get infinite iterator (but since len finite, will stop if using for enumerate, but we use range)
-    train_iter = iter(train_dataloader)
-
-    # TRAIN
-    model.train()
-    for step in tqdm(range(total_steps), desc="Training"):
-        try:
-            x, y = next(train_iter)
-        except StopIteration:
-            train_iter = iter(train_dataloader)  # Reset if ends, but since len=1000, and steps=1000, no
-            x, y = next(train_iter)
-        x = x.to(device)  # [L, B]
-        y = y.to(device)
-        x = add_byte_noise(x)
-
-        model.detach_states()
-        model.zero_states()
-        running_loss = 0.0
-
-        for t in range(x.size(0)):
-            x_t, y_t = x[t], y[t]
-            model_output = model(x_t)
-            loss_t = loss_fn(model_output, y_t)
-            running_loss += loss_t
-            timestep_losses[t] *= 0.95
-            timestep_losses[t] += loss_t.item() * 0.05
-
-        running_loss = running_loss / x.size(0)
-
-        optimizer.zero_grad()
-        running_loss.backward()
-        optimizer.step()
-        optimizer_steps += 1
-
-        train_losses.append(running_loss.item())
-
-        if optimizer_steps % 10 == 0 and optimizer_steps != 0:
-            avg_loss = sum(train_losses[-10:]) / 10
-            bits_per_byte = avg_loss / math.log(2)
-            perplex = math.exp(avg_loss)
-            plt.title(
-                f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:.5f} | PERPLEXITY: {perplex:.1f}")
-            plt.plot(train_losses)
-            plt.show()
-
-            plt.title(f"Timestep losses")
-            plt.plot(timestep_losses)
-            plt.show()
-
-        if (optimizer_steps + 1) % 100 == 0:
-            sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
-            out_fn = os.path.join("data", f"generated_step_{optimizer_steps}.txt")
-            save_generation_file(model, out_fn, gen_length=100, sample_config=sample_cfg)
-            print(f"Saved generation to {out_fn}")
-
-    avg_train_loss = sum(train_losses) / len(train_losses)
-
-    # ---------------------- TEST ----------------------
-    test_loss = 0.0
-    num_val_batches = len(val_dataloader)
-    model.eval()
-    with torch.no_grad():
-        for i, (x, y) in tqdm(enumerate(val_dataloader), total=num_val_batches, desc="Testing"):
+    num_epochs = 100 # Just set high, we control via steps
+    
+    print("Starting training loop...")
+    
+    for e in range(num_epochs):
+        model.train()
+        
+        # Enumerate the full dataloader
+        for batch_idx, (x, y) in enumerate(tqdm(train_dataloader, desc=f"Epoch {e}")):
             x = x.to(device)  # [L, B]
             y = y.to(device)
+            x = add_byte_noise(x)
 
+            model.detach_states()
             model.zero_states()
             running_loss = 0.0
+            ema_running_loss = 0.0
 
             for t in range(x.size(0)):
                 x_t, y_t = x[t], y[t]
                 model_output = model(x_t)
                 loss_t = loss_fn(model_output, y_t)
                 running_loss += loss_t
+                timestep_losses[t] *= 0.95
+                timestep_losses[t] += loss_t.item() * 0.05
+
+                with torch.no_grad():
+                    ema_model_output = ema_model(x_t)
+                    ema_loss_t = loss_fn(ema_model_output, y_t)
+                    ema_running_loss += ema_loss_t
+                    ema_timestep_losses[t] *= 0.95
+                    ema_timestep_losses[t] += ema_loss_t.item() * 0.05
 
             running_loss = running_loss / x.size(0)
-            test_loss += running_loss.item()
+            with torch.no_grad():
+                ema_running_loss = ema_running_loss / x.size(0)
 
-    test_loss /= num_val_batches
+            optimizer.zero_grad()
+            running_loss.backward()
+            optimizer.step()
+            optimizer_steps += 1
+            update_ema_model(model, ema_model)
 
-    print(f"TRAIN: {avg_train_loss:.5f} | TEST: {test_loss:.5f}")
+            train_losses.append(running_loss.item())
+            ema_train_losses.append(ema_running_loss.item())
+
+            # ---------------------- LOGGING & VAL EVERY 1000 STEPS ----------------------
+            if optimizer_steps % 1000 == 0:
+                # 1. Plotting
+                avg_loss = sum(train_losses[-1000:]) / 1000
+                bits_per_byte = avg_loss / math.log(2)
+                perplex = math.exp(avg_loss)
+                print(f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:.5f} | PPL: {perplex:.1f}")
+                
+                # Optional: Show plot
+                # plt.title(f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:.5f}")
+                # plt.plot(train_losses, label="base")
+                # plt.show()
+
+                # 2. Generation & Checkpoint
+                sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
+                out_fn = os.path.join("data", f"generated_step_{optimizer_steps}.txt")
+                save_generation_file(model, out_fn, gen_length=500, sample_config=sample_cfg)
+
+                model_path = os.path.join("data", f"model_step_{optimizer_steps}.pt")
+                torch.save(ema_model.state_dict(), model_path)
+                print(f"Saved checkpoint to {model_path}")
+
+                # 3. Validation Loop
+                print("Running validation...")
+                ema_model.eval()
+                val_loss = 0.0
+                val_batches = 0
+                
+                with torch.no_grad():
+                    # Limit validation to avoid taking forever if dataset is huge, 
+                    # or iterate full test_loader if desired. 
+                    # WikiText test is small enough to run fully (~100 batches depending on BS).
+                    for i, (vx, vy) in enumerate(tqdm(val_dataloader, desc="Validation")):
+                        vx = vx.to(device)
+                        vy = vy.to(device)
+                        
+                        # IMPORTANT: Zero states for validation batches
+                        ema_model.zero_states() 
+                        
+                        v_running_loss = 0.0
+                        for t in range(vx.size(0)):
+                            vx_t, vy_t = vx[t], vy[t]
+                            # Use EMA model for validation!
+                            v_out = ema_model(vx_t) 
+                            v_loss = loss_fn(v_out, vy_t)
+                            v_running_loss += v_loss
+                        
+                        v_running_loss /= vx.size(0)
+                        val_loss += v_running_loss.item()
+                        val_batches += 1
+                
+                val_loss /= val_batches if val_batches > 0 else 1
+                val_bpb = val_loss / math.log(2)
+                print(f"VALIDATION | Loss: {val_loss:.5f} | BPB: {val_bpb:.5f}")
+                
+                # Reset to train mode for next steps
+                model.train()
+
+        # End of epoch
+        print(f"Completed Epoch {e}")
