@@ -23,60 +23,62 @@ else:
 
 
 class WikiTextDataset(Dataset):
-    def __init__(self, data_dir='data', split='train', seq_len=512, max_samples=None):
+    def __init__(self, data_dir='data', split='train', seq_len=512):
         self.seq_len = seq_len
         self.split = split
-        self.max_samples = max_samples
         config_name = 'wikitext-103-raw-v1'
         ds = load_dataset('Salesforce/wikitext', config_name, cache_dir=data_dir)
-        hf_split = 'train' if split == 'train' else 'validation'  # Using validation as test
+        hf_split = 'train' if split == 'train' else 'validation'
         self.dataset = ds[hf_split]
 
-        # Compute lengths for valid rows
-        self.lengths = []
-        self.valid_indices = []
-        for i in tqdm(range(len(self.dataset)), desc=f"Computing byte lengths for {split}"):
+        # Pre-compute all valid (row_idx, start_offset) tuples
+        self.samples = []
+        for i in tqdm(range(len(self.dataset)), desc=f"Indexing {split} chunks"):
             text = self.dataset[i]['text']
+
+            # Efficient length check. 
+            # Note: We use seq_len + 1 because we need context + target (shifted by 1)
             byte_len = len(text.encode('utf-8'))
+
+            # We want patches of length seq_len + 1.
+            # Stride by seq_len so there is no overlap between X inputs of consecutive samples
             if byte_len >= self.seq_len + 1:
-                self.valid_indices.append(i)
-                self.lengths.append(byte_len)
+                # Range max is inclusive of data, so exclusive limit is byte_len - seq_len
+                for start in range(0, byte_len - self.seq_len, self.seq_len):
+                    self.samples.append((i, start))
 
-        if not self.lengths:
-            raise ValueError(f"No rows long enough for seq_len={self.seq_len} in {split}")
-
-        # Compute valid start counts per row (len - seq_len)
-        self.start_counts = [l - self.seq_len for l in self.lengths]  # Each >=1 since filtered
-        self.cum_starts = torch.cumsum(torch.tensor(self.start_counts), dim=0)
-        self.total_valid_starts = self.cum_starts[-1].item()
-        print(
-            f"Loaded {split} split with {len(self.valid_indices)} valid rows, total valid starts: {self.total_valid_starts}")
+        print(f"Loaded {split} split: {len(self.samples)} samples (chunks).")
 
     def __len__(self):
-        if self.max_samples is not None:
-            return self.max_samples
-        return 1000000  # Large for train, but limit via max_samples
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        # Random valid start position
-        start_pos = torch.randint(0, self.total_valid_starts, (1,)).item()
-
-        # Find local row idx
-        local_row_idx = bisect.bisect_right(self.cum_starts.tolist(), start_pos)
-
-        # Get actual dataset index
-        ds_idx = self.valid_indices[local_row_idx]
-
-        text = self.dataset[ds_idx]['text']
+        row_idx, start = self.samples[idx]
+        text = self.dataset[row_idx]['text']
         byte_text = text.encode('utf-8')
 
-        # Local start within this text
-        prev_cum_starts = 0 if local_row_idx == 0 else self.cum_starts[local_row_idx - 1].item()
-        local_start = start_pos - prev_cum_starts
+        # Slice the exact window of seq_len + 1 bytes
+        end = start + self.seq_len + 1
+        slice_bytes = byte_text[start:end]
 
-        slice_bytes = byte_text[local_start:local_start + self.seq_len + 1]
         tensor = torch.tensor(list(slice_bytes), dtype=torch.long)
         return tensor[:-1], tensor[1:]  # X: [seq_len], Y: [seq_len] shifted
+
+
+# Usage example
+def get_dataloaders(batch_size=64, seq_len=512, num_workers=0, data_dir='data'):
+    train_ds = WikiTextDataset(data_dir=data_dir, split='train', seq_len=seq_len)
+    test_ds = WikiTextDataset(data_dir=data_dir, split='test', seq_len=seq_len)
+
+    # Train: Shuffle=True ensures random order of batches every epoch
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, collate_fn=collate_fn)
+
+    # Test: Sequential is fine
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
+                             num_workers=num_workers, collate_fn=collate_fn)
+
+    return train_loader, test_loader
 
 
 # Custom collate to stack into [L, B]
@@ -85,27 +87,6 @@ def collate_fn(batch):
     X = torch.stack(X).T  # [L, B]
     Y = torch.stack(Y).T  # [L, B]
     return X, Y
-
-
-# Usage example
-def get_dataloaders(batch_size=64, seq_len=512, num_workers=0,
-                    data_dir='data'):  # Set num_workers=0 to avoid multiprocessing issues if needed
-    # For train: 1000 batches → max_samples = 1000 * batch_size
-    train_max_samples = 1000 * batch_size
-    # For val: 100 batches → 100 * batch_size
-    val_max_samples = 100 * batch_size
-
-    train_ds = WikiTextDataset(data_dir=data_dir, split='train', seq_len=seq_len, max_samples=train_max_samples)
-    test_ds = WikiTextDataset(data_dir=data_dir, split='test', seq_len=seq_len, max_samples=val_max_samples)
-
-    # DataLoader with random sampling each time
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False,
-                              # Shuffle not needed since random in getitem
-                              num_workers=num_workers, collate_fn=collate_fn)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=num_workers, collate_fn=collate_fn)
-
-    return train_loader, test_loader
 
 
 # ---------------------- generation / sampling helpers (defined once) ----------------------
@@ -383,20 +364,15 @@ if __name__ == '__main__':
     total_steps = 1000  # Or len(train_dataloader) if you want to use it
     train_losses = []
     ema_train_losses = []
+    val_losses = []
 
     num_epochs = 10
     for e in range(num_epochs):
-        # Get infinite iterator (but since len finite, will stop if using for enumerate, but we use range)
-        train_iter = iter(train_dataloader)
 
         # TRAIN
         model.train()
-        for step in tqdm(range(total_steps), desc=f"Training - E{e}"):
-            try:
-                x, y = next(train_iter)
-            except StopIteration:
-                train_iter = iter(train_dataloader)  # Reset if ends, but since len=1000, and steps=1000, no
-                x, y = next(train_iter)
+        ema_model.eval()
+        for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
             x = x.to(device)  # [L, B]
             y = y.to(device)
             x = add_byte_noise(x)
@@ -452,38 +428,40 @@ if __name__ == '__main__':
                 plt.show()
 
             if optimizer_steps % 100 == 0:
+                val_loss = 0.0
+                ema_model.eval()
+                with torch.no_grad():
+                    for j, (x, y) in tqdm(enumerate(val_dataloader), total=len(val_dataloader), desc="VAL"):
+                        x = x.to(device)  # [L, B]
+                        y = y.to(device)
+
+                        ema_model.zero_states()
+                        running_loss = 0.0
+
+                        for t in range(x.size(0)):
+                            x_t, y_t = x[t], y[t]
+                            model_output = ema_model(x_t)
+                            loss_t = loss_fn(model_output, y_t)
+                            running_loss += loss_t
+
+                        running_loss = running_loss / x.size(0)
+                        val_loss += running_loss.item()
+
+                val_loss /= len(val_dataloader)
+                val_losses.append(val_loss)
+
+                plt.title(f"Validation loss")
+                plt.plot(val_losses, label="val")
+                plt.legend()
+                plt.show()
+
                 sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
-                out_fn = os.path.join("data", f"generated_step_{optimizer_steps}.txt")
-                save_generation_file(model, out_fn, gen_length=500, sample_config=sample_cfg)
+                out_fn = os.path.join("samples", f"generated_step_{optimizer_steps}.txt")
+                save_generation_file(ema_model, out_fn, gen_length=500, sample_config=sample_cfg)
                 print(f"Saved generation to {out_fn}")
 
-                model_path = os.path.join("data", f"model_step_{optimizer_steps}.pt")
+                model_path = os.path.join("checkpoints", f"model_step_{optimizer_steps}.pt")
                 torch.save(ema_model.state_dict(), model_path)
                 print(f"Saved model checkpoint to {model_path}")
 
         avg_train_loss = sum(train_losses) / len(train_losses)
-
-        # ---------------------- TEST ----------------------
-        test_loss = 0.0
-        num_val_batches = len(val_dataloader)
-        ema_model.eval()
-        with torch.no_grad():
-            for i, (x, y) in tqdm(enumerate(val_dataloader), total=num_val_batches, desc="Testing"):
-                x = x.to(device)  # [L, B]
-                y = y.to(device)
-
-                ema_model.zero_states()
-                running_loss = 0.0
-
-                for t in range(x.size(0)):
-                    x_t, y_t = x[t], y[t]
-                    model_output = ema_model(x_t)
-                    loss_t = loss_fn(model_output, y_t)
-                    running_loss += loss_t
-
-                running_loss = running_loss / x.size(0)
-                test_loss += running_loss.item()
-
-        test_loss /= num_val_batches
-
-        print(f"TRAIN: {avg_train_loss:.5f} | TEST: {test_loss:.5f}")

@@ -1,4 +1,6 @@
 **/data/
+**/checkpoints/
+**/samples/
 docs/build/
 
 # Distribution / packaging
