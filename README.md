@@ -1,7 +1,7 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.6.0-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.6.1-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -10,15 +10,16 @@ A strict, ergonomic, and powerful Spiking Neural Network (SNN) library for PyTor
 traceTorch is bult around a single, highly compositional neuron superclass, replacing the restrictive "layer zoo" of
 countless disjoint neuron types with the `LeakyIntegrator`. This design encapsulates a massive range of SNN dynamics:
 
-- synaptic and recurrent filtering
-- rank-based parameter scoping for scalar, per-neuron or matrix weights
-- optional Exponential Moving Average (EMA) on any hidden state
-- arbitrary recurrence routing to any hidden state
-- flexible polarity for spike outputs: positive and/or negative
+- Flexible polarity for spike outputs: positive and/or negative (or none at all, thus creating a readout layer)
+- Optional synaptic and recurrent signal accumulation
+- Rank-based parameter scoping for scalar, per-neuron or matrix weights
+- Optional Exponential Moving Average (EMA) on any hidden state
 
 All into declarative configuration on one class. By abstracting this complexity, traceTorch provides both the robust
 simplicity required for fast prototyping via familiar wrappers (`LIF`, `RLIF`, `SLIF`, `Readout`, etc.) and the
-unprecedented flexibility required for real research.
+unprecedented flexibility required for real research. In total, traceTorch presents a total of 12 easy to use layer
+types: `LIF`, `BLIF`, `SLIF`, `RLIF`, `BSLIF`, `BRLIF`, `SRLIF`, `BSRLIF`, `Readout`, `SReadout`, `RReadout`,
+`SRReadout`; with an API simple enough that you can add more with little effort.
 
 ## Why traceTorch?
 
@@ -32,11 +33,12 @@ capabilities, traceTorch follows a different philosophy, revolving around ergono
   entire model uses, no matter how deeply hidden they are. In a similar style, `.detach_states()` detaches the states
   from the current computation graph.
 - **Lazy Initialization:** Hidden states are initialized as `None` and allocated dynamically based on the input shape.
-  This completely eliminates "Batch Size Mismatch" errors during inference.
+  This completely eliminates "Batch Size Mismatch" errors during training and inference.
 - **Dimension Agnostic:** Whether you are working with `[Time, Batch, Features]` or `[Batch, Channels, Height, Width]`
   tensors, layers _just_ work. Change a single `dim` argument during layer initialization to indicate the target
   dimension the layer acts on. Defaults to `-1` for MLP, `-3` would work for CNN (channels are 3rd last in
-  `[B, C, H, W]` or `[C, H, W]`).
+  `[B, C, H, W]` or `[C, H, W]`). The tensors are automatically move the target dimension to the correct index so that
+  the layers work.
 - **Smooth Constraints:** Parameters like decays and thresholds are constrained via Sigmoid and Softplus respectively.
   No hard clamping, meaning that gradients flow smoothly and accurately everywhere.
 - **Rank Based Parameters:** Instead of messy flags like `*_is_vector` or `all_to_all`, traceTorch uses a single
@@ -45,12 +47,14 @@ capabilities, traceTorch follows a different philosophy, revolving around ergono
 
 ## Installation
 
-traceTorch is a PyPI library found [here](https://pypi.org/project/tracetorch/). Requirements are listed in
-`requirements.txt`.
+traceTorch is a PyPI library found [here](https://pypi.org/project/tracetorch/). Requirements for the library are listed
+in `requirements.txt`.
 
 ```bash
 pip install tracetorch
 ```
+
+Note: example code may rely on other libraries, they will be listed in the respective directory for the example.
 
 ## Quick Start
 
@@ -69,23 +73,23 @@ from tracetorch import snn
 
 
 class ConvSNN(snn.TTModule):
-	def __init__(self):
-		super().__init__()
-		self.net = nn.Sequential(
-			nn.Conv2d(1, 32, 3),
-			# dim=-3 tells the layer that the 3rd-to-last dimension is the channel dim.
-			# This works for (B, C, H, W) AND unbatched (C, H, W) inputs automatically.
-			snn.LIF(num_neurons=32, beta=0.9, dim=-3),
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 32, 3),
+            # dim=-3 tells the layer that the 3rd-to-last dimension is the channel dim.
+            # This works for (B, C, H, W) AND unbatched (C, H, W) inputs automatically.
+            snn.LIF(num_neurons=32, beta=0.9, dim=-3),
 
-			nn.Flatten(),
-			nn.Linear(32 * 26 * 26, 10),
+            nn.Flatten(),
+            nn.Linear(32 * 26 * 26, 10),
 
-			# Readout layer with learnable scalar decay
-			snn.Readout(num_neurons=10, beta=0.8, beta_rank=0)
-		)
+            # Readout layer with learnable scalar decay
+            snn.Readout(num_neurons=10, beta=0.8, beta_rank=0)
+        )
 
-	def forward(self, x):
-		return self.net(x)
+    def forward(self, x):
+        return self.net(x)
 ```
 
 ### 2. The Training Loop
@@ -95,31 +99,31 @@ hidden states to `None`, or call `.detach_states()` to detach the current hidden
 online learning).
 
 ```python
-model = ConvSNN().cuda()
-optimizer = torch.optim.AdamW(model.parameters(), lr=0.005)
-loss_fn = tt.loss.soft_cross_entropy  # Handles non-onehot targets gracefully
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = ConvSNN().to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+loss_fn = tt.loss.soft_cross_entropy  # Handles non-onehot probability distribution targets gracefully
 
 # Training Step
-for x, y in loader:
-	x, y = x.cuda(), y.cuda()
-	model.train()
+for x, y in dataloader:
+    x, y = x.to(device), y.to(device)
+    model.train()
 
-	# Time loop
-	spikes = []
-	for step in range(num_timesteps):
-		# Just pass x. No state tuples to manage.
-		spikes.append(model(x))
+    model.zero_states()  # Crucial: Reset hidden states for the batch
 
-	# Stack output and compute loss
-	output = torch.stack(spikes)
-	loss = loss_fn(output.mean(0), y)  # Rate coding example
+    # Time loop
+    spikes = []
+    for step in range(num_timesteps):
+        # Just pass x. No state tuples to manage.
+        spikes.append(model(x))
 
-	loss.backward()
-	optimizer.step()
-	optimizer.zero_grad()
+    # Stack output and compute loss
+    output = torch.stack(spikes)
+    loss = loss_fn(output.mean(0), y)  # Rate coding example
 
-	# Crucial: Reset hidden states for the next batch
-	model.zero_states() 
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 ```
 
 ## Documentation
