@@ -1,6 +1,7 @@
 **/data/
 **/checkpoints/
 **/samples/
+**/tensorboard/
 docs/build/
 
 # Distribution / packaging

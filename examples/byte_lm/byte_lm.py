@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
 import bisect
+from torch.utils.tensorboard import SummaryWriter
+import torch.optim as optim
+from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 
 # ---------------------- basic config ----------------------
 torch.manual_seed(0)
@@ -333,12 +336,33 @@ def add_byte_noise(tensor: torch.Tensor, p: float = 0, device=None) -> torch.Ten
 
 
 if __name__ == '__main__':
+    import subprocess
+    import webbrowser
+    import time
+    import atexit
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = f'tensorboard/byte_lm_{timestamp}'
+    writer = SummaryWriter(log_dir=log_dir)
+    subprocess.Popen(['tensorboard', '--logdir', 'tensorboard/', '--port', '6006'])
+    time.sleep(2)  # Give TensorBoard time to start
+    webbrowser.open('http://localhost:6006')
+
+
+    def cleanup():
+        writer.flush()
+        writer.close()
+
+
+    atexit.register(cleanup)
+
     batch_size = 32
     seq_len = 512
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=4)  # Try 4, if issues set 0
 
     model = SNNLM(2048, 10).to(device)
-    # model.load_state_dict(torch.load("data/baseline_model_5200_step.pt"))
+    model.load_state_dict(torch.load("checkpoints/baseline_model_step_11800.pt"))
     print(f"\nNum params: {model.get_param_count():,}")
     print(f"num batches: {len(train_dataloader):,}")
 
@@ -356,17 +380,31 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
     loss_fn = nn.CrossEntropyLoss()
-
     optimizer_steps = 0
-    timestep_losses = [-math.log(1 / 256) for _ in range(seq_len)]
-    ema_timestep_losses = [-math.log(1 / 256) for _ in range(seq_len)]
-
-    total_steps = 1000  # Or len(train_dataloader) if you want to use it
-    train_losses = []
-    ema_train_losses = []
-    val_losses = []
-
     num_epochs = 10
+
+    total_steps = num_epochs * len(train_dataloader)
+    warmup_steps = 1000
+    cosine_steps = total_steps - warmup_steps
+    warmup_scheduler = LinearLR(
+        optimizer,
+        start_factor=0.01,  # start at 1% of base_lr
+        end_factor=1.0,
+        total_iters=warmup_steps
+    )
+
+    cosine_scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=cosine_steps,  # full cosine over remaining steps
+        eta_min=1e-6  # or 1e-5, very small floor
+    )
+
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[warmup_steps]
+    )
+
     for e in range(num_epochs):
 
         # TRAIN
@@ -380,52 +418,32 @@ if __name__ == '__main__':
             model.detach_states()
             model.zero_states()
             running_loss = 0.0
-            ema_running_loss = 0.0
 
             for t in range(x.size(0)):
                 x_t, y_t = x[t], y[t]
                 model_output = model(x_t)
                 loss_t = loss_fn(model_output, y_t)
                 running_loss += loss_t
-                timestep_losses[t] *= 0.95
-                timestep_losses[t] += loss_t.item() * 0.05
-
-                with torch.no_grad():
-                    ema_model_output = ema_model(x_t)
-                    ema_loss_t = loss_fn(ema_model_output, y_t)
-                    ema_running_loss += ema_loss_t
-                    ema_timestep_losses[t] *= 0.95
-                    ema_timestep_losses[t] += ema_loss_t.item() * 0.05
 
             running_loss = running_loss / x.size(0)
-            with torch.no_grad():
-                ema_running_loss = ema_running_loss / x.size(0)
+
+            current_lr = optimizer.param_groups[0]["lr"]
+            writer.add_scalar("learning_rate", current_lr, optimizer_steps)
 
             optimizer.zero_grad()
             running_loss.backward()
             optimizer.step()
+            scheduler.step()
             optimizer_steps += 1
             update_ema_model(model, ema_model)
 
-            train_losses.append(running_loss.item())
-            ema_train_losses.append(ema_running_loss.item())
+            train_loss = running_loss.item()
+            train_bpb = train_loss / math.log(2)
+            train_ppl = math.exp(train_loss)
 
-            if optimizer_steps % 10 == 0 and optimizer_steps != 0:
-                avg_loss = sum(train_losses[-10:]) / 10
-                bits_per_byte = avg_loss / math.log(2)
-                perplex = math.exp(avg_loss)
-                plt.title(
-                    f"STEP: {optimizer_steps:,} | LOSS: {avg_loss:.5f} | BPB: {bits_per_byte:.5f} | PPL: {perplex:.1f}")
-                plt.plot(train_losses, label="base")
-                plt.plot(ema_train_losses, label="ema")
-                plt.legend()
-                plt.show()
-
-                plt.title(f"Timestep losses")
-                plt.plot(timestep_losses, label="base")
-                plt.plot(ema_timestep_losses, label="ema")
-                plt.legend()
-                plt.show()
+            writer.add_scalars("loss", {"base": train_loss}, optimizer_steps)
+            writer.add_scalars("bpb", {"base": train_bpb}, optimizer_steps)
+            writer.add_scalars("ppl", {"base": train_ppl}, optimizer_steps)
 
             if optimizer_steps % 100 == 0:
                 val_loss = 0.0
@@ -448,12 +466,12 @@ if __name__ == '__main__':
                         val_loss += running_loss.item()
 
                 val_loss /= len(val_dataloader)
-                val_losses.append(val_loss)
+                val_bpb = val_loss / math.log(2)
+                val_ppl = math.exp(val_loss)
 
-                plt.title(f"Validation loss")
-                plt.plot(val_losses, label="val")
-                plt.legend()
-                plt.show()
+                writer.add_scalars("loss", {"ema": val_loss}, optimizer_steps)
+                writer.add_scalars("bpb", {"ema": val_bpb}, optimizer_steps)
+                writer.add_scalars("ppl", {"ema": val_ppl}, optimizer_steps)
 
                 sample_cfg = {"temperature": 1.0, "top_k": 10, "top_p": 0.95}
                 out_fn = os.path.join("samples", f"generated_step_{optimizer_steps}.txt")
@@ -465,3 +483,5 @@ if __name__ == '__main__':
                 print(f"Saved model checkpoint to {model_path}")
 
         avg_train_loss = sum(train_losses) / len(train_losses)
+
+    writer.close()
