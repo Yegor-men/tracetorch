@@ -15,6 +15,7 @@ import bisect
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
+from safetensors.torch import save_file, load_file
 
 # ---------------------- basic config ----------------------
 torch.manual_seed(0)
@@ -362,7 +363,7 @@ if __name__ == '__main__':
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=4)  # Try 4, if issues set 0
 
     model = SNNLM(2048, 10).to(device)
-    model.load_state_dict(torch.load("checkpoints/baseline_model_step_11800.pt"))
+    model.load_state_dict(load_file("checkpoints/model_step_100.safetensors"))
     print(f"\nNum params: {model.get_param_count():,}")
     print(f"num batches: {len(train_dataloader):,}")
 
@@ -478,10 +479,8 @@ if __name__ == '__main__':
                 save_generation_file(ema_model, out_fn, gen_length=500, sample_config=sample_cfg)
                 print(f"Saved generation to {out_fn}")
 
-                model_path = os.path.join("checkpoints", f"model_step_{optimizer_steps}.pt")
-                torch.save(ema_model.state_dict(), model_path)
+                model_path = os.path.join("checkpoints", f"model_step_{optimizer_steps}.safetensors")
+                save_file(ema_model.state_dict(), model_path)
                 print(f"Saved model checkpoint to {model_path}")
-
-        avg_train_loss = sum(train_losses) / len(train_losses)
 
     writer.close()
