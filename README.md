@@ -1,7 +1,7 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.5.2-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.6.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
