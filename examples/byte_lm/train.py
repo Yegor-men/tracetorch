@@ -140,7 +140,7 @@ if __name__ == '__main__':
     atexit.register(cleanup)
 
     batch_size = 16
-    minibatch_size = 4
+    minibatch_size = 8
     seq_len = 1024
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=0)
 
@@ -169,7 +169,7 @@ if __name__ == '__main__':
     accum_steps = 0
     num_epochs = 1
 
-    total_steps = num_epochs * len(train_dataloader)
+    total_steps = num_epochs * len(train_dataloader) // minibatch_size
     warmup_steps = 1000
     cosine_steps = total_steps - warmup_steps
     warmup_scheduler = LinearLR(
