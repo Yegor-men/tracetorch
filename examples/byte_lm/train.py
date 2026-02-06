@@ -17,6 +17,9 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 from safetensors.torch import save_file, load_file
 
+use_amp = True
+amp_dtype = torch.bfloat16
+
 # ---------------------- basic config ----------------------
 torch.manual_seed(0)
 if torch.cuda.is_available():
@@ -124,7 +127,7 @@ if __name__ == '__main__':
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f'tensorboard/byte_lm_{timestamp}'
     writer = SummaryWriter(log_dir=log_dir)
-    subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
+    subprocess.Popen(['tensorboard', '--logdir', "tensorboard", '--port', '6006'])
     time.sleep(2)  # Give TensorBoard time to start
     webbrowser.open('http://localhost:6006')
 
@@ -136,14 +139,15 @@ if __name__ == '__main__':
 
     atexit.register(cleanup)
 
-    batch_size = 32
-    seq_len = 512
-    train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=4)  # Try 4, if issues set 0
+    batch_size = 16
+    minibatch_size = 4
+    seq_len = 1024
+    train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=0)
 
     from architecture import SNNLM
 
     model = SNNLM(2048, 10).to(device)
-    # model.load_state_dict(load_file("checkpoints/step_20300_e1_bpb1691.safetensors"))
+    model.load_state_dict(load_file("checkpoints/step_20300_e2_bpb15334.safetensors"))
     print(f"\nNum params: {model.get_param_count():,}")
     print(f"num batches: {len(train_dataloader):,}")
 
@@ -162,6 +166,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
     loss_fn = nn.CrossEntropyLoss()
     optimizer_steps = 0
+    accum_steps = 0
     num_epochs = 1
 
     total_steps = num_epochs * len(train_dataloader)
@@ -191,6 +196,7 @@ if __name__ == '__main__':
         # TRAIN
         model.train()
         ema_model.eval()
+        train_loss = 0.0
         for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
             x = x.to(device)  # [L, B]
             y = y.to(device)
@@ -207,26 +213,34 @@ if __name__ == '__main__':
                 running_loss += loss_t
 
             running_loss = running_loss / x.size(0)
+            scaled_loss = running_loss / minibatch_size
 
-            current_lr = optimizer.param_groups[0]["lr"]
-            writer.add_scalar("learning_rate", current_lr, optimizer_steps)
+            scaled_loss.backward()
+            accum_steps += 1
 
-            optimizer.zero_grad()
-            running_loss.backward()
-            optimizer.step()
-            scheduler.step()
-            optimizer_steps += 1
-            update_ema_model(model, ema_model)
+            train_loss += running_loss.item()
 
-            train_loss = running_loss.item()
-            train_bpb = train_loss / math.log(2)
-            train_ppl = math.exp(train_loss)
+            if accum_steps % minibatch_size == 0 and accum_steps != 0:
+                current_lr = optimizer.param_groups[0]["lr"]
+                writer.add_scalar("learning_rate", current_lr, optimizer_steps)
 
-            writer.add_scalars("loss", {"base": train_loss}, optimizer_steps)
-            writer.add_scalars("bpb", {"base": train_bpb}, optimizer_steps)
-            writer.add_scalars("ppl", {"base": train_ppl}, optimizer_steps)
+                optimizer.step()
+                scheduler.step()
+                optimizer_steps += 1
+                update_ema_model(model, ema_model)
+                optimizer.zero_grad()
 
-            if optimizer_steps % 100 == 0:
+                train_loss /= minibatch_size
+                train_bpb = train_loss / math.log(2)
+                train_ppl = math.exp(train_loss)
+
+                writer.add_scalars("loss", {"base": train_loss}, optimizer_steps)
+                writer.add_scalars("bpb", {"base": train_bpb}, optimizer_steps)
+                writer.add_scalars("ppl", {"base": train_ppl}, optimizer_steps)
+
+                train_loss = 0.0
+
+            if optimizer_steps % 100 == 0 and optimizer_steps != 0:
                 val_loss = 0.0
                 ema_model.eval()
                 with torch.no_grad():
