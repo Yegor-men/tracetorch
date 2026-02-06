@@ -93,10 +93,10 @@ def save_generation_file(model, out_path, gen_length, sample_cfg, device, exampl
     print(f"Wrote generation output to {out_path}")
 
 
-def sample(model, name: str, device, sample_cfg=None):
+def sample(model, device, out_path=None, sample_cfg=None, gen_length=1000):
     sample_cfg = {"temperature": 0.5, "top_k": 20, "top_p": 0.9} if sample_cfg is None else sample_cfg
-    out_path = os.path.join("samples", f"{name}.txt")
-    save_generation_file(model, out_path, gen_length=1000, sample_cfg=sample_cfg, device=device)
+    out_path = os.path.join("samples", "sample.txt") if out_path is None else out_path
+    save_generation_file(model, out_path, gen_length=gen_length, sample_cfg=sample_cfg, device=device)
 
 
 if __name__ == "__main__":
@@ -105,9 +105,10 @@ if __name__ == "__main__":
     from architecture import SNNLM
 
     model = SNNLM(2048, 10).to(device)
-    modelfile = "checkpoints/step_20300_e1_bpb1691.safetensors"
+    modelfile = "checkpoints/step_20300_e2_bpb15334.safetensors"
     model.load_state_dict(load_file(modelfile))
 
     model.eval()
     with torch.no_grad():
-        sample(model, "sample_gen", device)
+        filename = os.path.join("samples", "sample.txt")
+        sample(model, device, filename)
