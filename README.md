@@ -1,7 +1,7 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.6.1-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.7.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -48,13 +48,21 @@ capabilities, traceTorch follows a different philosophy, revolving around ergono
 ## Installation
 
 traceTorch is a PyPI library found [here](https://pypi.org/project/tracetorch/). Requirements for the library are listed
-in `requirements.txt`.
+in `requirements.txt`. Take note that examples found in `examples/` may have their own requirements, separate from the
+library requirements.
 
 ```bash
 pip install tracetorch
 ```
 
-Note: example code may rely on other libraries, they will be listed in the respective directory for the example.
+If you want to run the example code without installing the PyPI package, or alternatively want to edit the code
+yourself, you should install traceTorch as an editable install.
+
+```bash
+git clone https://github.com/Yegor-men/tracetorch
+cd tracetorch
+pip install -e .
+```
 
 ## Quick Start
 
