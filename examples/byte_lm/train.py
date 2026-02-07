@@ -140,14 +140,14 @@ if __name__ == '__main__':
     atexit.register(cleanup)
 
     batch_size = 16
-    minibatch_size = 8
+    minibatch_size = 1
     seq_len = 1024
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=0)
 
     from architecture import SNNLM
 
-    model = SNNLM(2048, 10).to(device)
-    model.load_state_dict(load_file("checkpoints/step_20300_e2_bpb15334.safetensors"))
+    model = SNNLM(1024, 10).to(device)
+    # model.load_state_dict(load_file("checkpoints/step_20300_e2_bpb15334.safetensors"))
     print(f"\nNum params: {model.get_param_count():,}")
     print(f"num batches: {len(train_dataloader):,}")
 
