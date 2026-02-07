@@ -49,7 +49,7 @@ class BRLIF(LeakyIntegrator):
 		gamma_setup = {
 			"value": gamma,
 			"rank": gamma_rank,
-			"use_averaging": gamma_rank,
+			"use_averaging": gamma_ema,
 			"learnable": learn_gamma,
 		}
 
@@ -70,14 +70,12 @@ class BRLIF(LeakyIntegrator):
 		weight_setup = {
 			"value": weight,
 			"rank": weight_rank,
-			"connect_to": "rec",
 			"learnable": learn_weight,
 		}
 
 		bias_setup = {
 			"value": bias,
 			"rank": bias_rank,
-			"connect_to": "rec",
 			"learnable": learn_bias,
 		}
 

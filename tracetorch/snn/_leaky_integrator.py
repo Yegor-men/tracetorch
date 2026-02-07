@@ -38,8 +38,8 @@ DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": Tr
 DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "use_averaging": True, "learnable": True}
 DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
 DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
-DEFAULT_WEIGHT = {"value": 0.0, "rank": 1, "connect_to": "rec", "learnable": True}
-DEFAULT_BIAS = {"value": 0.0, "rank": 1, "connect_to": "rec", "learnable": True}
+DEFAULT_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
+DEFAULT_BIAS = {"value": 0.0, "rank": 1, "learnable": True}
 
 
 class LeakyIntegrator(TTModule):
@@ -98,27 +98,16 @@ class LeakyIntegrator(TTModule):
         if self.use_weight:
             weight_cfg = {**DEFAULT_WEIGHT, **(weight_setup or {})}
             self._setup_matrix("weight", weight_cfg)
-            self.weight_connect = weight_cfg["connect_to"]
-            if self.weight_connect == "syn":
-                assert self.use_alpha, "weight wants to record to syn, but alpha decay isn't initialized"
-            if self.weight_connect == "rec":
-                assert self.use_gamma, "weight wants to record to syn, but gamma decay isn't initialized"
-            self.prev_output = None
+            assert self.use_gamma, "weight is applied on rec, but gamma is not initialized"
 
         self.use_bias = bias_setup is not None
         if self.use_bias:
             bias_cfg = {**DEFAULT_BIAS, **(bias_setup or {})}
             self._setup_vector("bias", bias_cfg)
-            self.bias_connect = bias_cfg["connect_to"]
-            if self.bias_connect == "syn":
-                assert self.use_alpha, "bias wants to record to syn, but alpha decay isn't initialized"
-            if self.bias_connect == "rec":
-                assert self.use_gamma, "bias wants to record to syn, but gamma decay isn't initialized"
 
-        # gamma should only be used if it's actually being recorded into
+        # gamma should only be initialized if we have a way of extracting from rec (weight)
         if self.use_gamma:
-            assert (self.use_weight and self.weight_connect == "rec") or (self.use_bias and self.bias_connect == "rec"), \
-                "gamma initialized, but never used by recurrence"
+            assert self.use_weight, "gamma initialized, but cannot be used as weight is not initialized"
 
     def zero_states(self):
         self.mem = None
@@ -126,8 +115,6 @@ class LeakyIntegrator(TTModule):
             self.syn = None
         if self.use_gamma:
             self.rec = None
-        if self.use_weight:
-            self.prev_output = None
 
     def detach_states(self):
         if self.mem is not None:
@@ -138,9 +125,6 @@ class LeakyIntegrator(TTModule):
         if self.use_gamma:
             if self.rec is not None:
                 self.rec = self.rec.detach()
-        if self.use_weight:
-            if self.prev_output is not None:
-                self.prev_output = self.prev_output.detach()
 
     def _register_tensor(self, name: str, tensor: torch.Tensor, learn: bool):
         if learn:
@@ -286,47 +270,22 @@ class LeakyIntegrator(TTModule):
         else:
             mem_delta = mem_delta + x_moved
 
-        # if we have weight, prev_output needs to be initialized
-        if self.use_weight:
-            if self.prev_output is None:
-                self.prev_output = torch.zeros_like(x)
-            prev_output_moved = self.prev_output.movedim(self.dim, -1)
-
         # if we have gamma, rec needs to be initialized
         if self.use_gamma:
             if self.rec is None:
                 self.rec = torch.zeros_like(x)
-            rec_moved = self.rec.movedim(self.dim, -1)
-            rec_delta = torch.zeros_like(rec_moved)
+            rec_moved = self.rec.movedim(self.dim, -1) * self.gamma  # decay rec to use the parameter
+            # if we have gamma, then we also have weight, thus we use it now to add to mem_delta
+            if self.weight_rank == 2:
+                mem_delta = mem_delta + rec_moved @ self.weight
+            else:
+                mem_delta = mem_delta + rec_moved * self.weight
+
+        # if we use bias, let's quickly add it to the mem_delta
+        if self.use_bias:
+            mem_delta = mem_delta + self.bias
 
         # ACTUAL CALCULATION LOGIC
-        if self.use_weight:
-            if self.weight_rank == 2:
-                delta_weight = prev_output_moved @ self.weight
-            else:
-                delta_weight = prev_output_moved * self.weight
-
-            if self.weight_connect == "mem":
-                mem_delta = mem_delta + delta_weight
-            if self.weight_connect == "syn":
-                syn_delta = syn_delta + delta_weight
-            if self.weight_connect == "rec":
-                rec_delta = rec_delta + delta_weight
-
-        if self.use_bias:
-            if self.bias_connect == "mem":
-                mem_delta = mem_delta + self.bias
-            if self.bias_connect == "syn":
-                syn_delta = syn_delta + self.bias
-            if self.bias_connect == "rec":
-                rec_delta = rec_delta + self.bias
-
-        if self.use_gamma:
-            if self.rec_is_ema:
-                rec_delta = rec_delta * (1 - self.gamma)
-            rec_moved = rec_moved * self.gamma + rec_delta
-            mem_delta = mem_delta + rec_delta
-            self.rec = rec_moved.movedim(-1, self.dim)
 
         if self.use_alpha:
             if self.syn_is_ema:
@@ -341,22 +300,27 @@ class LeakyIntegrator(TTModule):
         mem_moved = mem_moved * self.beta + mem_delta
 
         if self.use_pos_threshold or self.use_neg_threshold:
-            output = torch.zeros_like(mem_moved)
+            output_moved = torch.zeros_like(mem_moved)
             if self.use_pos_threshold:
                 pos_spikes = self.pos_surrogate(mem_moved - self.pos_threshold)
                 mem_moved = mem_moved - pos_spikes * self.pos_threshold
-                output = output + pos_spikes
+                output_moved = output_moved + pos_spikes
             if self.use_neg_threshold:
                 neg_spikes = -self.neg_surrogate(self.neg_threshold - mem_moved)  # self.neg_threshold is negative
                 mem_moved = mem_moved + neg_spikes * self.neg_threshold  # both are negative, create positive delta
-                output = output + neg_spikes
+                output_moved = output_moved + neg_spikes
         else:
-            output = mem_moved
+            output_moved = mem_moved
 
-        output = output.movedim(-1, self.dim)
+        output = output_moved.movedim(-1, self.dim)
         self.mem = mem_moved.movedim(-1, self.dim)
 
-        if self.use_weight:
-            self.prev_output = output
+        # If we use recurrence, we need to save the outputs into it
+        if self.use_gamma:
+            rec_delta = output_moved
+            if self.rec_is_ema:
+                rec_delta = rec_delta * (1 - self.gamma)
+            rec_moved = rec_moved + rec_delta
+            self.rec = rec_moved.movedim(-1, self.dim)
 
         return output

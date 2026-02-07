@@ -70,14 +70,12 @@ class SRLIF(LeakyIntegrator):
 		weight_setup = {
 			"value": weight,
 			"rank": weight_rank,
-			"connect_to": "rec",
 			"learnable": learn_weight,
 		}
 
 		bias_setup = {
 			"value": bias,
 			"rank": bias_rank,
-			"connect_to": "rec",
 			"learnable": learn_bias,
 		}
 
