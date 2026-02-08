@@ -64,7 +64,6 @@ class LeakyIntegrator(TTModule):
         # we assume that the user provides at least a partial config, then merge with default
         beta_cfg = {**DEFAULT_BETA, **(beta_setup or {})}
         self._setup_decay("beta", beta_cfg)
-        self.mem = None
         setattr(self, f"mem_is_ema", beta_cfg["use_averaging"])
 
         # OPTIONAL
@@ -72,14 +71,12 @@ class LeakyIntegrator(TTModule):
         if self.use_alpha:
             alpha_cfg = {**DEFAULT_ALPHA, **(alpha_setup or {})}
             self._setup_decay("alpha", alpha_cfg)
-            self.syn = None
             setattr(self, f"syn_is_ema", alpha_cfg["use_averaging"])
 
         self.use_gamma = gamma_setup is not None
         if self.use_gamma:
             gamma_cfg = {**DEFAULT_GAMMA, **(gamma_setup or {})}
             self._setup_decay("gamma", gamma_cfg)
-            self.rec = None
             setattr(self, f"rec_is_ema", gamma_cfg["use_averaging"])
 
         self.use_pos_threshold = pos_threshold_setup is not None
@@ -109,12 +106,15 @@ class LeakyIntegrator(TTModule):
         if self.use_gamma:
             assert self.use_weight, "gamma initialized, but cannot be used as weight is not initialized"
 
+        self.zero_states()
+
     def zero_states(self):
         self.mem = None
         if self.use_alpha:
             self.syn = None
         if self.use_gamma:
             self.rec = None
+            self.prev_output = None
 
     def detach_states(self):
         if self.mem is not None:
@@ -125,6 +125,8 @@ class LeakyIntegrator(TTModule):
         if self.use_gamma:
             if self.rec is not None:
                 self.rec = self.rec.detach()
+            if self.prev_output is not None:
+                self.prev_output = self.prev_output.detach()
 
     def _register_tensor(self, name: str, tensor: torch.Tensor, learn: bool):
         if learn:
@@ -270,23 +272,29 @@ class LeakyIntegrator(TTModule):
         else:
             mem_delta = mem_delta + x_moved
 
-        # if we have gamma, rec needs to be initialized
+        # if we have gamma, rec and prev_output needs to be initialized
         if self.use_gamma:
             if self.rec is None:
                 self.rec = torch.zeros_like(x)
-            rec_moved = self.rec.movedim(self.dim, -1) * self.gamma  # decay rec to use the parameter
-            # if we have gamma, then we also have weight, thus we use it now to add to mem_delta
+            if self.prev_output is None:
+                self.prev_output = torch.zeros_like(x)
+
+            rec_moved = self.rec.movedim(self.dim, -1)
+            rec_delta = self.prev_output.movedim(self.dim, -1)
+            if self.rec_is_ema:
+                rec_delta = rec_delta * (1 - self.gamma)
+            rec_moved = rec_moved * self.gamma + rec_delta
             if self.weight_rank == 2:
                 mem_delta = mem_delta + rec_moved @ self.weight
             else:
                 mem_delta = mem_delta + rec_moved * self.weight
+            self.rec = rec_moved.movedim(-1, self.dim)
 
         # if we use bias, let's quickly add it to the mem_delta
         if self.use_bias:
             mem_delta = mem_delta + self.bias
 
         # ACTUAL CALCULATION LOGIC
-
         if self.use_alpha:
             if self.syn_is_ema:
                 syn_delta = syn_delta * (1 - self.alpha)
@@ -315,12 +323,8 @@ class LeakyIntegrator(TTModule):
         output = output_moved.movedim(-1, self.dim)
         self.mem = mem_moved.movedim(-1, self.dim)
 
-        # If we use recurrence, we need to save the outputs into it
+        # If we use recurrence, we need to save prev_output
         if self.use_gamma:
-            rec_delta = output_moved
-            if self.rec_is_ema:
-                rec_delta = rec_delta * (1 - self.gamma)
-            rec_moved = rec_moved + rec_delta
-            self.rec = rec_moved.movedim(-1, self.dim)
+            self.prev_output = output
 
         return output
