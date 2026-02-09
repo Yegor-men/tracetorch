@@ -4,6 +4,8 @@ from ._leaky_integrator import DEFAULT_BETA
 from ._leaky_integrator import DEFAULT_GAMMA
 # from ._leaky_integrator import DEFAULT_POS_THRESH
 # from ._leaky_integrator import DEFAULT_NEG_THRESH
+# from ._leaky_integrator import DEFAULT_POS_SCALE
+# from ._leaky_integrator import DEFAULT_NEG_SCALE
 from ._leaky_integrator import DEFAULT_WEIGHT
 from ._leaky_integrator import DEFAULT_BIAS
 
@@ -73,8 +75,6 @@ class SRReadout(LeakyIntegrator):
             alpha_setup=alpha_setup,
             beta_setup=beta_setup,
             gamma_setup=gamma_setup,
-            pos_threshold_setup=None,
-            neg_threshold_setup=None,
             weight_setup=weight_setup,
             bias_setup=bias_setup,
         )

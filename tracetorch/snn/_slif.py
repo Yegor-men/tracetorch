@@ -4,6 +4,8 @@ from ._leaky_integrator import DEFAULT_BETA
 # from ._leaky_integrator import DEFAULT_GAMMA
 from ._leaky_integrator import DEFAULT_POS_THRESH
 # from ._leaky_integrator import DEFAULT_NEG_THRESH
+# from ._leaky_integrator import DEFAULT_POS_SCALE
+# from ._leaky_integrator import DEFAULT_NEG_SCALE
 # from ._leaky_integrator import DEFAULT_WEIGHT
 # from ._leaky_integrator import DEFAULT_BIAS
 
@@ -55,9 +57,5 @@ class SLIF(LeakyIntegrator):
             dim=dim,
             alpha_setup=alpha_setup,
             beta_setup=beta_setup,
-            gamma_setup=None,
             pos_threshold_setup=pos_threshold_setup,
-            neg_threshold_setup=None,
-            weight_setup=None,
-            bias_setup=None,
         )

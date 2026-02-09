@@ -19,17 +19,15 @@ class ThresholdConfig(TypedDict, total=False):
     learnable: bool
 
 
-class WeightConfig(TypedDict, total=False):
+class MatrixConfig(TypedDict, total=False):
     value: Union[float, torch.Tensor]
     rank: Literal[0, 1, 2]
-    connect_to: Literal["mem", "syn", "rec"]
     learnable: bool
 
 
-class BiasConfig(TypedDict, total=False):
+class VectorConfig(TypedDict, total=False):
     value: Union[float, torch.Tensor]
     rank: Literal[0, 1]
-    connect_to: Literal["mem", "syn", "rec"]
     learnable: bool
 
 
@@ -38,6 +36,8 @@ DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": Tr
 DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "use_averaging": True, "learnable": True}
 DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
 DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
+DEFAULT_POS_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
+DEFAULT_NEG_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
 DEFAULT_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "learnable": True}
 
@@ -52,9 +52,11 @@ class LeakyIntegrator(TTModule):
             beta_setup: DecayConfig = DEFAULT_BETA,
             gamma_setup: Optional[DecayConfig] = None,
             pos_threshold_setup: Optional[ThresholdConfig] = None,
+            pos_scale_setup: Optional[VectorConfig] = None,
             neg_threshold_setup: Optional[ThresholdConfig] = None,
-            weight_setup: Optional[WeightConfig] = None,
-            bias_setup: Optional[BiasConfig] = None,
+            neg_scale_setup: Optional[VectorConfig] = None,
+            weight_setup: Optional[MatrixConfig] = None,
+            bias_setup: Optional[VectorConfig] = None,
     ):
         super().__init__()
         self.num_neurons = int(num_neurons)
@@ -64,21 +66,22 @@ class LeakyIntegrator(TTModule):
         # we assume that the user provides at least a partial config, then merge with default
         beta_cfg = {**DEFAULT_BETA, **(beta_setup or {})}
         self._setup_decay("beta", beta_cfg)
-        setattr(self, f"mem_is_ema", beta_cfg["use_averaging"])
+        self.mem_is_ema = beta_cfg["use_averaging"]
 
         # OPTIONAL
         self.use_alpha = alpha_setup is not None
         if self.use_alpha:
             alpha_cfg = {**DEFAULT_ALPHA, **(alpha_setup or {})}
             self._setup_decay("alpha", alpha_cfg)
-            setattr(self, f"syn_is_ema", alpha_cfg["use_averaging"])
+            self.syn_is_ema = alpha_cfg["use_averaging"]
 
         self.use_gamma = gamma_setup is not None
         if self.use_gamma:
             gamma_cfg = {**DEFAULT_GAMMA, **(gamma_setup or {})}
             self._setup_decay("gamma", gamma_cfg)
-            setattr(self, f"rec_is_ema", gamma_cfg["use_averaging"])
+            self.rec_is_ema = gamma_cfg["use_averaging"]
 
+        # THRESHOLD CONFIGURATION
         self.use_pos_threshold = pos_threshold_setup is not None
         if self.use_pos_threshold:
             pos_threshold_cfg = {**DEFAULT_POS_THRESH, **(pos_threshold_setup or {})}
@@ -91,20 +94,40 @@ class LeakyIntegrator(TTModule):
             self._setup_threshold("neg_threshold", neg_threshold_cfg)
             self.neg_surrogate = neg_threshold_cfg["surrogate"]
 
+        # SPIKE SCALING CONFIGURATION
+        self.use_pos_scale = pos_scale_setup is not None
+        if self.use_pos_scale:
+            pos_scale_cfg = {**DEFAULT_POS_SCALE, **(pos_scale_setup or {})}
+            self._setup_vector("pos_scale", pos_scale_cfg)
+
+        self.use_neg_scale = neg_scale_setup is not None
+        if self.use_neg_scale:
+            neg_scale_cfg = {**DEFAULT_NEG_SCALE, **(neg_scale_setup or {})}
+            self._setup_vector("neg_scale", neg_scale_cfg)
+
+        # RECURRENT WEIGHT CONFIGURATION
         self.use_weight = weight_setup is not None
         if self.use_weight:
             weight_cfg = {**DEFAULT_WEIGHT, **(weight_setup or {})}
             self._setup_matrix("weight", weight_cfg)
             assert self.use_gamma, "weight is applied on rec, but gamma is not initialized"
 
+        # BIAS CONFIGURATION
         self.use_bias = bias_setup is not None
         if self.use_bias:
             bias_cfg = {**DEFAULT_BIAS, **(bias_setup or {})}
             self._setup_vector("bias", bias_cfg)
 
-        # gamma should only be initialized if we have a way of extracting from rec (weight)
-        if self.use_gamma:
+        # POST-INIT ASSERTIONS FOR SAFETY
+        if self.use_gamma or self.use_weight:
             assert self.use_weight, "gamma initialized, but cannot be used as weight is not initialized"
+            assert self.use_gamma, "weight initialized, but cannot be used as gamma is not initialized"
+
+        if self.use_pos_scale:
+            assert self.use_pos_threshold, "pos_scale initialized, but cannot be used as pos_threshold is not initialized"
+
+        if self.use_neg_scale:
+            assert self.use_neg_threshold, "neg_scale initialized, but cannot be used as neg_threshold is not initialized"
 
         self.zero_states()
 
@@ -247,6 +270,14 @@ class LeakyIntegrator(TTModule):
         return - nn.functional.softplus(self.raw_neg_threshold)
 
     @property
+    def pos_scale(self):
+        return self.raw_pos_scale
+
+    @property
+    def neg_scale(self):
+        return self.raw_neg_scale
+
+    @property
     def weight(self):
         return self.raw_weight
 
@@ -310,12 +341,16 @@ class LeakyIntegrator(TTModule):
         if self.use_pos_threshold or self.use_neg_threshold:
             output_moved = torch.zeros_like(mem_moved)
             if self.use_pos_threshold:
-                pos_spikes = self.pos_surrogate(mem_moved - self.pos_threshold) * self.pos_threshold
+                pos_spikes = self.pos_surrogate(mem_moved - self.pos_threshold)
                 mem_moved = mem_moved - pos_spikes * self.pos_threshold
+                if self.use_pos_scale:
+                    pos_spikes = pos_spikes * self.pos_scale
                 output_moved = output_moved + pos_spikes
             if self.use_neg_threshold:
-                neg_spikes = self.neg_surrogate(self.neg_threshold - mem_moved) * self.neg_threshold
+                neg_spikes = -self.neg_surrogate(self.neg_threshold - mem_moved)
                 mem_moved = mem_moved + neg_spikes * self.neg_threshold  # both are negative, create positive delta
+                if self.use_neg_scale:
+                    neg_spikes = neg_spikes * self.neg_scale
                 output_moved = output_moved + neg_spikes
         else:
             output_moved = mem_moved
