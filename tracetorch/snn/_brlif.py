@@ -32,7 +32,7 @@ class BRLIF(LeakyIntegrator):
 			neg_threshold_rank: Literal[0, 1] = DEFAULT_NEG_THRESH["rank"],
 			pos_scale_rank: Literal[0, 1] = DEFAULT_POS_SCALE["rank"],
 			neg_scale_rank: Literal[0, 1] = DEFAULT_NEG_SCALE["rank"],
-			rec_weight_rank: Literal[0, 1, 2] = DEFAULT_REC_WEIGHT["rank"],
+			rec_weight_rank: Literal[0, 1] = DEFAULT_REC_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
 			beta_ema: bool = DEFAULT_BETA["use_averaging"],
 			gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],

@@ -19,12 +19,6 @@ class ThresholdConfig(TypedDict, total=False):
     learnable: bool
 
 
-class MatrixConfig(TypedDict, total=False):
-    value: Union[float, torch.Tensor]
-    rank: Literal[0, 1, 2]
-    learnable: bool
-
-
 class VectorConfig(TypedDict, total=False):
     value: Union[float, torch.Tensor]
     rank: Literal[0, 1]
@@ -52,10 +46,10 @@ class LeakyIntegrator(TTModule):
             beta_setup: DecayConfig = DEFAULT_BETA,
             gamma_setup: Optional[DecayConfig] = None,
             pos_threshold_setup: Optional[ThresholdConfig] = None,
-            pos_scale_setup: Optional[VectorConfig] = None,
             neg_threshold_setup: Optional[ThresholdConfig] = None,
+            pos_scale_setup: Optional[VectorConfig] = None,
             neg_scale_setup: Optional[VectorConfig] = None,
-            rec_weight_setup: Optional[MatrixConfig] = None,
+            rec_weight_setup: Optional[VectorConfig] = None,
             bias_setup: Optional[VectorConfig] = None,
     ):
         super().__init__()
@@ -106,10 +100,10 @@ class LeakyIntegrator(TTModule):
             self._setup_vector("neg_scale", neg_scale_cfg)
 
         # RECURRENT WEIGHT CONFIGURATION
-        self.use_weight = rec_weight_setup is not None
-        if self.use_weight:
-            weight_cfg = {**DEFAULT_REC_WEIGHT, **(rec_weight_setup or {})}
-            self._setup_matrix("weight", weight_cfg)
+        self.use_rec_weight = rec_weight_setup is not None
+        if self.use_rec_weight:
+            rec_weight_cfg = {**DEFAULT_REC_WEIGHT, **(rec_weight_setup or {})}
+            self._setup_vector("rec_weight", rec_weight_cfg)
             assert self.use_gamma, "weight is applied on rec, but gamma is not initialized"
 
         # BIAS CONFIGURATION
@@ -119,9 +113,9 @@ class LeakyIntegrator(TTModule):
             self._setup_vector("bias", bias_cfg)
 
         # POST-INIT ASSERTIONS FOR SAFETY
-        if self.use_gamma or self.use_weight:
-            assert self.use_weight, "gamma initialized, but cannot be used as weight is not initialized"
-            assert self.use_gamma, "weight initialized, but cannot be used as gamma is not initialized"
+        if self.use_gamma or self.use_rec_weight:
+            assert self.use_rec_weight, "gamma initialized, but cannot be used as rec_weight is not initialized"
+            assert self.use_gamma, "rec_weight initialized, but cannot be used as gamma is not initialized"
 
         if self.use_pos_scale:
             assert self.use_pos_threshold, "pos_scale initialized, but cannot be used as pos_threshold is not initialized"
@@ -200,32 +194,6 @@ class LeakyIntegrator(TTModule):
         threshold_rank = threshold_tensor.ndim
         setattr(self, f"{name}_rank", threshold_rank)
         self._register_tensor(f"raw_{name}", threshold_tensor, learnable)
-
-    def _setup_matrix(self, name, config):
-        value, rank, learnable = config["value"], config["rank"], config["learnable"]
-        if isinstance(value, torch.Tensor):
-            if value.ndim == 0:
-                pass
-            elif value.ndim == 1:
-                assert value.numel() == self.num_neurons, f"{name} does not have {self.num_neurons} elements"
-            elif value.ndim == 2:
-                assert value[0].numel() == value[1].numel() == self.num_neurons, f"{name} must be a square matrix"
-            else:
-                raise ValueError(f"rank (.ndim) of provided {name} is not 0 (scalar) or 1 (vector) or 2 (matrix)")
-            matrix_tensor = value
-        else:
-            value = float(value)
-            if rank == 0:
-                matrix_tensor = torch.tensor(value)
-            elif rank == 1:
-                matrix_tensor = torch.full([self.num_neurons], value)
-            elif rank == 2:
-                matrix_tensor = torch.full([self.num_neurons, self.num_neurons], value)
-            else:
-                raise ValueError(f"{name} rank is not 0 (scalar) or 1 (vector) or 2 (matrix)")
-        matrix_rank = matrix_tensor.ndim
-        setattr(self, f"{name}_rank", matrix_rank)
-        self._register_tensor(f"raw_{name}", matrix_tensor, learnable)
 
     def _setup_vector(self, name, config):
         value, rank, learnable = config["value"], config["rank"], config["learnable"]
@@ -315,10 +283,7 @@ class LeakyIntegrator(TTModule):
             if self.rec_is_ema:
                 rec_delta = rec_delta * (1 - self.gamma)
             rec_moved = rec_moved * self.gamma + rec_delta
-            if self.weight_rank == 2:
-                mem_delta = mem_delta + rec_moved @ self.weight
-            else:
-                mem_delta = mem_delta + rec_moved * self.weight
+            mem_delta = mem_delta + rec_moved * self.weight
             self.rec = rec_moved.movedim(-1, self.dim)
 
         # if we use bias, let's quickly add it to the mem_delta
