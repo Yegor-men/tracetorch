@@ -6,7 +6,7 @@ from ._leaky_integrator import DEFAULT_GAMMA
 # from ._leaky_integrator import DEFAULT_NEG_THRESH
 # from ._leaky_integrator import DEFAULT_POS_SCALE
 # from ._leaky_integrator import DEFAULT_NEG_SCALE
-from ._leaky_integrator import DEFAULT_WEIGHT
+from ._leaky_integrator import DEFAULT_REC_WEIGHT
 from ._leaky_integrator import DEFAULT_BIAS
 
 from typing import Union, Literal, Any
@@ -20,20 +20,20 @@ class SRReadout(LeakyIntegrator):
             alpha: Union[float, torch.Tensor] = DEFAULT_ALPHA["value"],
             beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
             gamma: Union[float, torch.Tensor] = DEFAULT_GAMMA["value"],
-            weight: Union[float, torch.Tensor] = DEFAULT_WEIGHT["value"],
+            rec_weight: Union[float, torch.Tensor] = DEFAULT_REC_WEIGHT["value"],
             bias: Union[float, torch.Tensor] = DEFAULT_BIAS["value"],
             dim: int = -1,
             alpha_rank: Literal[0, 1] = DEFAULT_ALPHA["rank"],
             beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
             gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
-            weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
+            rec_weight_rank: Literal[0, 1, 2] = DEFAULT_REC_WEIGHT["rank"],
             bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
             alpha_ema: bool = DEFAULT_ALPHA["use_averaging"],
             gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
             learn_alpha: bool = DEFAULT_ALPHA["learnable"],
             learn_beta: bool = DEFAULT_BETA["learnable"],
             learn_gamma: bool = DEFAULT_GAMMA["learnable"],
-            learn_weight: bool = DEFAULT_WEIGHT["learnable"],
+            learn_rec_weight: bool = DEFAULT_REC_WEIGHT["learnable"],
             learn_bias: bool = DEFAULT_BIAS["learnable"],
     ):
         alpha_setup = {
@@ -57,10 +57,10 @@ class SRReadout(LeakyIntegrator):
             "learnable": learn_gamma,
         }
 
-        weight_setup = {
-            "value": weight,
-            "rank": weight_rank,
-            "learnable": learn_weight,
+        rec_weight_setup = {
+            "value": rec_weight,
+            "rank": rec_weight_rank,
+            "learnable": learn_rec_weight,
         }
 
         bias_setup = {
@@ -75,6 +75,6 @@ class SRReadout(LeakyIntegrator):
             alpha_setup=alpha_setup,
             beta_setup=beta_setup,
             gamma_setup=gamma_setup,
-            weight_setup=weight_setup,
+            rec_weight_setup=rec_weight_setup,
             bias_setup=bias_setup,
         )

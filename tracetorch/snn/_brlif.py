@@ -6,7 +6,7 @@ from ._leaky_integrator import DEFAULT_POS_THRESH
 from ._leaky_integrator import DEFAULT_NEG_THRESH
 from ._leaky_integrator import DEFAULT_POS_SCALE
 from ._leaky_integrator import DEFAULT_NEG_SCALE
-from ._leaky_integrator import DEFAULT_WEIGHT
+from ._leaky_integrator import DEFAULT_REC_WEIGHT
 from ._leaky_integrator import DEFAULT_BIAS
 
 from typing import Union, Literal, Any
@@ -23,7 +23,7 @@ class BRLIF(LeakyIntegrator):
 			neg_threshold: Union[float, torch.Tensor] = DEFAULT_NEG_THRESH["value"],
 			pos_scale: Union[float, torch.Tensor] = DEFAULT_POS_SCALE["value"],
 			neg_scale: Union[float, torch.Tensor] = DEFAULT_NEG_SCALE["value"],
-			weight: Union[float, torch.Tensor] = DEFAULT_WEIGHT["value"],
+			rec_weight: Union[float, torch.Tensor] = DEFAULT_REC_WEIGHT["value"],
 			bias: Union[float, torch.Tensor] = DEFAULT_BIAS["value"],
 			dim: int = -1,
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
@@ -32,7 +32,7 @@ class BRLIF(LeakyIntegrator):
 			neg_threshold_rank: Literal[0, 1] = DEFAULT_NEG_THRESH["rank"],
 			pos_scale_rank: Literal[0, 1] = DEFAULT_POS_SCALE["rank"],
 			neg_scale_rank: Literal[0, 1] = DEFAULT_NEG_SCALE["rank"],
-			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
+			rec_weight_rank: Literal[0, 1, 2] = DEFAULT_REC_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
 			beta_ema: bool = DEFAULT_BETA["use_averaging"],
 			gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
@@ -42,7 +42,7 @@ class BRLIF(LeakyIntegrator):
 			learn_neg_threshold: bool = DEFAULT_NEG_THRESH["learnable"],
 			learn_pos_scale: bool = DEFAULT_POS_SCALE["learnable"],
 			learn_neg_scale: bool = DEFAULT_NEG_SCALE["learnable"],
-			learn_weight: bool = DEFAULT_WEIGHT["learnable"],
+			learn_rec_weight: bool = DEFAULT_REC_WEIGHT["learnable"],
 			learn_bias: bool = DEFAULT_BIAS["learnable"],
 			pos_surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
 			neg_surrogate_derivative: Any = DEFAULT_NEG_THRESH["surrogate"],
@@ -87,10 +87,10 @@ class BRLIF(LeakyIntegrator):
 			"learnable": learn_neg_scale,
 		}
 
-		weight_setup = {
-			"value": weight,
-			"rank": weight_rank,
-			"learnable": learn_weight,
+		rec_weight_setup = {
+			"value": rec_weight,
+			"rank": rec_weight_rank,
+			"learnable": learn_rec_weight,
 		}
 
 		bias_setup = {
@@ -109,6 +109,6 @@ class BRLIF(LeakyIntegrator):
 			neg_threshold_setup=neg_threshold_setup,
 			pos_scale_setup=pos_scale_setup,
 			neg_scale_setup=neg_scale_setup,
-			weight_setup=weight_setup,
+			rec_weight_setup=rec_weight_setup,
 			bias_setup=bias_setup,
 		)

@@ -6,7 +6,7 @@ from ._leaky_integrator import DEFAULT_POS_THRESH
 # from ._leaky_integrator import DEFAULT_NEG_THRESH
 # from ._leaky_integrator import DEFAULT_POS_SCALE
 # from ._leaky_integrator import DEFAULT_NEG_SCALE
-from ._leaky_integrator import DEFAULT_WEIGHT
+from ._leaky_integrator import DEFAULT_REC_WEIGHT
 from ._leaky_integrator import DEFAULT_BIAS
 
 from typing import Union, Literal, Any
@@ -21,14 +21,14 @@ class SRLIF(LeakyIntegrator):
 			beta: Union[float, torch.Tensor] = DEFAULT_BETA["value"],
 			gamma: Union[float, torch.Tensor] = DEFAULT_GAMMA["value"],
 			pos_threshold: Union[float, torch.Tensor] = DEFAULT_POS_THRESH["value"],
-			weight: Union[float, torch.Tensor] = DEFAULT_WEIGHT["value"],
+			rec_weight: Union[float, torch.Tensor] = DEFAULT_REC_WEIGHT["value"],
 			bias: Union[float, torch.Tensor] = DEFAULT_BIAS["value"],
 			dim: int = -1,
 			alpha_rank: Literal[0, 1] = DEFAULT_ALPHA["rank"],
 			beta_rank: Literal[0, 1] = DEFAULT_BETA["rank"],
 			gamma_rank: Literal[0, 1] = DEFAULT_GAMMA["rank"],
 			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
-			weight_rank: Literal[0, 1, 2] = DEFAULT_WEIGHT["rank"],
+			rec_weight_rank: Literal[0, 1, 2] = DEFAULT_REC_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
 			alpha_ema: bool = DEFAULT_ALPHA["use_averaging"],
 			beta_ema: bool = DEFAULT_BETA["use_averaging"],
@@ -37,7 +37,7 @@ class SRLIF(LeakyIntegrator):
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
 			pos_learn_threshold: bool = DEFAULT_POS_THRESH["learnable"],
-			learn_weight: bool = DEFAULT_WEIGHT["learnable"],
+			learn_rec_weight: bool = DEFAULT_REC_WEIGHT["learnable"],
 			learn_bias: bool = DEFAULT_BIAS["learnable"],
 			surrogate_derivative: Any = DEFAULT_POS_THRESH["surrogate"],
 	):
@@ -69,10 +69,10 @@ class SRLIF(LeakyIntegrator):
 			"learnable": pos_learn_threshold,
 		}
 
-		weight_setup = {
-			"value": weight,
-			"rank": weight_rank,
-			"learnable": learn_weight,
+		rec_weight_setup = {
+			"value": rec_weight,
+			"rank": rec_weight_rank,
+			"learnable": learn_rec_weight,
 		}
 
 		bias_setup = {
@@ -88,6 +88,6 @@ class SRLIF(LeakyIntegrator):
 			beta_setup=beta_setup,
 			gamma_setup=gamma_setup,
 			pos_threshold_setup=pos_threshold_setup,
-			weight_setup=weight_setup,
+			rec_weight_setup=rec_weight_setup,
 			bias_setup=bias_setup,
 		)

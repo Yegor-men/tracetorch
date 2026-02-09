@@ -38,7 +38,7 @@ DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_s
 DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
 DEFAULT_POS_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
 DEFAULT_NEG_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
-DEFAULT_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
+DEFAULT_REC_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "learnable": True}
 
 
@@ -55,7 +55,7 @@ class LeakyIntegrator(TTModule):
             pos_scale_setup: Optional[VectorConfig] = None,
             neg_threshold_setup: Optional[ThresholdConfig] = None,
             neg_scale_setup: Optional[VectorConfig] = None,
-            weight_setup: Optional[MatrixConfig] = None,
+            rec_weight_setup: Optional[MatrixConfig] = None,
             bias_setup: Optional[VectorConfig] = None,
     ):
         super().__init__()
@@ -106,9 +106,9 @@ class LeakyIntegrator(TTModule):
             self._setup_vector("neg_scale", neg_scale_cfg)
 
         # RECURRENT WEIGHT CONFIGURATION
-        self.use_weight = weight_setup is not None
+        self.use_weight = rec_weight_setup is not None
         if self.use_weight:
-            weight_cfg = {**DEFAULT_WEIGHT, **(weight_setup or {})}
+            weight_cfg = {**DEFAULT_REC_WEIGHT, **(rec_weight_setup or {})}
             self._setup_matrix("weight", weight_cfg)
             assert self.use_gamma, "weight is applied on rec, but gamma is not initialized"
 
