@@ -310,11 +310,11 @@ class LeakyIntegrator(TTModule):
         if self.use_pos_threshold or self.use_neg_threshold:
             output_moved = torch.zeros_like(mem_moved)
             if self.use_pos_threshold:
-                pos_spikes = self.pos_surrogate(mem_moved - self.pos_threshold)
+                pos_spikes = self.pos_surrogate(mem_moved - self.pos_threshold) * self.pos_threshold
                 mem_moved = mem_moved - pos_spikes * self.pos_threshold
                 output_moved = output_moved + pos_spikes
             if self.use_neg_threshold:
-                neg_spikes = -self.neg_surrogate(self.neg_threshold - mem_moved)  # self.neg_threshold is negative
+                neg_spikes = self.neg_surrogate(self.neg_threshold - mem_moved) * self.neg_threshold
                 mem_moved = mem_moved + neg_spikes * self.neg_threshold  # both are negative, create positive delta
                 output_moved = output_moved + neg_spikes
         else:
