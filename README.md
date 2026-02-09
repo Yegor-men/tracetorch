@@ -1,7 +1,7 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.7.1-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.8.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -43,7 +43,7 @@ capabilities, traceTorch follows a different philosophy, revolving around ergono
   No hard clamping, meaning that gradients flow smoothly and accurately everywhere.
 - **Rank Based Parameters:** Instead of messy flags like `*_is_vector` or `all_to_all`, traceTorch uses a single
   `*_rank` integer to define the parameter scope: 0 for a scalar (parameter is shared across the layer), 1 for a
-  vector (per-neuron parameter), 2 for a matrix (dense all-to-all connections for recurrent layer weights).
+  vector (per-neuron parameter), 2 for a matrix (dense all-to-all connections).
 
 ## Installation
 
