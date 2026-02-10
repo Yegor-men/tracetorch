@@ -7,9 +7,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'traceTorch'
-copyright = '2025, Yegor Men'
+copyright = '2026, Yegor Men'
 author = 'Yegor Men'
-release = '0.5.2'
+release = '0.9.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

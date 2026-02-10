@@ -1,0 +1,47 @@
+2. The Ethos of traceTorch
+==========================
+
+traceTorch is one of the many PyTorch based SNN libraries that are out there. What sets it apart from the alternatives
+is the deliberate design philosophy that prioritizes ergonomics and architectural clarity over needless flexibility. It
+abides by the KISS principle: Keep It Stupid Simple (not to be confused with Keep It Simple, Stupid). traceTorch is made
+so that models will just work, with as little configuration as necessary for as much power as possible.
+
+At its core, the library rejects the conventional "layer zoo" approach seen in most other SNN libraries, where dozens
+of partially overlapping neuron classes lead to code duplication, maintenance hell, and barriers to experimentation.
+Instead, traceTorch adopts a strictly unified and compositional architecture centered on a single, highly configurable
+superclass: ``LeakyIntegrator``. All 12 of the default layer types (``LIF``, ``BLIF``, ``SLIF``, ``RLIF``, ``BSLIF``,
+``BRLIF``, ``SRLIF``, ``BSRLIF``, ``Readout``, ``SReadout``, ``RReadout``, ``SRReadout``) are lightweight wrappers of the
+``LeakyIntegrator``. This single source of truth enables:
+ - **Extreme Composability**: new dynamics are often obtained by changing the initialization flags.
+ - **Consistent Mental Model**: one superclass with toggleable flags makes for a simpler mental model than a bunch of
+   distinct classes.
+ - **Easier Extension and Maintenance**: It is incredibly easy to modify and maintain the ``LeakyIntegrator`` code to
+   create new parameters and features that comply with the rest of the traceTorch ethos.
+
+Another key distinction is the reduction of boilerplate and error-prone state management. Many libraries require manual
+initialization, pass, update, detach and reset mechanisms for the model to work. It's understandable why, but that
+doesn't make it any comfortable to use. Instead, traceTorch handles hidden states internally:
+ - **Lazy Initialization**: All states start and reset to ``None`` and are lazily allocated to the correct shape, eliminating
+   tensor size mismatch errors.
+ - **Dimension Agnostic**: Layers focus on a target dimension of the received tensor (defaults to -1, the last dim), so
+   that the layers work regardless of your tensor shape.
+ - **Recursive State Management**: Models initialized with the ``TTModule`` parent class gain access to the ``.detach_states()``
+   and ``.zero_states()`` methods which recursively find and apply the respective method no matter how deeply nested the
+   traceTorch module is, meaning that you never have to worry about state management.
+
+Further design choices reinforce cleanliness and gradient-friendliness:
+ - **Rank Based Parameter Initialization**: One single ``*_rank`` argument determines if the parameter is a scalar or vector,
+   working as a per-layer or per-neuron parameter.
+ - **Smooth Constraints for Parameters**: Not all parameters should be unbound. Thresholds and decays are smoothly bound
+   by Softplus and Sigmoid respectively, and the actual parameters are stored in logit form of the respective function.
+ - **Custom Tensors for Parameters**: You don't need to initialize parameters based on a single value, and can instead pass
+   in a custom tensor to be the parameter. It's passed through the respective inverse function if necessary, and is automatically
+   assigned and managed like any other parameter.
+ - **Sensible Defaults**: You likely want your parameters to be learnable, per-neuron, set to a sensible value. You
+   don't want to write boilerplate arguments every single time you make a model. Thus the defaults arguments are set accordingly:
+   layers default to the most powerful configuration, made to look just like any other native PyTorch module.
+
+In short, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with SNNs in PyTorch
+to feel significantly more natural and less frustrating than in existing alternatives, while preserving (and in many cases enhancing)
+the expressive power needed for real models and research. It trades the immediate out-of-the-box variety of a large layer
+catalog for a deeper, more coherent foundation that rewards users who value composition, minimalism, and long-term extensibility.

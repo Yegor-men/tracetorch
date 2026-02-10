@@ -1,8 +1,8 @@
 Tutorials
 =========
 
-The tutorials focus on re-creating the runnable files that are found in the main repository under ``examples/``. We will
-re-create and test all the necessary dynamics needed to show that ``traceTorch`` works.
+These tutorials focus on re-creating the code found in the main repository in ``examples/``. We will re-create and test
+all the necessary dynamics needed to show that ``traceTorch`` works.
 
 .. toctree::
    :maxdepth: 2
