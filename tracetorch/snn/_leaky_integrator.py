@@ -283,7 +283,7 @@ class LeakyIntegrator(TTModule):
             if self.rec_is_ema:
                 rec_delta = rec_delta * (1 - self.gamma)
             rec_moved = rec_moved * self.gamma + rec_delta
-            mem_delta = mem_delta + rec_moved * self.weight
+            mem_delta = mem_delta + rec_moved * self.rec_weight
             self.rec = rec_moved.movedim(-1, self.dim)
 
         # if we use bias, let's quickly add it to the mem_delta
