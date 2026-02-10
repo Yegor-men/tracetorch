@@ -9,7 +9,7 @@
 project = 'traceTorch'
 copyright = '2026, Yegor Men'
 author = 'Yegor Men'
-release = '0.9.0'
+release = 'v0.9.2'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -18,10 +18,10 @@ templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 extensions = [
-	'sphinx.ext.autodoc',
-	'sphinx.ext.mathjax',
-	'sphinx.ext.viewcode',
-	'myst_parser'
+    'sphinx.ext.autodoc',
+    'sphinx.ext.mathjax',
+    'sphinx.ext.viewcode',
+    'myst_parser'
 ]
 
 # -- Options for HTML output -------------------------------------------------
