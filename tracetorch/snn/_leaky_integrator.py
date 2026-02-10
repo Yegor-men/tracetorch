@@ -246,8 +246,8 @@ class LeakyIntegrator(TTModule):
         return self.raw_neg_scale
 
     @property
-    def weight(self):
-        return self.raw_weight
+    def rec_weight(self):
+        return self.raw_rec_weight
 
     @property
     def bias(self):
