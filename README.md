@@ -97,3 +97,6 @@ traceTorch still has a long way to go. Namely, in no particular order:
 - Make docstrings
 - Make pos/neg split for `syn` and `rec`, make it optional, with separate decays
 - Figure out what stuff matters for non `snn/` section
+- Figure out versioning requirements for the library
+- Make proper requirements for each example in `examples/`
+- Make the repo IDE agnostic
