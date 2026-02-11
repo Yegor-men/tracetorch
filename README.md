@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
+[![Documentation](https://img.shields.io/badge/Documentation-v0.9.2-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
 [![PyPI](https://img.shields.io/badge/PyPI-v0.9.2-blue.svg)](https://pypi.org/project/tracetorch/)
-[![Documentation](https://img.shields.io/badge/Documentation-v0.9.2-green.svg)](https://yegor-men.github.io/tracetorch/)
 
 # traceTorch
 
