@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
 [![PyPI](https://img.shields.io/badge/PyPI-v0.9.2-blue.svg)](https://pypi.org/project/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.9.2-green.svg)](https://yegor-men.github.io/tracetorch/)
 
 # traceTorch
 
@@ -50,6 +51,12 @@ capabilities, traceTorch follows a fundamentally different philosophy, revolving
   EMA on synaptic and recurrent traces for numerical stability; because real research and real models thrive on
   heterogeneity. Overridable if you want, but sensible defaults means less boilerplate.
 
+## Documentation
+
+The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It is thoroughly recommended to
+at least read the introduction section as it contains the theory behind SNNs, the traceTorch API and layers available,
+as well as a couple tutorials to recreate the code found in `examples/`.
+
 ## Installation
 
 traceTorch is a PyPI library found [here](https://pypi.org/project/tracetorch/). Requirements for the library are listed
@@ -69,84 +76,6 @@ cd tracetorch
 pip install -e .
 ```
 
-## Quick Start
-
-Making a traceTorch model is barely any different from PyTorch models. Here's how:
-
-### 1. The "zero-boilerplate" module
-
-Inherit from `tracetorch.snn.TTModule` instead of `pytorch.nn.Module`. This gives your model the powerful recursive
-methods like `zero_states()` and `detach_states()` for free, while still integrating with other PyTorch `nn.Module`.
-
-```python
-import torch
-from torch import nn
-import tracetorch as tt
-from tracetorch import snn
-
-
-class ConvSNN(snn.TTModule):
-    def __init__(self):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(1, 32, 3),
-            # dim=-3 tells the layer that the 3rd-to-last dimension is the channel dim.
-            # This works for (B, C, H, W) AND unbatched (C, H, W) inputs automatically.
-            snn.LIF(num_neurons=32, beta=0.9, dim=-3),
-
-            nn.Flatten(),
-            nn.Linear(32 * 26 * 26, 128),
-
-            # Readout layer with learnable decay initialized to scrape various timescales
-            snn.Readout(128, beta=torch.rand(128)),
-            # Map the readout layer back down to the desired number of dimensions
-            nn.Linear(128, 10)
-        )
-
-    def forward(self, x):
-        return self.net(x)
-```
-
-### 2. The Training Loop
-
-State management is easily handled outside the forward pass. Simply call `.zero_states()` on the model to reset all
-hidden states to `None`, and call `.detach_states()` to detach the current hidden states (used in truncated BPTT or for
-online learning).
-
-```python
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = ConvSNN().to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
-loss_fn = nn.CrossEntropyLoss()
-
-# Training Step
-model.train()
-for x, y in dataloader:
-    x, y = x.to(device), y.to(device)
-
-    model.zero_states()  # Crucial: Reset hidden states for the batch
-    optimizer.zero_grad()
-
-    # Time loop
-    spikes = []
-    for step in range(num_timesteps):
-        # Just pass x. No state tuples to manage.
-        spikes.append(model(x))
-
-    # Stack output and compute loss
-    output = torch.stack(spikes)
-    loss = loss_fn(output.mean(0), y)  # Rate coding example
-
-    loss.backward()
-    optimizer.step()
-```
-
-## Documentation
-
-The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It contains the theory behind
-SNNs, the traceTorch API and layers available, as well as a couple tutorials to recreate the code found in
-`examples/`.
-
 ## Authors
 
 - [@Yegor-men](https://github.com/Yegor-men)
@@ -155,3 +84,16 @@ SNNs, the traceTorch API and layers available, as well as a couple tutorials to 
 
 Contributions are always welcome. Feel free to fork, submit pull requests or report issues, I will occasionally check in
 on it.
+
+## Roadmap
+
+traceTorch still has a long way to go. Namely, in no particular order:
+
+- Finish `examples/` section for code
+- Create simple tests to assert working order
+- Finish `introduction/` section of the docs
+- Do the `reference/` section for the docs
+- Do the `tutorials/` section for the docs, basing it on the `examples/`
+- Make docstrings
+- Make pos/neg split for `syn` and `rec`, make it optional, with separate decays
+- Figure out what stuff matters for non `snn/` section
