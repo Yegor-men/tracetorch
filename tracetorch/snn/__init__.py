@@ -5,5 +5,6 @@ from ._lif import LIF
 from ._slif import SLIF
 
 from ._readout import Readout
+from ._sreadout import SReadout
 
 # import flex
