@@ -19,12 +19,11 @@ class Readout(TTModule, SetupMixin):
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
 
-        self._register_parameter(
+        self._register_decay(
             name="beta",
             value=beta,
             rank=beta_rank,
             learnable=learn_beta,
-            inverse_function=functional.sigmoid_inverse
         )
         self.mem = None
 

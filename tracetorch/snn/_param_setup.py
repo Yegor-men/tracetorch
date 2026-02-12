@@ -1,6 +1,7 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
+from .. import functional
 
 
 class SetupMixin:
@@ -12,7 +13,7 @@ class SetupMixin:
             value: Union[float, torch.Tensor],
             rank: Literal[0, 1],
             learnable: bool,
-            inverse_function=torch.as_tensor
+            inverse_function=lambda x: x
     ):
         if isinstance(value, torch.Tensor):
             if value.ndim == 0:
@@ -36,3 +37,21 @@ class SetupMixin:
             setattr(self, f"raw_{name}", nn.Parameter(param_tensor.detach().clone()))
         else:
             self.register_buffer(f"raw_{name}", param_tensor.detach().clone())
+
+    def _register_decay(
+            self,
+            name: str,
+            value: Union[float, torch.Tensor],
+            rank: Literal[0, 1],
+            learnable: bool,
+    ):
+        self._register_parameter(name, value, rank, learnable, inverse_function=functional.sigmoid_inverse)
+
+    def _register_threshold(
+            self,
+            name: str,
+            value: Union[float, torch.Tensor],
+            rank: Literal[0, 1],
+            learnable: bool,
+    ):
+        self._register_parameter(name, value, rank, learnable, inverse_function=functional.softplus_inverse)

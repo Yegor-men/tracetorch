@@ -23,21 +23,19 @@ class LIF(TTModule, SetupMixin):
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
 
-        self._register_parameter(
+        self._register_decay(
             name="beta",
             value=beta,
             rank=beta_rank,
             learnable=learn_beta,
-            inverse_function=functional.sigmoid_inverse
         )
         self.mem = None
 
-        self._register_parameter(
+        self._register_threshold(
             name="threshold",
             value=threshold,
             rank=threshold_rank,
             learnable=learn_threshold,
-            inverse_function=functional.softplus_inverse
         )
         self.heaviside_step = surrogate_derivative
 
