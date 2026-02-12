@@ -42,7 +42,7 @@ class SLIF(TTModule, SetupMixin):
             learnable=learn_beta,
         )
 
-        self.heaviside_step = surrogate_derivative
+        self.heaviside = surrogate_derivative
         self._register_threshold(
             name="threshold",
             value=threshold,
@@ -84,7 +84,8 @@ class SLIF(TTModule, SetupMixin):
 
         mem_moved = self.mem.movedim(self.dim, -1)
         mem_moved = mem_moved * self.beta + syn_moved
-        spikes = self.heaviside_step(mem_moved - self.threshold)
+
+        spikes = self.heaviside(mem_moved - self.threshold)
 
         self.syn = syn_moved.movedim(-1, self.dim)
         self.mem = mem_moved.movedim(-1, self.dim)

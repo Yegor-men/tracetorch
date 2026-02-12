@@ -31,7 +31,7 @@ class LIF(TTModule, SetupMixin):
             learnable=learn_beta,
         )
 
-        self.heaviside_step = surrogate_derivative
+        self.heaviside = surrogate_derivative
         self._register_threshold(
             name="threshold",
             value=threshold,
@@ -60,7 +60,8 @@ class LIF(TTModule, SetupMixin):
 
         mem_moved = self.mem.movedim(self.dim, -1)
         mem_moved = mem_moved * self.beta + x.movedim(self.dim, -1)
-        spikes = self.heaviside_step(mem_moved - self.threshold)
+
+        spikes = self.heaviside(mem_moved - self.threshold)
 
         self.mem = mem_moved.movedim(-1, self.dim)
         return spikes.movedim(-1, self.dim)

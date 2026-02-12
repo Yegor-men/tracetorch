@@ -40,7 +40,7 @@ class BLIF(TTModule, SetupMixin):
             learnable=learn_beta,
         )
 
-        self.heaviside_step = surrogate_derivative
+        self.heaviside = surrogate_derivative
         self._register_threshold(
             name="pos_threshold",
             value=pos_threshold,
@@ -101,9 +101,8 @@ class BLIF(TTModule, SetupMixin):
         mem_moved = self.mem.movedim(self.dim, -1)
         mem_moved = mem_moved * self.beta + x.movedim(self.dim, -1)
 
-        pos_spikes = self.heaviside_step(mem_moved - self.pos_threshold) * self.pos_scale
-        neg_spikes = -self.heaviside_step(self.neg_threshold - mem_moved) * self.neg_scale
-
+        pos_spikes = self.heaviside(mem_moved - self.pos_threshold) * self.pos_scale
+        neg_spikes = -self.heaviside(self.neg_threshold - mem_moved) * self.neg_scale
         spikes = pos_spikes + neg_spikes
 
         self.mem = mem_moved.movedim(-1, self.dim)
