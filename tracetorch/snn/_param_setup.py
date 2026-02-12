@@ -3,10 +3,10 @@ import torch
 from torch import nn
 
 
-class SetupHelpers:
+class SetupMixin:
     """A mixin helper class, used exclusively to initialize parameters."""
 
-    def _setup_parameter(
+    def _register_parameter(
             self,
             name: str,
             value: Union[float, torch.Tensor],

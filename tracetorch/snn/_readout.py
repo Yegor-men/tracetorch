@@ -2,11 +2,11 @@ from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
 from ..snn._ttmodule import TTModule
-from ..snn._param_setup import SetupHelpers
+from ..snn._param_setup import SetupMixin
 from .. import functional
 
 
-class Readout(TTModule, SetupHelpers):
+class Readout(TTModule, SetupMixin):
     def __init__(
             self,
             num_neurons: int,
@@ -19,7 +19,7 @@ class Readout(TTModule, SetupHelpers):
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
 
-        self._setup_parameter(
+        self._register_parameter(
             name="beta",
             value=beta,
             rank=beta_rank,

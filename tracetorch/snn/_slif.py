@@ -6,15 +6,18 @@ from ..snn._param_setup import SetupMixin
 from .. import functional
 
 
-class LIF(TTModule, SetupMixin):
+class SLIF(TTModule, SetupMixin):
     def __init__(
             self,
             num_neurons: int,
+            alpha: Union[float, torch.Tensor] = 0.5,
             beta: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
+            alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
+            learn_alpha: bool = True,
             learn_beta: bool = True,
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
@@ -22,6 +25,15 @@ class LIF(TTModule, SetupMixin):
         super().__init__()
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
+
+        self._register_parameter(
+            name="alpha",
+            value=alpha,
+            rank=alpha_rank,
+            learnable=learn_alpha,
+            inverse_function=functional.sigmoid_inverse
+        )
+        self.syn = None
 
         self._register_parameter(
             name="beta",
@@ -42,6 +54,10 @@ class LIF(TTModule, SetupMixin):
         self.heaviside_step = surrogate_derivative
 
     @property
+    def alpha(self):
+        return nn.functional.sigmoid(self.raw_alpha)
+
+    @property
     def beta(self):
         return nn.functional.sigmoid(self.raw_beta)
 
@@ -50,19 +66,29 @@ class LIF(TTModule, SetupMixin):
         return nn.functional.softplus(self.raw_threshold)
 
     def zero_states(self):
+        self.syn = None
         self.mem = None
 
     def detach_states(self):
+        if self.syn is not None:
+            self.syn = self.syn.detach()
         if self.mem is not None:
             self.mem = self.mem.detach()
 
     def forward(self, x):
+        if self.syn is None:
+            self.syn = torch.zeros_like(x)
+
+        syn_moved = self.syn.movedim(self.dim, -1)
+        syn_moved = syn_moved * self.alpha + x.movedim(self.dim, -1) * (1 - self.alpha)
+
         if self.mem is None:
             self.mem = torch.zeros_like(x)
 
         mem_moved = self.mem.movedim(self.dim, -1)
-        mem_moved = mem_moved * self.beta + x.movedim(self.dim, -1)
+        mem_moved = mem_moved * self.beta + syn_moved
         spikes = self.heaviside_step(mem_moved - self.threshold)
 
+        self.syn = syn_moved.movedim(-1, self.dim)
         self.mem = mem_moved.movedim(-1, self.dim)
         return spikes.movedim(-1, self.dim)
