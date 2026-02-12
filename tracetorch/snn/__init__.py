@@ -5,6 +5,7 @@ from ._lif import LIF
 from ._slif import SLIF
 from ._blif import BLIF
 from ._rlif import RLIF
+from ._dlif import DLIF
 
 from ._readout import Readout
 from ._sreadout import SReadout
