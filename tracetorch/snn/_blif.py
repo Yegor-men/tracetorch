@@ -33,39 +33,14 @@ class BLIF(TTModule, SetupMixin):
         self.dim = int(dim)
 
         self.mem = None
-        self._register_decay(
-            name="beta",
-            value=beta,
-            rank=beta_rank,
-            learnable=learn_beta,
-        )
+        self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.heaviside = surrogate_derivative
-        self._register_threshold(
-            name="pos_threshold",
-            value=pos_threshold,
-            rank=pos_threshold_rank,
-            learnable=learn_pos_threshold,
-        )
-        self._register_threshold(
-            name="neg_threshold",
-            value=neg_threshold,
-            rank=neg_threshold_rank,
-            learnable=learn_neg_threshold,
-        )
+        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
-        self._register_parameter(
-            name="pos_scale",
-            value=pos_scale,
-            rank=pos_scale_rank,
-            learnable=learn_pos_scale
-        )
-        self._register_parameter(
-            name="neg_scale",
-            value=neg_scale,
-            rank=neg_scale_rank,
-            learnable=learn_neg_scale
-        )
+        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
     @property
     def beta(self):

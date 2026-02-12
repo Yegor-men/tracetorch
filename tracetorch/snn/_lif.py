@@ -24,20 +24,10 @@ class LIF(TTModule, SetupMixin):
         self.dim = int(dim)
 
         self.mem = None
-        self._register_decay(
-            name="beta",
-            value=beta,
-            rank=beta_rank,
-            learnable=learn_beta,
-        )
+        self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.heaviside = surrogate_derivative
-        self._register_threshold(
-            name="threshold",
-            value=threshold,
-            rank=threshold_rank,
-            learnable=learn_threshold,
-        )
+        self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     @property
     def beta(self):

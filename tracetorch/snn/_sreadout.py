@@ -23,20 +23,10 @@ class SReadout(TTModule, SetupMixin):
         self.dim = int(dim)
 
         self.syn = None
-        self._register_decay(
-            name="alpha",
-            value=alpha,
-            rank=alpha_rank,
-            learnable=learn_alpha,
-        )
+        self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
 
         self.mem = None
-        self._register_decay(
-            name="beta",
-            value=beta,
-            rank=beta_rank,
-            learnable=learn_beta,
-        )
+        self._register_decay("beta", beta, beta_rank, learn_beta)
 
     @property
     def alpha(self):
