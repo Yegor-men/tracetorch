@@ -61,11 +61,9 @@ class LIF(TTModule, SetupHelpers):
             self.mem = torch.zeros_like(x)
 
         mem_moved = self.mem.movedim(self.dim, -1)
-
         mem_moved = mem_moved * self.beta + x.movedim(self.dim, -1)
-
-        pos_spikes = self.heaviside_step(mem_moved - self.threshold)
+        spikes_moved = self.heaviside_step(mem_moved - self.threshold)
 
         self.mem = mem_moved.movedim(-1, self.dim)
-
-        return pos_spikes.movedim(-1, self.dim)
+        spikes = spikes_moved.movedim(-1, self.dim)
+        return spikes
