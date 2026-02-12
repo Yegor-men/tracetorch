@@ -1,37 +1,6 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from tracetorch.snn._ttmodule import TTModule
-from tracetorch import functional as tt_functional
-
-
-class DecayConfig(TypedDict, total=False):
-    value: Union[float, torch.Tensor]
-    rank: Literal[0, 1]
-    ema: bool
-    learnable: bool
-
-
-class ThresholdConfig(TypedDict, total=False):
-    value: Union[float, torch.Tensor]
-    rank: Literal[0, 1]
-    surrogate: Any  # has to be a surrogate function
-    learnable: bool
-
-
-class VectorConfig(TypedDict, total=False):
-    value: Union[float, torch.Tensor]
-    rank: Literal[0, 1]
-    learnable: bool
-
-
-DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "ema": True, "learnable": True}
-DEFAULT_BETA = {"value": 0.5, "rank": 1, "ema": False, "learnable": True}
-DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "ema": True, "learnable": True}
-DEFAULT_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
-DEFAULT_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
-DEFAULT_REC_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
-DEFAULT_BIAS = {"value": 0.0, "rank": 1, "learnable": True}
 
 
 class SetupHelpers:
