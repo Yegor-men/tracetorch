@@ -26,29 +26,29 @@ class SLIF(TTModule, SetupMixin):
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
 
+        self.syn = None
         self._register_decay(
             name="alpha",
             value=alpha,
             rank=alpha_rank,
             learnable=learn_alpha,
         )
-        self.syn = None
 
+        self.mem = None
         self._register_decay(
             name="beta",
             value=beta,
             rank=beta_rank,
             learnable=learn_beta,
         )
-        self.mem = None
 
+        self.heaviside_step = surrogate_derivative
         self._register_threshold(
             name="threshold",
             value=threshold,
             rank=threshold_rank,
             learnable=learn_threshold,
         )
-        self.heaviside_step = surrogate_derivative
 
     @property
     def alpha(self):

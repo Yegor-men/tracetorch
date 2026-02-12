@@ -22,21 +22,21 @@ class SReadout(TTModule, SetupMixin):
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
 
+        self.syn = None
         self._register_decay(
             name="alpha",
             value=alpha,
             rank=alpha_rank,
             learnable=learn_alpha,
         )
-        self.syn = None
 
+        self.mem = None
         self._register_decay(
             name="beta",
             value=beta,
             rank=beta_rank,
             learnable=learn_beta,
         )
-        self.mem = None
 
     @property
     def alpha(self):
