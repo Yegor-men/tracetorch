@@ -1,14 +1,14 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ._ttmodule import TTModule
-from .. import functional as tt_functional
+from tracetorch.snn._ttmodule import TTModule
+from tracetorch import functional as tt_functional
 
 
 class DecayConfig(TypedDict, total=False):
     value: Union[float, torch.Tensor]
     rank: Literal[0, 1]
-    use_averaging: bool
+    ema: bool
     learnable: bool
 
 
@@ -25,13 +25,11 @@ class VectorConfig(TypedDict, total=False):
     learnable: bool
 
 
-DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "use_averaging": True, "learnable": True}
-DEFAULT_BETA = {"value": 0.9, "rank": 1, "use_averaging": False, "learnable": True}
-DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "use_averaging": True, "learnable": True}
-DEFAULT_POS_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
-DEFAULT_NEG_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
-DEFAULT_POS_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
-DEFAULT_NEG_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
+DEFAULT_ALPHA = {"value": 0.5, "rank": 1, "ema": True, "learnable": True}
+DEFAULT_BETA = {"value": 0.5, "rank": 1, "ema": False, "learnable": True}
+DEFAULT_GAMMA = {"value": 0.5, "rank": 1, "ema": True, "learnable": True}
+DEFAULT_THRESH = {"value": 1.0, "rank": 1, "surrogate": tt_functional.atan_surrogate(2.0), "learnable": True}
+DEFAULT_SCALE = {"value": 1.0, "rank": 1, "learnable": True}
 DEFAULT_REC_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "learnable": True}
 
@@ -42,9 +40,12 @@ class LeakyIntegrator(TTModule):
             num_neurons: int,
             dim: int = -1,
 
-            alpha_setup: Optional[DecayConfig] = None,
-            beta_setup: DecayConfig = DEFAULT_BETA,
-            gamma_setup: Optional[DecayConfig] = None,
+            alpha_pos_setup: Optional[DecayConfig] = None,
+            alpha_neg_setup: Optional[DecayConfig] = None,
+            beta_pos_setup: DecayConfig = DEFAULT_BETA,
+            beta_neg_setup: Optional[DecayConfig] = None,
+            gamma_pos_setup: Optional[DecayConfig] = None,
+            gamma_neg_setup: Optional[DecayConfig] = None,
             pos_threshold_setup: Optional[ThresholdConfig] = None,
             neg_threshold_setup: Optional[ThresholdConfig] = None,
             pos_scale_setup: Optional[VectorConfig] = None,
@@ -56,26 +57,48 @@ class LeakyIntegrator(TTModule):
         self.num_neurons = int(num_neurons)
         self.dim = int(dim)
 
-        # MANDATORY: BETA
-        # we assume that the user provides at least a partial config, then merge with default
-        beta_cfg = {**DEFAULT_BETA, **(beta_setup or {})}
-        self._setup_decay("beta", beta_cfg)
-        self.mem_is_ema = beta_cfg["use_averaging"]
+        # We assume that the user provides at least a partial config, then merge it with the default
+        # In the case of alpha, beta, gamma; there can be a split: if both, then dual, if none then nothing, if one then all to it
 
-        # OPTIONAL
-        self.use_alpha = alpha_setup is not None
+        use_beta_pos = beta_pos_setup is not None
+        use_beta_neg = beta_neg_setup is not None
+        self.dual_beta = use_beta_neg and use_beta_neg
+
+        # MANDATORY: BETA | EMA AND DUALITY
+        beta_cfg = {**DEFAULT_BETA, **(beta_pos_setup or {})}
+        self.dual_beta = beta_cfg["dual"]
+        self.ema_mem = beta_cfg["ema"]  # EMA is applied regardless of if dual
+        if self.dual_beta:
+            self._setup_decay("beta_pos", beta_cfg)
+            self._setup_decay("beta_neg", beta_cfg)
+        else:
+            self._setup_decay("beta", beta_cfg)
+
+        # OPTIONAL: ALPHA | EMA AND DUALITY
+        self.use_alpha = alpha_pos_setup is not None
         if self.use_alpha:
-            alpha_cfg = {**DEFAULT_ALPHA, **(alpha_setup or {})}
-            self._setup_decay("alpha", alpha_cfg)
-            self.syn_is_ema = alpha_cfg["use_averaging"]
+            alpha_cfg = {**DEFAULT_ALPHA, **(alpha_pos_setup or {})}
+            self.dual_alpha = alpha_cfg["dual"]
+            self.ema_syn = alpha_cfg["ema"]  # EMA is applied regardless of if dual
+            if self.dual_alpha:
+                self._setup_decay("alpha_pos", alpha_cfg)
+                self._setup_decay("alpha_neg", alpha_cfg)
+            else:
+                self._setup_decay("alpha", alpha_cfg)
 
-        self.use_gamma = gamma_setup is not None
+        # OPTIONAL: GAMMA | EMA AND DUALITY
+        self.use_gamma = gamma_pos_setup is not None
         if self.use_gamma:
-            gamma_cfg = {**DEFAULT_GAMMA, **(gamma_setup or {})}
-            self._setup_decay("gamma", gamma_cfg)
-            self.rec_is_ema = gamma_cfg["use_averaging"]
+            gamma_cfg = {**DEFAULT_GAMMA, **(gamma_pos_setup or {})}
+            self.dual_gamma = gamma_cfg["dual"]
+            self.ema_rec = gamma_cfg["ema"]  # EMA is applied regardless of if dual
+            if self.dual_gamma:
+                self._setup_decay("gamma_pos", gamma_cfg)
+                self._setup_decay("gamma_neg", gamma_cfg)
+            else:
+                self._setup_decay("gamma", gamma_cfg)
 
-        # THRESHOLD CONFIGURATION
+        # OPTIONAL: POS THRESHOLD
         self.use_pos_threshold = pos_threshold_setup is not None
         if self.use_pos_threshold:
             pos_threshold_cfg = {**DEFAULT_POS_THRESH, **(pos_threshold_setup or {})}
@@ -126,12 +149,26 @@ class LeakyIntegrator(TTModule):
         self.zero_states()
 
     def zero_states(self):
-        self.mem = None
+        if self.dual_beta:
+            self.mem_pos = None
+            self.mem_neg = None
+        else:
+            self.mem = None
+
         if self.use_alpha:
-            self.syn = None
+            if self.dual_alpha:
+                self.syn_pos = None
+                self.syn_neg = None
+            else:
+                self.syn = None
+
         if self.use_gamma:
-            self.rec = None
             self.prev_output = None
+            if self.dual_gamma:
+                self.rec_pos = None
+                self.rec_neg = None
+            else:
+                self.rec = None
 
     def detach_states(self):
         if self.mem is not None:
@@ -280,7 +317,7 @@ class LeakyIntegrator(TTModule):
 
             rec_moved = self.rec.movedim(self.dim, -1)
             rec_delta = self.prev_output.movedim(self.dim, -1)
-            if self.rec_is_ema:
+            if self.ema_rec:
                 rec_delta = rec_delta * (1 - self.gamma)
             rec_moved = rec_moved * self.gamma + rec_delta
             mem_delta = mem_delta + rec_moved * self.rec_weight
@@ -292,13 +329,13 @@ class LeakyIntegrator(TTModule):
 
         # ACTUAL CALCULATION LOGIC
         if self.use_alpha:
-            if self.syn_is_ema:
+            if self.ema_syn:
                 syn_delta = syn_delta * (1 - self.alpha)
             syn_moved = syn_moved * self.alpha + syn_delta
             mem_delta = mem_delta + syn_moved
             self.syn = syn_moved.movedim(-1, self.dim)
 
-        if self.mem_is_ema:
+        if self.ema_mem:
             mem_delta = mem_delta * (1 - self.beta)
 
         mem_moved = mem_moved * self.beta + mem_delta

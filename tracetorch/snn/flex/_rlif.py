@@ -1,13 +1,13 @@
-from ._leaky_integrator import LeakyIntegrator
+from tracetorch.snn.flex._leaky_integrator import LeakyIntegrator
 # from ._leaky_integrator import DEFAULT_ALPHA
-from ._leaky_integrator import DEFAULT_BETA
-from ._leaky_integrator import DEFAULT_GAMMA
-from ._leaky_integrator import DEFAULT_POS_THRESH
+from tracetorch.snn.flex._leaky_integrator import DEFAULT_BETA
+from tracetorch.snn.flex._leaky_integrator import DEFAULT_GAMMA
+from tracetorch.snn.flex._leaky_integrator import DEFAULT_POS_THRESH
 # from ._leaky_integrator import DEFAULT_NEG_THRESH
 # from ._leaky_integrator import DEFAULT_POS_SCALE
 # from ._leaky_integrator import DEFAULT_NEG_SCALE
-from ._leaky_integrator import DEFAULT_REC_WEIGHT
-from ._leaky_integrator import DEFAULT_BIAS
+from tracetorch.snn.flex._leaky_integrator import DEFAULT_REC_WEIGHT
+from tracetorch.snn.flex._leaky_integrator import DEFAULT_BIAS
 
 from typing import Union, Literal, Any
 import torch
@@ -28,8 +28,8 @@ class RLIF(LeakyIntegrator):
 			pos_threshold_rank: Literal[0, 1] = DEFAULT_POS_THRESH["rank"],
 			rec_weight_rank: Literal[0, 1] = DEFAULT_REC_WEIGHT["rank"],
 			bias_rank: Literal[0, 1] = DEFAULT_BIAS["rank"],
-			beta_ema: bool = DEFAULT_BETA["use_averaging"],
-			gamma_ema: bool = DEFAULT_GAMMA["use_averaging"],
+			ema_beta: bool = DEFAULT_BETA["ema"],
+			ema_gamma: bool = DEFAULT_GAMMA["ema"],
 			learn_beta: bool = DEFAULT_BETA["learnable"],
 			learn_gamma: bool = DEFAULT_GAMMA["learnable"],
 			learn_pos_threshold: bool = DEFAULT_POS_THRESH["learnable"],
@@ -40,14 +40,14 @@ class RLIF(LeakyIntegrator):
 		beta_setup = {
 			"value": beta,
 			"rank": beta_rank,
-			"use_averaging": beta_ema,
+			"ema": ema_beta,
 			"learnable": learn_beta,
 		}
 
 		gamma_setup = {
 			"value": gamma,
 			"rank": gamma_rank,
-			"use_averaging": gamma_ema,
+			"ema": ema_gamma,
 			"learnable": learn_gamma,
 		}
 
@@ -73,8 +73,8 @@ class RLIF(LeakyIntegrator):
 		super().__init__(
 			num_neurons=num_neurons,
 			dim=dim,
-			beta_setup=beta_setup,
-			gamma_setup=gamma_setup,
+			beta_pos_setup=beta_setup,
+			gamma_pos_setup=gamma_setup,
 			pos_threshold_setup=pos_threshold_setup,
 			rec_weight_setup=rec_weight_setup,
 			bias_setup=bias_setup,
