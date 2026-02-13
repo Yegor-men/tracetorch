@@ -8,54 +8,66 @@
 
 A strict, ergonomic, and powerful Spiking Neural Network (SNN) library for PyTorch.
 
-traceTorch is bult around a single, highly compositional neuron superclass, replacing the restrictive layer zoo of
-countless disjoint neuron types with the `LeakyIntegrator` superclass. This design encapsulates a massive range of SNN
-dynamics:
+traceTorch employs a two-tier architecture that balances computational efficiency with maximum flexibility. As with any
+other library, traceTorch presents a wide and powerful variety of distinct, commonly used neuron types utilizing
+sensible defaults. The naming schema is consistent (albeit a bit unconventional) and self-explanatory. Together, these
+layers provide control over a vast amount of neuron mechanics:
 
-- Flexible polarity for spike outputs: positive and/or negative or none at all for a readout layer
-- Optional synaptic and recurrent signal accumulation into separate hidden states
-- Rank-based parameter scoping for per-layer (scalar) or per-neuron (vector) parameters, learnable or static
-- Optional Exponential Moving Average (EMA) on any hidden state
+- `LI` base name stands for `Leaky Integrator`, the simplest of layer types with just one trace: the membrane potential
+  which is the direct output, no firing; commonly known as `Readout`, although it's not recommended to literally make
+  it the last layer.
+- `~B` suffix stands for `Binary`, the presence of a threshold, meaning that the layer has 2 possible outputs: a 0 or 1.
+- `~T` suffix stands for `Ternary`, meaning that the layer has 2 thresholds: a positive and negative one, and thus 3
+  possible outputs: -1, 0 or 1.
+- `~S` suffix stands for `Scaled`, meaning that the outputs are multiplicatively scaled separately based on their
+  polarity, used to make ternary outputs truly independent of each other.
+- `D~` prefix stads for `Dual`, meaning that all hidden states and parameters are split into a separate positive and
+  negative version for greater expressivity and making polarity as a separate, alternate signal.
+- `S~` prefix stands for `Synaptic`, meaning that before the membrane there is a separate synaptic trace smoothing out
+  the inputs over time before they get integrated into the membrane.
+- `R~` prefix stands for `Recurrent`, meaning that the layer records its own outputs into a separate trace and
+  re-integrates it back into the membrane.
 
-All into declarative configuration on one class using sensible, powerful defaults.
+In total, this results in 32 specially made, performant layers which easily integrate and work with other PyTorch
+layers: `LI`, `LIB`, `LIT`, `LITS`, `DLI`, `DLIB`, `DLIT`, `DLITS`, `SLI`, `SLIB`, `SLIT`, `SLITS`, `RLI`, `RLIB`,
+`RLIT`, `RLITS`, `DSLI`, `DLIB`, `DSLIT`, `DSLITS`, `DRLI`, `DRLIB`, `DRLIT`, `DRLITS`, `SRLI`, `SRLIB`, `SRLIT`,
+`SRLITS`, `DSRLI`, `DSRLIB`, `DSRLIT`, `DSRLITS`.
 
-By abstracting this complexity, traceTorch provides both the robust simplicity required for fast prototyping via
-familiar wrappers and the unprecedented flexibility required for real research and models. In total, traceTorch presents
-a total of 12 easy to use layer types which directly integrate into existing PyTorch models and API: `LIF`, `BLIF`,
-`SLIF`, `RLIF`, `BSLIF`, `BRLIF`, `SRLIF`, `BSRLIF`, `Readout`, `SReadout`, `RReadout`, `SRReadout`; with an API simple
-enough that you can add more with little effort.
+traceTorch also handles hidden state management in an easy-to-use way. They are set to `None`, and then the size is
+lazily assigned based on the forward pass. Simply inherit from the `TTModule` class to gain access to powerful recursive
+methods `.zero_states()` and `.detach_states()` to recursively respectively set the states to `None` or to detach, no
+matter how deeply hidden they are: PyTorch modules such as `nn.Sequential` or python classes and data structures; it
+doesn't matter. Additionally, traceTorch takes care of:
 
-## Why traceTorch?
+- Rank-based parameter scoping for per-layer (scalar) or per-neuron (vector) parameters, defaulting to per-neuron.
+- Initialize parameters via a float value or your own desired tensor.
+- Make any parameter learnable or static, automatically set to an `nn.Parameter` or registered buffer accordingly.
+- Single `dim=` argument determines the target dimension the layer focuses on: `-1` for MLP, `-3` for CNN, et cetera.
+- Smooth parameter constraints for those that require it (sigmoid on decays and softplus on thresholds), meaning that
+  gradients always flow cleanly and accurately. The respective inverse function is applied if necessary during
+  initialization.
 
-Existing SNN libraries often feel restrictive or require verbose state management. Aside from the technical features and
-capabilities, traceTorch follows a fundamentally different philosophy, revolving around ergonomics and usability:
+But overarching this, traceTorch also presents one unified architecture, replacing the restrictive layer zoo of
+countless disjoint neuron types with the `LeakyIntegrator` superclass. This design encapsulates the massive range of
+possible dynamics into declarative configuration on one class, resulting in thousands of possible combinations of
+features. All 32 of the layers also exist in the `LeakyIntegrator` form, and tests assert that the behavior of the two
+versions don't differ.
 
-- **Architectural Flexibility**: All existing traceTorch layers are just small wrappers of the `LeakyIntegrator`
-  superclass, and it's incredibly easy to add your own alterations and combinations of the features you like.
-- **Automatic State Management**: No need to manually pass hidden states through `.forward()`, each layer manages its
-  own hidden states, and calling `.zero_states()` on a traceTorch model recursively clears _all_ the hidden states the
-  entire model uses, no matter how deeply hidden they are. In a similar style, `.detach_states()` detaches the states
-  from the current computation graph.
-- **Lazy Initialization**: Hidden states are initialized as `None` and allocated dynamically based on the input shape.
-  This completely eliminates "Batch Size Mismatch" errors during training and inference.
-- **Dimension Agnostic**: Whether you are working with `[Time, Batch, Features]` or `[Batch, Channels, Height, Width]`
-  tensors, layers _just_ work. Change a single `dim` argument during layer initialization to indicate the target
-  dimension the layer acts on. Defaults to `-1` for MLP, `-3` would work for CNN (channels are 3rd last in
-  `[B, C, H, W]` or `[C, H, W]`). The tensors are automatically move the target dimension to the correct index so that
-  the layers work.
-- **Smooth Constraints**: Decay and threshold parameters are constrained via Sigmoid and Softplus respectively. No hard
-  clamping means that gradients flow smoothly and accurately everywhere.
-- **Rank Based Parameters**: Instead of messy flags like `*_is_vector` or `*_is_scalar`, traceTorch uses a single
-  `*_rank` integer to define each parameter scope: 0 for a scalar (per-layer), 1 for a vector (per-neuron).
-- **Sensible, Powerful Defaults**: traceTorch defaults to learnable, per-neuron (rank 1) parameters for flexibility and
-  EMA on synaptic and recurrent traces for numerical stability; because real research and real models thrive on
-  heterogeneity. Overridable if you want, but sensible defaults means less boilerplate.
+Subsequently, traceTorch also presents the `SetupMixin` mixin class with helper methods to help with initialization of
+parameters: checking for learnability, ranks, and passing through an optional inverse function; meaning that you can
+easily create your own SNN layers with ease too if you find to enjoy some custom `LeakyIntegrator` configuration that's
+missing in the pre-made layers; or make something unique altogether.
+
+All in all, traceTorch provides both the robust simplicity required for fast prototyping via familiar wrappers and the
+unprecedented flexibility required for real research and models. traceTorch is intentionally designed to follow a
+philosophy revolving around ergonomics, usability and flexibility.
 
 ## Documentation
 
 The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It is thoroughly recommended to
-at least read the introduction section as it contains the theory behind SNNs, the traceTorch API and layers available,
-as well as a couple tutorials to recreate the code found in `examples/`.
+at least read the introduction section before proceeding as it contains the theory behind SNNs, the traceTorch ethos and
+layers available as well as a brief explanation of what it is that each mechanic actually does. It also contains a
+couple tutorials to recreate the code found in `examples/`.
 
 ## Installation
 
@@ -67,14 +79,70 @@ library requirements.
 pip install tracetorch
 ```
 
-If you want to run the example code without installing the PyPI package, or alternatively want to edit the code
-yourself, you should install traceTorch as an editable install.
+If you don't want to install traceTorch as a library, or just want to test the examples, you should install traceTorch
+as an editable installation:
 
 ```bash
 git clone https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
+
+## Quickstart
+
+traceTorch models look barely any different from PyTorch models:
+
+```python
+import torch
+from torch import nn
+import tracetorch as tt
+from tracetorch import snn
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+class SNN(snn.TTModule):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 32, 3, padding=1),
+            snn.LIF(16, dim=-3),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            snn.LIF(64, dim=-3),
+            nn.MaxPool2d(2, 2),
+            nn.Flatten(),
+            nn.Linear(7 * 7 * 64, 128),
+            snn.LI(128),
+            nn.Linear(128, 10)
+        )
+
+        def forward(self, x):
+            return self.net(x)
+
+
+model = SNN().to(device)
+optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
+
+# TRAINING LOOP WITH DATALOADER
+model.train()
+for x, y in train_dataloader:
+    model.zero_states()  # sets hidden states to None for lazy assignment
+    model.zero_grad()
+    running_loss = 0.0
+    for t in range(num_timesteps):
+        model_output = model(x[t])
+        loss = loss_fn(model_output, y[t])
+        running_loss = running_loss + loss
+        # optionally call model.detach_states() for online learning here
+    running_loss.backward()
+    optimizer.step()
+```
+
+## Examples
+
+Example code can be found in `examples/`. To test the code, make sure that you have the respective requirements
+installed for the example, and that you've either installed traceTorch from PyPI or as an editable installation.
 
 ## Authors
 
@@ -87,16 +155,16 @@ on it.
 
 ## Roadmap
 
-traceTorch still has a long way to go. Namely, in no particular order:
+traceTorch still has a long way to go. Namely:
 
-- Finish `examples/` section for code
-- Create simple tests to assert working order
-- Finish `introduction/` section of the docs
+- Finish the rest of the 32 base classes
+- Rewrite `LeakyIntegrator` to account for duality
+- Finish the rest of the 32 base classes for tests in `snn.flex`
+- Create tests to assert working order
+- Finish the `examples/` section for example code
+- Make proper requirements for each example in `examples/`
+- Finish the `introduction/` section of the docs
 - Do the `reference/` section for the docs
 - Do the `tutorials/` section for the docs, basing it on the `examples/`
 - Make docstrings
-- Make pos/neg split for `syn` and `rec`, make it optional, with separate decays
-- Figure out what stuff matters for non `snn/` section
 - Figure out versioning requirements for the library
-- Make proper requirements for each example in `examples/`
-- Make the repo IDE agnostic
