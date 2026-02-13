@@ -6,7 +6,7 @@ from ..snn._param_setup import SetupMixin
 from .. import functional
 
 
-class BLIF(TTModule, SetupMixin):
+class LITS(TTModule, SetupMixin):
     def __init__(
             self,
             num_neurons: int,
