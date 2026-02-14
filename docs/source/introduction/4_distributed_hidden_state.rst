@@ -16,7 +16,7 @@ isn't.
 SNNs on the other hand are simultaneously significantly simpler in structure and more complex in interpretation, working
 on a much higher, abstract level than literal gates controlling the portion of information to keep.
 
-In the simplest configuration, the ``LIF`` neuron works like any MLP, except with the option of dipping into time. ``mem``
+In the simplest configuration, the ``LIB`` neuron works like any MLP, except with the option of dipping into time. ``mem``
 stores the amount of information the neuron has accumulated, which gradually decays because of ``beta``. Firing means that
 the neuron has accumulated enough information to flip the gate and signal to the downstream layer. A high ``beta`` (close to 1)
 means that information is retained over a long period of time. The formula for approximating the number of timesteps
@@ -49,6 +49,13 @@ the ``pos_threshold`` and ``neg_threshold`` learn independently: the closer they
 effectively is to the respective signal. But this is merely an expansion of the capability, we still have not yet reached
 infinite context.
 
+Having already separated positive and negative signals by separate thresholds and scales, it would also make sense that we
+have separate traces for them too. Thus we introduce Duality: for each hidden state and for each parameter, we have a positive and negative variant,
+and attain the "true" hidden state by summing the two. Different decays for different polarities means that we can unlock
+unique dynamics: different speeds at which the neuron adapts based on the polarity of the signal it receives, such as
+fast adaptation to positive signals but slow adaptation to negative signals. We can introduce this duality to *any* hidden
+state, which means we quickly unlock another vast amount of dynamics which are in some way meaningful.
+
 And finally, we add recurrence. ``rec`` stores the running average of the neuron's output, decayed via ``gamma``, and re-integrated
 back into ``mem`` at each timestep, multiplicatively scaled by ``rec_weight``. It is with recurrence that we are finally
 able to unlock complex firing patterns and self-supporting states. If ``rec`` is positive (the model output positive spikes),
@@ -64,7 +71,7 @@ pattern, and reach virtually any firing sequence we need. They can function as c
 speeds in tandem, and downstream layers base their outputs on how they align, akin to how fourier series works.
 
 Parallelize the neurons, initialize them with different (can even do random) ``alpha``, ``beta``, ``gamma``, ``pos_threshold``,
-``neg_threshold``, ``pos_scale``, ``neg_scale``, ``rec_weight``, ``bias``; and the number of dynamics we begin with and can already
+``neg_threshold``, ``pos_scale``, ``neg_scale``, ``rec_weight``, ``bias``, consider the doubling due to duality; and the number of dynamics we begin with and can already
 capture is unfathomably vast. Chain the layers, and it would be surprising if the model *couldn't* learn some function.
 Use residual connections, pairing each SNN layer with an ``nn.Linear`` or equivalent, make them take as input a floating
 point vector (electrical current for the neurons), and as output return the sum of the input and the output spikes passed

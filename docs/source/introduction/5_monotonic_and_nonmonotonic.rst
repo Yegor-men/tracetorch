@@ -25,8 +25,8 @@ this task has no aspect of time. We certainly could feed it to an SNN based CNN 
 learn, considering that without the time aspect SNNs are really no different from an MLP, but this really isn't a temporal
 function. So let's make it. There's two things that we can do:
 
- #. Rate code the image for each timestep, and feed the entire image to the model at each timestep for some amount of timesteps, expect the correct classification at the end
- #. Flatten the 28x28 image into a sequence of 784 timesteps and feed in one pixel at a time, expect the correct classification at the end
+#. Rate code the image for each timestep, and feed the entire image to the model at each timestep for some amount of timesteps, expect the correct classification at the end
+#. Flatten the 28x28 image into a sequence of 784 timesteps and feed in one pixel at a time, expect the correct classification at the end
 
 The latter of these approaches undoubtedly sounds more difficult than the former, because it is. But why? The first approach,
 even though we rate code the image (instead of feeding float values, we take a ``torch.Bernoulli`` sample of the image,
@@ -88,13 +88,18 @@ initialization looks like in the example byte level language model:
 
  .. code-block:: python
 
-    snn.BSRLIF(
+    snn.DSRLITS(
         hidden_dim,
-        alpha=torch.rand(hidden_dim),
-        beta=torch.rand(hidden_dim),
-        gamma=torch.rand(hidden_dim),
+        pos_alpha=torch.rand(hidden_dim),
+        neg_alpha=torch.rand(hidden_dim),
+        pos_beta=torch.rand(hidden_dim),
+        neg_beta=torch.rand(hidden_dim),
+        pos_gamma=torch.rand(hidden_dim),
+        neg_gamma=torch.rand(hidden_dim),
         pos_threshold=torch.rand(hidden_dim),
         neg_threshold=torch.rand(hidden_dim),
         pos_scale=(torch.randn(hidden_dim) + 1.0),
         neg_scale=(torch.randn(hidden_dim) + 1.0),
+        pos_rec_weight=torch.rand(hidden_dim),
+        neg_rec_weight=torch.rand(hidden_dim),
     )
