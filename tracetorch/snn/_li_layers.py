@@ -135,10 +135,6 @@ class SLI(TTModule, SetupMixin):
     def beta(self):
         return nn.functional.sigmoid(self.raw_beta)
 
-    @property
-    def threshold(self):
-        return nn.functional.softplus(self.raw_threshold)
-
     def zero_states(self):
         self.syn = None
         self.mem = None
