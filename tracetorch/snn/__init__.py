@@ -8,6 +8,6 @@ from ._param_setup import SetupMixin
 
 # import flex
 
-from ._li_layers import LI, DLI, SLI
+from ._li_layers import LI, DLI, SLI, RLI
 from ._lib_layers import LIB, DLIB, SLIB, RLIB
 from ._lits_layers import LITS
