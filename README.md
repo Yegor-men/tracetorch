@@ -117,8 +117,8 @@ class SNN(snn.TTModule):
             nn.Linear(128, 10)
         )
 
-        def forward(self, x):
-            return self.net(x)
+    def forward(self, x):
+        return self.net(x)
 
 
 model = SNN().to(device)
