@@ -93,7 +93,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.11.0 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.11.1 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
