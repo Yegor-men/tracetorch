@@ -171,16 +171,16 @@ class RLI(TTModule, LayerMixin):
         x_moved = self._to_working_dim(x)
         prev_output_moved = self._to_working_dim(self.prev_output)
 
-        rec_moved = self.rec.movedim(self.dim, -1)
+        rec_moved = self._to_working_dim(self.rec)
         rec_moved = rec_moved * self.gamma + prev_output_moved * (1 - self.gamma)
 
         mem_delta = rec_moved * self.rec_weight + x_moved + self.bias
 
-        mem_moved = self.mem.movedim(self.dim, -1)
+        mem_moved = self._to_working_dim(self.mem)
         mem_moved = mem_moved * self.beta + mem_delta
 
         self.mem = self._from_working_dim(mem_moved)
         self.rec = self._from_working_dim(rec_moved)
         self.prev_output = self.mem
-        
+
         return self.mem
