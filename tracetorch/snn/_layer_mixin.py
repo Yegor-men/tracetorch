@@ -80,8 +80,8 @@ class LayerMixin:
             activation_function=nn.functional.softplus,
         )
 
-    def _register_state(self, state_name: str):
-        """Register a state name for bulk operations"""
+    def _initialize_state(self, state_name: str):
+        """Initialize and register a state name for bulk operations"""
         self._state_names.add(state_name)
         setattr(self, state_name, None)
 
