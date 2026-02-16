@@ -1,12 +1,11 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ..snn._ttmodule import TTModule
-from ..snn._layer_mixin import LayerMixin
+from ..snn._tt_infrastructure import TTModule, TTLayer
 from .. import functional
 
 
-class LIB(LayerMixin, TTModule):
+class LIB(TTLayer, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -19,7 +18,7 @@ class LIB(LayerMixin, TTModule):
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        LayerMixin.__init__(self, num_neurons, dim)
+        TTLayer.__init__(self, num_neurons, dim)
         TTModule.__init__(self)
 
         self._initialize_state("mem")
@@ -44,7 +43,7 @@ class LIB(LayerMixin, TTModule):
         return spikes
 
 
-class DLIB(LayerMixin, TTModule):
+class DLIB(TTLayer, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -60,7 +59,7 @@ class DLIB(LayerMixin, TTModule):
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        LayerMixin.__init__(self, num_neurons, dim)
+        TTLayer.__init__(self, num_neurons, dim)
         TTModule.__init__(self)
 
         self._initialize_state("pos_mem")
@@ -93,7 +92,7 @@ class DLIB(LayerMixin, TTModule):
         return spikes
 
 
-class SLIB(LayerMixin, TTModule):
+class SLIB(TTLayer, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -109,7 +108,7 @@ class SLIB(LayerMixin, TTModule):
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        LayerMixin.__init__(self, num_neurons, dim)
+        TTLayer.__init__(self, num_neurons, dim)
         TTModule.__init__(self)
 
         self._initialize_state("syn")
@@ -141,7 +140,7 @@ class SLIB(LayerMixin, TTModule):
         return spikes
 
 
-class RLIB(LayerMixin, TTModule):
+class RLIB(TTLayer, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -163,7 +162,7 @@ class RLIB(LayerMixin, TTModule):
             learn_bias: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        LayerMixin.__init__(self, num_neurons, dim)
+        TTLayer.__init__(self, num_neurons, dim)
         TTModule.__init__(self)
 
         self._initialize_state("mem")

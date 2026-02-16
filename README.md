@@ -53,14 +53,14 @@ possible dynamics into declarative configuration on one class, resulting in thou
 features. All 32 of the layers also exist in the `LeakyIntegrator` form, and tests assert that the behavior of the two
 versions don't differ.
 
-Subsequently, traceTorch also presents the `LayerMixin`, a powerful mixin class that handles all the boilerplate of
+Subsequently, traceTorch also presents the `TTLayer`, a powerful mixin class that handles all the boilerplate of
 creating SNN layers. Instead of wrestling with parameter registration, state management, and dimension handling, you can
-just inherit from `LayerMixin` to create your own SNN layers that comply with the traceTorch ethos. It handles:
+just inherit from `TTLayer` to create your own SNN layers that comply with the traceTorch ethos. It handles:
 
 - **Automatic parameter registration**: handles ranks, learnability, value / tensor initialization and inverse functions
   for decays and thresholds.
 - **State management for hidden states**: methods to bulk zero / detach / initialize hidden states for the layer (
-  `TTModule` is for working with the layers in a model, `LayerMixin` is for managing the states in the layer itself).
+  `TTModule` is for working with the layers in a model, `TTLayer` is for managing the states in the layer itself).
 - **Dimension helpers**: methods to move a tensor's dimension (the `dim=` used during initialization) to the last
   dimension so that the layer is tensor shape agnostic.
 - **Property generation**: parameters are saved in `raw_*` form to account for inverse and activation functions, but
