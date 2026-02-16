@@ -28,12 +28,6 @@ class LIB(TTModule, LayerMixin):
         self.heaviside = surrogate_derivative
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
-
     def forward(self, x):
         self._ensure_states(x)
 
@@ -76,12 +70,6 @@ class DLIB(TTModule, LayerMixin):
 
         self.heaviside = surrogate_derivative
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -132,12 +120,6 @@ class SLIB(TTModule, LayerMixin):
 
         self.heaviside = surrogate_derivative
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -196,12 +178,6 @@ class RLIB(TTModule, LayerMixin):
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
         self._register_parameter("bias", bias, bias_rank, learn_bias)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)

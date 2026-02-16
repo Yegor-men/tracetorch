@@ -32,12 +32,6 @@ class LIT(TTModule, LayerMixin):
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
-
     def forward(self, x):
         self._ensure_states(x)
 
@@ -86,12 +80,6 @@ class DLIT(TTModule, LayerMixin):
         self.heaviside = surrogate_derivative
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -145,12 +133,6 @@ class SLIT(TTModule, LayerMixin):
         self.heaviside = surrogate_derivative
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -215,12 +197,6 @@ class RLIT(TTModule, LayerMixin):
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
         self._register_parameter("bias", bias, bias_rank, learn_bias)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)

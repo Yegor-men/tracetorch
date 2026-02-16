@@ -41,12 +41,6 @@ class LITS(TTModule, LayerMixin):
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
-
     def forward(self, x):
         self._ensure_states(x)
 
@@ -104,12 +98,6 @@ class DLITS(TTModule, LayerMixin):
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -175,12 +163,6 @@ class SLITS(TTModule, LayerMixin):
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -254,12 +236,6 @@ class RLITS(TTModule, LayerMixin):
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
         self._register_parameter("bias", bias, bias_rank, learn_bias)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)

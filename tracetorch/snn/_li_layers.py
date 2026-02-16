@@ -20,12 +20,6 @@ class LI(TTModule, LayerMixin):
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
-
     def forward(self, x):
         self._ensure_states(x)
 
@@ -58,12 +52,6 @@ class DLI(TTModule, LayerMixin):
         self._initialize_state("neg_mem")
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -104,12 +92,6 @@ class SLI(TTModule, LayerMixin):
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)
@@ -158,12 +140,6 @@ class RLI(TTModule, LayerMixin):
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
         self._register_parameter("bias", bias, bias_rank, learn_bias)
-
-    def zero_states(self):
-        self._zero_states()
-
-    def detach_states(self):
-        self._detach_states()
 
     def forward(self, x):
         self._ensure_states(x)

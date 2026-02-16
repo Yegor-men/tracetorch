@@ -91,7 +91,7 @@ class LayerMixin:
         if state is not None:
             setattr(self, state_name, state.detach())
 
-    def _detach_states(self):
+    def detach_states(self):
         """Detach all registered states"""
         for state_name in self._state_names:
             self._detach_state(state_name)
@@ -100,7 +100,7 @@ class LayerMixin:
         """Set a state to None"""
         setattr(self, state_name, None)
 
-    def _zero_states(self):
+    def zero_states(self):
         """Zero all registered states"""
         for state_name in self._state_names:
             self._zero_state(state_name)
