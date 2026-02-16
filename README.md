@@ -2,7 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/Documentation-v0.10.0-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.10.0-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.11.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -93,7 +93,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.10.0 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.11.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
