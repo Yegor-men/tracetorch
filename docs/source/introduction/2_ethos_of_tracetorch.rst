@@ -29,7 +29,7 @@ doesn't make it any comfortable to use. Instead, traceTorch handles hidden state
   tensor size mismatch errors.
 - **Dimension Agnostic**: Layers focus on a target dimension of the received tensor (defaults to-1, the last dim), so
   that the layers work regardless of your tensor shape.
-- **Recursive State Management**: Models initialized with the ``TTModule`` parent class gain access to the ``.detach_states()``
+- **Recursive State Management**: Models initialized with the ``TTModel`` parent class gain access to the ``.detach_states()``
   and ``.zero_states()`` methods which recursively find and apply the respective method no matter how deeply nested the
   traceTorch module is, meaning that you never have to worry about state management.
 
@@ -47,7 +47,7 @@ Further design choices reinforce cleanliness and gradient-friendliness:
   layers default to the most powerful configuration, made to look just like any other native PyTorch module.
 
 To manage all the per-layer parameters and hidden states, traceTorch uses the ``TTLayer`` mixin class, which works in tandem
-with ``TTModule`` to make everything work effortlessly. ``TTModule`` manages the model-level stuff: recursively calling
+with ``TTModel`` to make everything work effortlessly. ``TTModel`` manages the model-level stuff: recursively calling
 ``.detach_states()`` and ``.zero_states()`` on the model; while ``TTLayer`` manages the layer-level logic: initializing
 hidden states so that they're batch cleared / detached / created, initializing parameters and checking for rank / value / learnability / inverse function,
 automating property creation so that ``self.parameter`` returns the parameter passes through ``self.raw_parameter`` through the respective activation

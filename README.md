@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.11.1-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.11.2-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.11.1-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.11.2-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -34,7 +34,7 @@ layers: `LI`, `LIB`, `LIT`, `LITS`, `DLI`, `DLIB`, `DLIT`, `DLITS`, `SLI`, `SLIB
 `SRLITS`, `DSRLI`, `DSRLIB`, `DSRLIT`, `DSRLITS`.
 
 traceTorch also handles hidden state management in an easy-to-use way. They are set to `None`, and then the size is
-lazily assigned based on the forward pass. Simply inherit from the `TTModule` class to gain access to powerful recursive
+lazily assigned based on the forward pass. Simply inherit from the `TTModel` class to gain access to powerful recursive
 methods `.zero_states()` and `.detach_states()` to recursively respectively set the states to `None` or to detach, no
 matter how deeply hidden they are: PyTorch modules such as `nn.Sequential` or python classes and data structures; it
 doesn't matter. Additionally, traceTorch takes care of:
@@ -60,7 +60,7 @@ just inherit from `TTLayer` to create your own SNN layers that comply with the t
 - **Automatic parameter registration**: handles ranks, learnability, value / tensor initialization and inverse functions
   for decays and thresholds.
 - **State management for hidden states**: methods to bulk zero / detach / initialize hidden states for the layer (
-  `TTModule` is for working with the layers in a model, `TTLayer` is for managing the states in the layer itself).
+  `TTModel` is for working with the layers in a model, `TTLayer` is for managing the states in the layer itself).
 - **Dimension helpers**: methods to move a tensor's dimension (the `dim=` used during initialization) to the last
   dimension so that the layer is tensor shape agnostic.
 - **Property generation**: parameters are saved in `raw_*` form to account for inverse and activation functions, but
@@ -93,7 +93,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.11.1 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.11.2 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
@@ -114,7 +114,7 @@ from tracetorch import snn
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class SNN(snn.TTModule):
+class SNN(snn.TTModel):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(

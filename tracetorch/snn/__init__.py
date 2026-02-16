@@ -1,4 +1,4 @@
-from ._tt_infrastructure import TTLayer, TTModule
+from ._tt_infrastructure import TTLayer, TTModel
 
 # from ._li_layers import LI, DLI, SLI, RLI, DSLI, DRLI, SRLI, DSRLI
 # from ._lib_layers import LIB, DLIB, SLIB, RLIB, DSLIB, DRLIB, SRLIB, DSRLIB

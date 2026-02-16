@@ -1,11 +1,11 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ..snn._tt_infrastructure import TTModule, TTLayer
+from ..snn._tt_infrastructure import TTModel, TTLayer
 from .. import functional
 
 
-class LIB(TTLayer, TTModule):
+class LIB(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -19,7 +19,7 @@ class LIB(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
@@ -43,7 +43,7 @@ class LIB(TTLayer, TTModule):
         return spikes
 
 
-class DLIB(TTLayer, TTModule):
+class DLIB(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -60,7 +60,7 @@ class DLIB(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("pos_mem")
         self._initialize_state("neg_mem")
@@ -92,7 +92,7 @@ class DLIB(TTLayer, TTModule):
         return spikes
 
 
-class SLIB(TTLayer, TTModule):
+class SLIB(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -109,7 +109,7 @@ class SLIB(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -140,7 +140,7 @@ class SLIB(TTLayer, TTModule):
         return spikes
 
 
-class RLIB(TTLayer, TTModule):
+class RLIB(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -163,7 +163,7 @@ class RLIB(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)

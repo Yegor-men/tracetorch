@@ -132,7 +132,7 @@ class TTLayer:
         return tensor.movedim(-1, self.dim)
 
 
-class TTModule(nn.Module):
+class TTModel(nn.Module):
     """
     Base class that makes it trivial to call lifecycle methods (zero_states, detach_states, ...)
     across an entire model tree (registered submodules *and* common non-module containers).
@@ -173,10 +173,10 @@ class TTModule(nn.Module):
                 # Avoid calling TTModule.zero_states itself in a naive way that would loop forever:
                 # - If obj is a TTModule instance, check whether its class actually overrides the method
                 #   (i.e., the implementation is not the same as TTModule.method_name).
-                if isinstance(obj, TTModule):
+                if isinstance(obj, TTModel):
                     # get the unbound function defined on the class (if any)
                     cls_fn = getattr(obj.__class__, method_name, None)
-                    base_fn = getattr(TTModule, method_name, None)
+                    base_fn = getattr(TTModel, method_name, None)
                     if cls_fn is not None and cls_fn is not base_fn:
                         # the class overrides the method -> call the override
                         try:

@@ -1,11 +1,11 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ..snn._tt_infrastructure import TTModule, TTLayer
+from ..snn._tt_infrastructure import TTModel, TTLayer
 from .. import functional
 
 
-class LITS(TTLayer, TTModule):
+class LITS(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -28,7 +28,7 @@ class LITS(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
@@ -58,7 +58,7 @@ class LITS(TTLayer, TTModule):
         return spikes
 
 
-class DLITS(TTLayer, TTModule):
+class DLITS(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -84,7 +84,7 @@ class DLITS(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("pos_mem")
         self._initialize_state("neg_mem")
@@ -122,7 +122,7 @@ class DLITS(TTLayer, TTModule):
         return spikes
 
 
-class SLITS(TTLayer, TTModule):
+class SLITS(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -148,7 +148,7 @@ class SLITS(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -185,7 +185,7 @@ class SLITS(TTLayer, TTModule):
         return spikes
 
 
-class RLITS(TTLayer, TTModule):
+class RLITS(TTLayer, TTModel):
     def __init__(
             self,
             num_neurons: int,
@@ -217,7 +217,7 @@ class RLITS(TTLayer, TTModule):
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         TTLayer.__init__(self, num_neurons, dim)
-        TTModule.__init__(self)
+        TTModel.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
