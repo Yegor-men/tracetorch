@@ -36,6 +36,7 @@ class LIB(TTLayer, TTModel):
         mem_moved = mem_moved * self.beta + x_moved
 
         spikes_moved = self.heaviside(mem_moved - self.threshold)
+        mem_moved = mem_moved - spikes_moved * self.threshold
         spikes = self._from_working_dim(spikes_moved)
 
         self.mem = self._from_working_dim(mem_moved)
@@ -84,6 +85,8 @@ class DLIB(TTLayer, TTModel):
         mem_moved = pos_mem_moved + neg_mem_moved
 
         spikes_moved = self.heaviside(mem_moved - self.threshold)
+        pos_mem_moved = pos_mem_moved - spikes_moved * self.threshold * 0.5
+        neg_mem_moved = neg_mem_moved - spikes_moved * self.threshold * 0.5
         spikes = self._from_working_dim(spikes_moved)
 
         self.pos_mem = self._from_working_dim(pos_mem_moved)
@@ -132,6 +135,7 @@ class SLIB(TTLayer, TTModel):
         mem_moved = mem_moved * self.beta + syn_moved
 
         spikes_moved = self.heaviside(mem_moved - self.threshold)
+        mem_moved = mem_moved - spikes_moved * self.threshold
         spikes = self._from_working_dim(spikes_moved)
 
         self.syn = self._from_working_dim(syn_moved)
@@ -193,6 +197,7 @@ class RLIB(TTLayer, TTModel):
         mem_moved = mem_moved * self.beta + mem_delta
 
         spikes_moved = self.heaviside(mem_moved - self.threshold)
+        mem_moved = mem_moved - spikes_moved * self.threshold
         spikes = self._from_working_dim(spikes_moved)
 
         self.mem = self._from_working_dim(mem_moved)

@@ -40,7 +40,11 @@ class LIT(TTLayer, TTModel):
         mem_moved = mem_moved * self.beta + x_moved
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
-        neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
+        neg_spikes = -self.heaviside(-self.neg_threshold - mem_moved)
+
+        mem_moved = mem_moved - pos_spikes * self.pos_threshold
+        mem_moved = mem_moved - neg_spikes * self.neg_threshold
+
         spikes_moved = pos_spikes + neg_spikes
         spikes = self._from_working_dim(spikes_moved)
 
@@ -94,7 +98,13 @@ class DLIT(TTLayer, TTModel):
         mem_moved = pos_mem_moved + neg_mem_moved
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
-        neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
+        neg_spikes = -self.heaviside(-self.neg_threshold - mem_moved)
+
+        pos_mem_moved = pos_mem_moved - pos_spikes * self.pos_threshold * 0.5
+        neg_mem_moved = neg_mem_moved - pos_spikes * self.pos_threshold * 0.5
+        pos_mem_moved = pos_mem_moved - neg_spikes * self.neg_threshold * 0.5
+        neg_mem_moved = neg_mem_moved - neg_spikes * self.neg_threshold * 0.5
+
         spikes_moved = pos_spikes + neg_spikes
         spikes = self._from_working_dim(spikes_moved)
 
@@ -145,7 +155,11 @@ class SLIT(TTLayer, TTModel):
         mem_moved = mem_moved * self.beta + syn_moved * (1 - self.beta)
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
-        neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
+        neg_spikes = -self.heaviside(-self.neg_threshold - mem_moved)
+
+        mem_moved = mem_moved - pos_spikes * self.pos_threshold
+        mem_moved = mem_moved - neg_spikes * self.neg_threshold
+
         spikes_moved = pos_spikes + neg_spikes
         spikes = self._from_working_dim(spikes_moved)
 
@@ -212,7 +226,11 @@ class RLIT(TTLayer, TTModel):
         mem_moved = mem_moved * self.beta + mem_delta
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
-        neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
+        neg_spikes = -self.heaviside(-self.neg_threshold - mem_moved)
+
+        mem_moved = mem_moved - pos_spikes * self.pos_threshold
+        mem_moved = mem_moved - neg_spikes * self.neg_threshold
+
         spikes_moved = pos_spikes + neg_spikes
         spikes = self._from_working_dim(spikes_moved)
 
