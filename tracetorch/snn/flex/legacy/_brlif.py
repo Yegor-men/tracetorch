@@ -1,13 +1,13 @@
-from tracetorch.snn.flex._leaky_integrator import LeakyIntegrator
+from tracetorch.snn.flex.legacy._leaky_integrator import LeakyIntegrator
 # from ._leaky_integrator import DEFAULT_ALPHA
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_BETA
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_GAMMA
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_POS_THRESH
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_NEG_THRESH
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_POS_SCALE
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_NEG_SCALE
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_REC_WEIGHT
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_BIAS
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_BETA
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_GAMMA
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_POS_THRESH
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_NEG_THRESH
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_POS_SCALE
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_NEG_SCALE
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_REC_WEIGHT
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_BIAS
 
 from typing import Union, Literal, Any
 import torch

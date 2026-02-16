@@ -1,6 +1,6 @@
-from tracetorch.snn.flex._leaky_integrator import LeakyIntegrator
+from tracetorch.snn.flex.legacy._leaky_integrator import LeakyIntegrator
 # from ._leaky_integrator import DEFAULT_ALPHA
-from tracetorch.snn.flex._leaky_integrator import DEFAULT_BETA
+from tracetorch.snn.flex.legacy._leaky_integrator import DEFAULT_BETA
 # from ._leaky_integrator import DEFAULT_GAMMA
 # from ._leaky_integrator import DEFAULT_POS_THRESH
 # from ._leaky_integrator import DEFAULT_NEG_THRESH
