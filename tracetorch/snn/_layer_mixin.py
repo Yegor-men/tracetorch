@@ -45,8 +45,14 @@ class LayerMixin:
             self.register_buffer(f"raw_{name}", param_tensor.detach().clone())
 
         # create a @property of the raw_ parameter that passes it through the respective activation function
-        setattr(self.__class__, name,
-                property(lambda self: activation_function(getattr(self, f"raw_{name}"))))
+        setattr(self.__class__, name, self._make_property(name, activation_function))
+
+    @staticmethod
+    def _make_property(name, activation_function):
+        def getter(self):
+            return activation_function(getattr(self, f"raw_{name}"))
+
+        return property(getter)
 
     def _register_decay(
             self,

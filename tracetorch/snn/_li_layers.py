@@ -5,7 +5,7 @@ from ..snn._ttmodule import TTModule
 from ..snn._layer_mixin import LayerMixin
 
 
-class LI(TTModule, LayerMixin):
+class LI(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -14,8 +14,8 @@ class LI(TTModule, LayerMixin):
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
@@ -33,7 +33,7 @@ class LI(TTModule, LayerMixin):
         return self.mem
 
 
-class DLI(TTModule, LayerMixin):
+class DLI(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -45,8 +45,8 @@ class DLI(TTModule, LayerMixin):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("pos_mem")
         self._initialize_state("neg_mem")
@@ -72,7 +72,7 @@ class DLI(TTModule, LayerMixin):
         return mem
 
 
-class SLI(TTModule, LayerMixin):
+class SLI(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -84,8 +84,8 @@ class SLI(TTModule, LayerMixin):
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -110,7 +110,7 @@ class SLI(TTModule, LayerMixin):
         return self.mem
 
 
-class RLI(TTModule, LayerMixin):
+class RLI(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -128,8 +128,8 @@ class RLI(TTModule, LayerMixin):
             learn_rec_weight: bool = True,
             learn_bias: bool = True,
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)

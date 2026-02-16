@@ -6,7 +6,7 @@ from ..snn._layer_mixin import LayerMixin
 from .. import functional
 
 
-class LIT(TTModule, LayerMixin):
+class LIT(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -22,8 +22,8 @@ class LIT(TTModule, LayerMixin):
             learn_neg_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
@@ -50,7 +50,7 @@ class LIT(TTModule, LayerMixin):
         return spikes
 
 
-class DLIT(TTModule, LayerMixin):
+class DLIT(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -69,8 +69,8 @@ class DLIT(TTModule, LayerMixin):
             learn_neg_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("pos_mem")
         self._initialize_state("neg_mem")
@@ -105,7 +105,7 @@ class DLIT(TTModule, LayerMixin):
         return spikes
 
 
-class SLIT(TTModule, LayerMixin):
+class SLIT(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -124,8 +124,8 @@ class SLIT(TTModule, LayerMixin):
             learn_neg_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
         self._initialize_state("mem")
@@ -156,7 +156,7 @@ class SLIT(TTModule, LayerMixin):
         return spikes
 
 
-class RLIT(TTModule, LayerMixin):
+class RLIT(LayerMixin, TTModule):
     def __init__(
             self,
             num_neurons: int,
@@ -181,8 +181,8 @@ class RLIT(TTModule, LayerMixin):
             learn_bias: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTModule.__init__(self)
         LayerMixin.__init__(self, num_neurons, dim)
+        TTModule.__init__(self)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
