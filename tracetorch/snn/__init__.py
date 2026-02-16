@@ -1,5 +1,5 @@
 from ._ttmodule import TTModule
-from ._param_setup import SetupMixin
+from ._layer_mixin import LayerMixin
 
 # from ._li_layers import LI, DLI, SLI, RLI, DSLI, DRLI, SRLI, DSRLI
 # from ._lib_layers import LIB, DLIB, SLIB, RLIB, DSLIB, DRLIB, SRLIB, DSRLIB
