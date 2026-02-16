@@ -119,10 +119,10 @@ class SNN(snn.TTModule):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 32, 3, padding=1),
-            snn.LIF(16, dim=-3),
+            snn.LIB(16, dim=-3),
             nn.MaxPool2d(2, 2),
             nn.Conv2d(32, 64, 3, padding=1),
-            snn.LIF(64, dim=-3),
+            snn.LIB(64, dim=-3),
             nn.MaxPool2d(2, 2),
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 128),
