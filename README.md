@@ -83,10 +83,13 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone https://github.com/Yegor-men/tracetorch
+git clone --branch v0.10.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
+
+Make sure to check the [releases](https://github.com/Yegor-men/tracetorch/releases) page for the latest (or different)
+version number if you want a different release.
 
 ## Quickstart
 
