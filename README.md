@@ -53,14 +53,24 @@ possible dynamics into declarative configuration on one class, resulting in thou
 features. All 32 of the layers also exist in the `LeakyIntegrator` form, and tests assert that the behavior of the two
 versions don't differ.
 
-Subsequently, traceTorch also presents the `SetupMixin` mixin class with helper methods to help with initialization of
-parameters: checking for learnability, ranks, and passing through an optional inverse function; meaning that you can
-easily create your own SNN layers with ease too if you find to enjoy some custom `LeakyIntegrator` configuration that's
-missing in the pre-made layers; or make something unique altogether.
+Subsequently, traceTorch also presents the `LayerMixin`, a powerful mixin class that handles all the boilerplate of
+creating SNN layers. Instead of wrestling with parameter registration, state management, and dimension handling, you can
+just inherit from `LayerMixin` to create your own SNN layers that comply with the traceTorch ethos. It handles:
 
-All in all, traceTorch provides both the robust simplicity required for fast prototyping via familiar wrappers and the
-unprecedented flexibility required for real research and models. traceTorch is intentionally designed to follow a
-philosophy revolving around ergonomics, usability and flexibility.
+- **Automatic parameter registration**: handles ranks, learnability, value / tensor initialization and inverse functions
+  for decays and thresholds.
+- **State management for hidden states**: methods to bulk zero / detach / initialize hidden states for the layer (
+  `TTModule` is for working with the layers in a model, `LayerMixin` is for managing the states in the layer itself).
+- **Dimension helpers**: methods to move a tensor's dimension (the `dim=` used during initialization) to the last
+  dimension so that the layer is tensor shape agnostic.
+- **Property generation**: parameters are saved in `raw_*` form to account for inverse and activation functions, but
+  work intuitively such that `layer.beta` returns the sigmoid activated value, et cetera.
+
+In short, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with SNNs in
+PyTorch to feel significantly more natural and less frustrating than in existing alternatives, while preserving (and in
+many cases enhancing) the expressive power needed for real models and research. It presents ready to use SNN layers,
+a powerful superclass for experimenting with SNN dynamics, and the necessary foundation so that you can make your own
+SNN layers too. traceTorch ultimately rewards users who value minimalism, composition, and long-term extensibility.
 
 ## Documentation
 
