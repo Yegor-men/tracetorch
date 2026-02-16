@@ -2,11 +2,11 @@ from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
 from ..snn._ttmodule import TTModule
-from ..snn._param_setup import SetupMixin
+from ..snn._layer_mixin import LayerMixin
 from .. import functional
 
 
-class LIT(TTModule, SetupMixin):
+class LIT(TTModule, LayerMixin):
     def __init__(
             self,
             num_neurons: int,
@@ -22,52 +22,41 @@ class LIT(TTModule, SetupMixin):
             learn_neg_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        super().__init__()
-        self.num_neurons = int(num_neurons)
-        self.dim = int(dim)
+        TTModule.__init__(self)
+        LayerMixin.__init__(self, num_neurons, dim)
 
-        self.mem = None
+        self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.heaviside = surrogate_derivative
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
-    @property
-    def beta(self):
-        return nn.functional.sigmoid(self.raw_beta)
-
-    @property
-    def pos_threshold(self):
-        return nn.functional.softplus(self.raw_pos_threshold)
-
-    @property
-    def neg_threshold(self):
-        return nn.functional.softplus(self.raw_neg_threshold)
-
     def zero_states(self):
-        self.mem = None
+        self._zero_states()
 
     def detach_states(self):
-        if self.mem is not None:
-            self.mem = self.mem.detach()
+        self._detach_states()
 
     def forward(self, x):
-        if self.mem is None:
-            self.mem = torch.zeros_like(x)
+        self._ensure_states(x)
 
-        mem_moved = self.mem.movedim(self.dim, -1)
-        mem_moved = mem_moved * self.beta + x.movedim(self.dim, -1)
+        x_moved = self._to_working_dim(x)
+
+        mem_moved = self._to_working_dim(self.mem)
+        mem_moved = mem_moved * self.beta + x_moved
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
         neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
-        spikes = pos_spikes + neg_spikes
+        spikes_moved = pos_spikes + neg_spikes
+        spikes = self._from_working_dim(spikes_moved)
 
-        self.mem = mem_moved.movedim(-1, self.dim)
-        return spikes.movedim(-1, self.dim)
+        self.mem = self._from_working_dim(mem_moved)
+
+        return spikes
 
 
-class DLIT(TTModule, SetupMixin):
+class DLIT(TTModule, LayerMixin):
     def __init__(
             self,
             num_neurons: int,
@@ -86,12 +75,11 @@ class DLIT(TTModule, SetupMixin):
             learn_neg_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        super().__init__()
-        self.num_neurons = int(num_neurons)
-        self.dim = int(dim)
+        TTModule.__init__(self)
+        LayerMixin.__init__(self, num_neurons, dim)
 
-        self.pos_mem = None
-        self.neg_mem = None
+        self._initialize_state("pos_mem")
+        self._initialize_state("neg_mem")
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -99,42 +87,19 @@ class DLIT(TTModule, SetupMixin):
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
-    @property
-    def pos_beta(self):
-        return nn.functional.sigmoid(self.raw_pos_beta)
-
-    @property
-    def neg_beta(self):
-        return nn.functional.sigmoid(self.raw_neg_beta)
-
-    @property
-    def pos_threshold(self):
-        return nn.functional.softplus(self.raw_pos_threshold)
-
-    @property
-    def neg_threshold(self):
-        return nn.functional.softplus(self.raw_neg_threshold)
-
     def zero_states(self):
-        self.pos_mem = None
-        self.neg_mem = None
+        self._zero_states()
 
     def detach_states(self):
-        if self.pos_mem is not None:
-            self.pos_mem = self.pos_mem.detach()
-        if self.neg_mem is not None:
-            self.neg_mem = self.neg_mem.detach()
+        self._detach_states()
 
     def forward(self, x):
-        if self.pos_mem is None:
-            self.pos_mem = torch.zeros_like(x)
-        if self.neg_mem is None:
-            self.neg_mem = torch.zeros_like(x)
+        self._ensure_states(x)
 
-        pos_mem_moved = self.pos_mem.movedim(self.dim, -1)
-        neg_mem_moved = self.neg_mem.movedim(self.dim, -1)
+        x_moved = self._to_working_dim(x)
 
-        x_moved = x.movedim(self.dim, -1)
+        pos_mem_moved = self._to_working_dim(self.pos_mem)
+        neg_mem_moved = self._to_working_dim(self.neg_mem)
 
         pos_mem_moved = pos_mem_moved * self.pos_beta + torch.where(x_moved >= 0, x_moved, 0.0)
         neg_mem_moved = neg_mem_moved * self.neg_beta + torch.where(x_moved < 0, x_moved, 0.0)
@@ -143,14 +108,16 @@ class DLIT(TTModule, SetupMixin):
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
         neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
-        spikes = pos_spikes + neg_spikes
+        spikes_moved = pos_spikes + neg_spikes
+        spikes = self._from_working_dim(spikes_moved)
 
-        self.pos_mem = pos_mem_moved.movedim(-1, self.dim)
-        self.neg_mem = neg_mem_moved.movedim(-1, self.dim)
-        return spikes.movedim(-1, self.dim)
+        self.pos_mem = self._from_working_dim(pos_mem_moved)
+        self.neg_mem = self._from_working_dim(neg_mem_moved)
+
+        return spikes
 
 
-class SLIT(TTModule, SetupMixin):
+class SLIT(TTModule, LayerMixin):
     def __init__(
             self,
             num_neurons: int,
@@ -169,66 +136,45 @@ class SLIT(TTModule, SetupMixin):
             learn_neg_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        super().__init__()
-        self.num_neurons = int(num_neurons)
-        self.dim = int(dim)
-        self.syn = None
+        TTModule.__init__(self)
+        LayerMixin.__init__(self, num_neurons, dim)
+        self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
-        self.mem = None
+        self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
         self.heaviside = surrogate_derivative
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
-    @property
-    def alpha(self):
-        return nn.functional.sigmoid(self.raw_alpha)
-
-    @property
-    def beta(self):
-        return nn.functional.sigmoid(self.raw_beta)
-
-    @property
-    def pos_threshold(self):
-        return nn.functional.softplus(self.raw_pos_threshold)
-
-    @property
-    def neg_threshold(self):
-        return nn.functional.softplus(self.raw_neg_threshold)
-
     def zero_states(self):
-        self.syn = None
-        self.mem = None
+        self._zero_states()
 
     def detach_states(self):
-        if self.syn is not None:
-            self.syn = self.syn.detach()
-        if self.mem is not None:
-            self.mem = self.mem.detach()
+        self._detach_states()
 
     def forward(self, x):
-        if self.syn is None:
-            self.syn = torch.zeros_like(x)
+        self._ensure_states(x)
 
-        syn_moved = self.syn.movedim(self.dim, -1)
-        syn_moved = syn_moved * self.alpha + x.movedim(self.dim, -1) * (1 - self.alpha)
+        x_moved = self._to_working_dim(x)
 
-        if self.mem is None:
-            self.mem = torch.zeros_like(x)
+        syn_moved = self._to_working_dim(self.syn)
+        syn_moved = syn_moved * self.alpha + x_moved * (1 - self.alpha)
 
-        mem_moved = self.mem.movedim(self.dim, -1)
+        mem_moved = self._to_working_dim(self.mem)
         mem_moved = mem_moved * self.beta + syn_moved * (1 - self.beta)
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
         neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
-        spikes = pos_spikes + neg_spikes
+        spikes_moved = pos_spikes + neg_spikes
+        spikes = self._from_working_dim(spikes_moved)
 
-        self.syn = syn_moved.movedim(-1, self.dim)
-        self.mem = mem_moved.movedim(-1, self.dim)
-        return spikes.movedim(-1, self.dim)
+        self.syn = self._from_working_dim(spikes_moved)
+        self.mem = self._from_working_dim(mem_moved)
+
+        return spikes
 
 
-class RLIT(TTModule, SetupMixin):
+class RLIT(TTModule, LayerMixin):
     def __init__(
             self,
             num_neurons: int,
@@ -237,28 +183,30 @@ class RLIT(TTModule, SetupMixin):
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             dim: int = -1,
             beta_rank: Literal[0, 1] = 1,
             gamma_rank: Literal[0, 1] = 1,
             pos_threshold_rank: Literal[0, 1] = 1,
             neg_threshold_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_gamma: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_rec_weight: bool = True,
+            learn_bias: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        super().__init__()
-        self.num_neurons = int(num_neurons)
-        self.dim = int(dim)
+        TTModule.__init__(self)
+        LayerMixin.__init__(self, num_neurons, dim)
 
-        self.mem = None
+        self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
-        self.rec = None
-        self.prev_output = None
+        self._initialize_state("rec")
+        self._initialize_state("prev_output")
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.heaviside = surrogate_derivative
@@ -266,60 +214,35 @@ class RLIT(TTModule, SetupMixin):
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
-
-    @property
-    def beta(self):
-        return nn.functional.sigmoid(self.raw_beta)
-
-    @property
-    def gamma(self):
-        return nn.functional.sigmoid(self.raw_gamma)
-
-    @property
-    def pos_threshold(self):
-        return nn.functional.softplus(self.raw_pos_threshold)
-
-    @property
-    def neg_threshold(self):
-        return nn.functional.softplus(self.raw_neg_threshold)
-
-    @property
-    def rec_weight(self):
-        return self.raw_rec_weight
+        self._register_parameter("bias", bias, bias_rank, learn_bias)
 
     def zero_states(self):
-        self.mem = None
-        self.rec = None
-        self.prev_output = None
+        self._zero_states()
 
     def detach_states(self):
-        if self.mem is not None:
-            self.mem = self.mem.detach()
-        if self.rec is not None:
-            self.rec = self.rec.detach()
-        if self.prev_output is not None:
-            self.prev_output = self.prev_output.detach()
+        self._detach_states()
 
     def forward(self, x):
-        if self.rec is None:
-            self.rec = torch.zeros_like(x)
-        if self.prev_output is None:
-            self.prev_output = torch.zeros_like(x)
+        self._ensure_states(x)
 
-        rec_moved = self.rec.movedim(self.dim, -1)
-        rec_moved = rec_moved * self.gamma + self.prev_output.movedim(self.dim, -1) * (1 - self.gamma)
+        x_moved = self._to_working_dim(x)
 
-        if self.mem is None:
-            self.mem = torch.zeros_like(x)
+        rec_moved = self._to_working_dim(self.rec)
+        prev_output_moved = self._to_working_dim(self.prev_output)
+        rec_moved = rec_moved * self.gamma + prev_output_moved * (1 - self.gamma)
 
-        mem_moved = self.mem.movedim(self.dim, -1)
-        mem_moved = mem_moved * self.beta + rec_moved * self.rec_weight + x.movedim(self.dim, -1)
+        mem_delta = rec_moved * self.rec_weight + x_moved + self.bias
+
+        mem_moved = self._to_working_dim(self.mem)
+        mem_moved = mem_moved * self.beta + mem_delta
 
         pos_spikes = self.heaviside(mem_moved - self.pos_threshold)
         neg_spikes = -self.heaviside(self.neg_threshold - mem_moved)
-        spikes = (pos_spikes + neg_spikes).movedim(-1, self.dim)
+        spikes_moved = pos_spikes + neg_spikes
+        spikes = self._from_working_dim(spikes_moved)
 
-        self.mem = mem_moved.movedim(-1, self.dim)
-        self.rec = rec_moved.movedim(-1, self.dim)
+        self.mem = self._from_working_dim(mem_moved)
+        self.rec = self._from_working_dim(rec_moved)
         self.prev_output = spikes
+
         return spikes
