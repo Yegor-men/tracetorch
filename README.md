@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.11.3-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.11.4-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.11.3-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.11.4-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -53,7 +53,7 @@ possible dynamics into declarative configuration on one class, resulting in thou
 features. All 32 of the layers also exist in the `LeakyIntegrator` form, and tests assert that the behavior of the two
 versions don't differ.
 
-Subsequently, traceTorch also presents the `TTLayer`, a powerful mixin class that handles all the boilerplate of
+Subsequently, traceTorch also presents the `TTLayer`, a powerful class that handles all the boilerplate of
 creating SNN layers. Instead of wrestling with parameter registration, state management, and dimension handling, you can
 just inherit from `TTLayer` to create your own SNN layers that comply with the traceTorch ethos. It handles:
 
@@ -93,7 +93,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.11.3 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.11.4 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
