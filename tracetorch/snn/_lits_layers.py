@@ -1,7 +1,7 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ..snn._tt_infrastructure import TTModel, TTLayer
+from ._tt_infrastructure import TTLayer
 from .. import functional
 
 
