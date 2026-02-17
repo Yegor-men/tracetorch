@@ -4,7 +4,7 @@ from torch import nn
 from ..snn._tt_infrastructure import TTModel, TTLayer
 
 
-class LI(TTLayer, TTModel):
+class LI(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -13,8 +13,7 @@ class LI(TTLayer, TTModel):
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
@@ -32,7 +31,7 @@ class LI(TTLayer, TTModel):
         return self.mem
 
 
-class DLI(TTLayer, TTModel):
+class DLI(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -44,8 +43,7 @@ class DLI(TTLayer, TTModel):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("pos_mem")
         self._initialize_state("neg_mem")
@@ -71,7 +69,7 @@ class DLI(TTLayer, TTModel):
         return mem
 
 
-class SLI(TTLayer, TTModel):
+class SLI(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -83,8 +81,7 @@ class SLI(TTLayer, TTModel):
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -109,7 +106,7 @@ class SLI(TTLayer, TTModel):
         return self.mem
 
 
-class RLI(TTLayer, TTModel):
+class RLI(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -127,8 +124,7 @@ class RLI(TTLayer, TTModel):
             learn_rec_weight: bool = True,
             learn_bias: bool = True,
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)

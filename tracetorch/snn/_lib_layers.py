@@ -5,7 +5,7 @@ from ..snn._tt_infrastructure import TTModel, TTLayer
 from .. import functional
 
 
-class LIB(TTLayer, TTModel):
+class LIB(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -18,8 +18,7 @@ class LIB(TTLayer, TTModel):
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
@@ -44,7 +43,7 @@ class LIB(TTLayer, TTModel):
         return spikes
 
 
-class DLIB(TTLayer, TTModel):
+class DLIB(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -60,8 +59,7 @@ class DLIB(TTLayer, TTModel):
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("pos_mem")
         self._initialize_state("neg_mem")
@@ -95,7 +93,7 @@ class DLIB(TTLayer, TTModel):
         return spikes
 
 
-class SLIB(TTLayer, TTModel):
+class SLIB(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -111,8 +109,7 @@ class SLIB(TTLayer, TTModel):
             learn_threshold: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -144,7 +141,7 @@ class SLIB(TTLayer, TTModel):
         return spikes
 
 
-class RLIB(TTLayer, TTModel):
+class RLIB(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -166,8 +163,7 @@ class RLIB(TTLayer, TTModel):
             learn_bias: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)

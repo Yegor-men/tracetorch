@@ -4,10 +4,11 @@ from torch import nn
 from .. import functional
 
 
-class TTLayer:
+class TTLayer(nn.Module):
     """A mixin helper class, used to help manage parameters and hidden states."""
 
     def __init__(self, num_neurons: int, dim: int = -1):
+        super().__init__()
         self._state_names = set()
         self.num_neurons = num_neurons
         self.dim = dim
@@ -139,6 +140,9 @@ class TTModel(nn.Module):
     Inherit your models from this to get model.zero_states() / model.detach_states() behavior.
     """
 
+    def __init__(self):
+        super().__init__()
+
     def get_param_count(self) -> int:
         total_params = sum(p.numel() for p in self.parameters())
         return total_params
@@ -153,10 +157,6 @@ class TTModel(nn.Module):
 
     # --- internal recursive walker ---
     def _call_recursive(self, method_name: str) -> None:
-        """
-        Walk the object graph rooted at self and call `method_name()` on any object
-        that exposes it. Uses a visited set to avoid duplicates / infinite loops.
-        """
         visited: Set[int] = set()
 
         def recurse(obj: Any) -> None:
@@ -165,41 +165,42 @@ class TTModel(nn.Module):
                 return
             visited.add(oid)
 
-            # 1) If object defines the requested method, call it.
-            #    If object is an instance of TTModule, we call the override (if any).
-            #    If object is a plain python object with a callable method_name, call that too.
-            fn = getattr(obj, method_name, None)
-            if callable(fn):
-                # Avoid calling TTModule.zero_states itself in a naive way that would loop forever:
-                # - If obj is a TTModule instance, check whether its class actually overrides the method
-                #   (i.e., the implementation is not the same as TTModule.method_name).
-                if isinstance(obj, TTModel):
-                    # get the unbound function defined on the class (if any)
-                    cls_fn = getattr(obj.__class__, method_name, None)
-                    base_fn = getattr(TTModel, method_name, None)
-                    if cls_fn is not None and cls_fn is not base_fn:
-                        # the class overrides the method -> call the override
-                        try:
-                            fn()
-                        except TypeError:
-                            # defensive: some implementations may accept args; ignore them here
-                            fn()
-                # else: class doesn't override, so don't call TTModule.zero_states (that would just re-enter recursion)
-                else:
-                    # Non-TTModule object that happens to have a method_name: call it
+            # 1) Handle TTLayer instances (leaf components)
+            if isinstance(obj, TTLayer):
+                fn = getattr(obj, method_name, None)
+                if callable(fn):
                     try:
                         fn()
                     except TypeError:
                         fn()
 
-            # 2) Recurse into registered submodules (this covers ModuleList, Sequential, etc.)
+            # 2) Handle TTModel instances that override the method
+            elif isinstance(obj, TTModel):
+                cls_fn = getattr(obj.__class__, method_name, None)
+                base_fn = getattr(TTModel, method_name, None)
+                if cls_fn is not None and cls_fn is not base_fn:
+                    try:
+                        cls_fn(obj)
+                    except TypeError:
+                        cls_fn(obj)
+
+            # 3) Handle other objects that have the method
+            elif hasattr(obj, method_name):
+                fn = getattr(obj, method_name, None)
+                if callable(fn):
+                    try:
+                        fn()
+                    except TypeError:
+                        fn()
+
+            # 4) Recurse into registered submodules (this covers ModuleList, Sequential, etc.)
             if isinstance(obj, nn.Module):
                 for child in obj._modules.values():
                     if child is None:
                         continue
                     recurse(child)
 
-            # 3) Recurse into container attributes that might hold modules or other objects with methods.
+            # 5) Recurse into container attributes that might hold modules or other objects with methods.
             #    This covers plain python lists/tuples/dicts/sets assigned as attributes on modules.
             #    We purposely ignore common atomic types (tensors, numbers, strings).
             try:
