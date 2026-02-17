@@ -139,7 +139,6 @@ class LeakyIntegrator(TTLayer):
 
     def forward(self, x):
         self._ensure_states(x)
-        output = torch.zeros_like(x)
         x_moved = self._to_working_dim(x)
         mem_delta = torch.zeros_like(x)
 
@@ -177,6 +176,8 @@ class LeakyIntegrator(TTLayer):
                 mem_delta = mem_delta + syn_moved
 
                 self.syn = self._from_working_dim(syn_moved)
+        else:
+            mem_delta = x_moved
 
         if self.use_gamma:
             prev_output_moved = self._to_working_dim(self.prev_output)
@@ -267,7 +268,7 @@ class LeakyIntegrator(TTLayer):
         pos_output_moved = torch.zeros_like(mem_moved)
         neg_output_moved = torch.zeros_like(mem_moved)
 
-        if self.use_threshold:
+        if self.use_pos_threshold or self.use_neg_threshold:
             if self.use_pos_threshold:
                 if self.passthrough_pos_threshold:
                     pos_output_moved = torch.where(mem_moved >= 0, mem_moved, 0.0)
