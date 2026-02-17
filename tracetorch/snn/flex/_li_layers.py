@@ -39,7 +39,26 @@ class DLI(LeakyIntegrator):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        pass
+        pos_beta_setup = {
+            "value": pos_beta,
+            "rank": pos_beta_rank,
+            "ema": True,
+            "learnable": learn_pos_beta,
+        }
+
+        neg_beta_setup = {
+            "value": neg_beta,
+            "rank": neg_beta_rank,
+            "ema": True,
+            "learnable": learn_neg_beta,
+        }
+
+        super().__init__(
+            num_neurons=num_neurons,
+            dim=dim,
+            pos_beta_setup=pos_beta_setup,
+            neg_beta_setup=neg_beta_setup,
+        )
 
 
 class SLI(LeakyIntegrator):
@@ -54,7 +73,26 @@ class SLI(LeakyIntegrator):
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        pass
+        alpha_setup = {
+            "value": alpha,
+            "rank": alpha_rank,
+            "ema": False,
+            "learnable": learn_alpha,
+        }
+
+        beta_setup = {
+            "value": beta,
+            "rank": beta_rank,
+            "ema": True,
+            "learnable": learn_beta,
+        }
+
+        super().__init__(
+            num_neurons=num_neurons,
+            dim=dim,
+            pos_alpha_setup=alpha_setup,
+            pos_beta_setup=beta_setup,
+        )
 
 
 class RLI(LeakyIntegrator):
@@ -75,4 +113,37 @@ class RLI(LeakyIntegrator):
             learn_rec_weight: bool = True,
             learn_bias: bool = True,
     ):
-        pass
+        beta_setup = {
+            "value": beta,
+            "rank": beta_rank,
+            "ema": True,
+            "learnable": learn_beta,
+        }
+
+        gamma_setup = {
+            "value": gamma,
+            "rank": gamma_rank,
+            "ema": True,
+            "learnable": learn_gamma,
+        }
+
+        rec_weight_setup = {
+            "value": rec_weight,
+            "rank": rec_weight_rank,
+            "learnable": learn_rec_weight,
+        }
+
+        bias_setup = {
+            "value": bias,
+            "rank": bias_rank,
+            "learnable": learn_bias,
+        }
+
+        super().__init__(
+            num_neurons=num_neurons,
+            dim=dim,
+            pos_beta_setup=beta_setup,
+            gamma_setup=gamma_setup,
+            rec_weight_setup=rec_weight_setup,
+            bias_setup=bias_setup,
+        )
