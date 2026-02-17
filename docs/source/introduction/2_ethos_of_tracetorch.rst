@@ -46,7 +46,7 @@ Further design choices reinforce cleanliness and gradient-friendliness:
   don't want to write boilerplate arguments every single time you make a model. Thus the defaults arguments are set accordingly:
   layers default to the most powerful configuration, made to look just like any other native PyTorch module.
 
-To manage all the per-layer parameters and hidden states, traceTorch uses the ``TTLayer`` mixin class, which works in tandem
+To manage all the per-layer parameters and hidden states, traceTorch uses the ``TTLayer`` class, which works in tandem
 with ``TTModel`` to make everything work effortlessly. ``TTModel`` manages the model-level stuff: recursively calling
 ``.detach_states()`` and ``.zero_states()`` on the model; while ``TTLayer`` manages the layer-level logic: initializing
 hidden states so that they're batch cleared / detached / created, initializing parameters and checking for rank / value / learnability / inverse function,
