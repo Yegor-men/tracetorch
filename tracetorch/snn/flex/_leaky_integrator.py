@@ -1,7 +1,7 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from .._tt_infrastructure import TTLayer, TTModel
+from .._tt_infrastructure import TTLayer
 from ...functional import atan_surrogate, sigmoid_surrogate
 
 
@@ -35,7 +35,7 @@ DEFAULT_REC_WEIGHT = {"value": 0.0, "rank": 1, "learnable": True}
 DEFAULT_BIAS = {"value": 0.0, "rank": 1, "learnable": True}
 
 
-class LeakyIntegrator(TTLayer, TTModel):
+class LeakyIntegrator(TTLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -56,8 +56,7 @@ class LeakyIntegrator(TTLayer, TTModel):
             bias_setup: Optional[VectorConfig] = None,
 
     ):
-        TTLayer.__init__(self, num_neurons, dim)
-        TTModel.__init__(self)
+        super().__init__(num_neurons, dim)
 
         def _setup_decay(
                 name: str,
