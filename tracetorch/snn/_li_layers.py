@@ -58,8 +58,8 @@ class DLI(TTLayer):
         pos_mem_moved = self._to_working_dim(self.pos_mem)
         neg_mem_moved = self._to_working_dim(self.neg_mem)
 
-        pos_mem_moved = pos_mem_moved * self.pos_beta + torch.where(x_moved >= 0, x_moved, 0.0)
-        neg_mem_moved = neg_mem_moved * self.neg_beta + torch.where(x_moved < 0, x_moved, 0.0)
+        pos_mem_moved = pos_mem_moved * self.pos_beta + torch.where(x_moved >= 0, x_moved, 0.0) * (1 - self.pos_beta)
+        neg_mem_moved = neg_mem_moved * self.neg_beta + torch.where(x_moved <= 0, x_moved, 0.0) * (1 - self.neg_beta)
 
         self.pos_mem = self._from_working_dim(pos_mem_moved)
         self.neg_mem = self._from_working_dim(neg_mem_moved)
