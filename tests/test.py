@@ -156,10 +156,13 @@ class TestLayerEquivalence:
             flex_loss = nn.functional.mse_loss(flex_out, target)
 
             # Backward pass
-            base_opt.zero_grad()
-            flex_opt.zero_grad()
+            base_layer.zero_grad()
+            flex_layer.zero_grad()
             base_loss.backward()
             flex_loss.backward()
+
+            base_layer.detach_states()
+            flex_layer.detach_states()
 
             # Update parameters
             base_opt.step()
