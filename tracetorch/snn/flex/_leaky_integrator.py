@@ -140,7 +140,6 @@ class LeakyIntegrator(TTLayer):
     def forward(self, x):
         self._ensure_states(x)
         x_moved = self._to_working_dim(x)
-        mem_delta = torch.zeros_like(x)
 
         if self.use_alpha:
             if self.dual_alpha:
@@ -159,7 +158,7 @@ class LeakyIntegrator(TTLayer):
                 pos_syn_moved = pos_syn_moved * self.pos_alpha + pos_syn_moved_delta
                 neg_syn_moved = neg_syn_moved * self.neg_alpha + neg_syn_moved_delta
 
-                mem_delta = mem_delta + pos_syn_moved + neg_syn_moved
+                mem_delta = pos_syn_moved + neg_syn_moved
 
                 self.pos_syn = self._from_working_dim(pos_syn_moved)
                 self.neg_syn = self._from_working_dim(neg_syn_moved)
@@ -173,7 +172,7 @@ class LeakyIntegrator(TTLayer):
 
                 syn_moved = syn_moved * self.alpha + syn_moved_delta
 
-                mem_delta = mem_delta + syn_moved
+                mem_delta = syn_moved
 
                 self.syn = self._from_working_dim(syn_moved)
         else:
