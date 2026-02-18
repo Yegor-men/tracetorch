@@ -148,7 +148,7 @@ class TestLayerEquivalence:
             torch.testing.assert_close(
                 base_out, flex_out,
                 rtol=1e-5, atol=1e-6,
-                msg=f"{layer_name} training forward mismatch at step {t}"
+                msg=f"{layer_name} training forward mismatch at step {t}\nBase:{base_out}\nFlex:{flex_out}"
             )
 
             # Calculate loss
