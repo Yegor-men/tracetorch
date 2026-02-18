@@ -143,7 +143,7 @@ class RLI(LeakyIntegrator):
             num_neurons=num_neurons,
             dim=dim,
             pos_beta_setup=beta_setup,
-            gamma_setup=gamma_setup,
-            rec_weight_setup=rec_weight_setup,
+            pos_gamma_setup=gamma_setup,
+            pos_rec_weight_setup=rec_weight_setup,
             bias_setup=bias_setup,
         )
