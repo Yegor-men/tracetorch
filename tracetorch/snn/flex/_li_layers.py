@@ -76,7 +76,7 @@ class SLI(LeakyIntegrator):
         alpha_setup = {
             "value": alpha,
             "rank": alpha_rank,
-            "ema": False,
+            "ema": True,
             "learnable": learn_alpha,
         }
 
