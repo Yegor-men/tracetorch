@@ -77,8 +77,8 @@ class LeakyIntegrator(TTLayer):
                     neg_cfg = {**default_config, **(neg_setup or {})}
                     self._register_decay(f"pos_{name}", pos_cfg["value"], pos_cfg["rank"], pos_cfg["learnable"])
                     self._register_decay(f"neg_{name}", neg_cfg["value"], neg_cfg["rank"], neg_cfg["learnable"])
-                    setattr(self, f"ema_pos_{name}", pos_cfg["ema"])
-                    setattr(self, f"ema_neg_{name}", pos_cfg["ema"])
+                    setattr(self, f"ema_pos_{state_name}", pos_cfg["ema"])
+                    setattr(self, f"ema_neg_{state_name}", pos_cfg["ema"])
                 else:
                     self._initialize_state(f"{state_name}")
                     setup = pos_setup or neg_setup
@@ -123,12 +123,12 @@ class LeakyIntegrator(TTLayer):
                 if getattr(self, f"dual_{name}"):
                     pos_cfg = {**default_config, **(pos_setup or {})}
                     neg_cfg = {**default_config, **(neg_setup or {})}
-                    self._register_threshold(f"pos_{name}", pos_cfg["value"], pos_cfg["rank"], pos_cfg["learnable"])
-                    self._register_threshold(f"neg_{name}", neg_cfg["value"], neg_cfg["rank"], neg_cfg["learnable"])
+                    self._register_parameter(f"pos_{name}", pos_cfg["value"], pos_cfg["rank"], pos_cfg["learnable"])
+                    self._register_parameter(f"neg_{name}", neg_cfg["value"], neg_cfg["rank"], neg_cfg["learnable"])
                 else:
                     setup = pos_setup or neg_setup
                     cfg = {**default_config, **(setup or {})}
-                    self._register_threshold(f"{name}", cfg["value"], cfg["rank"], cfg["learnable"])
+                    self._register_parameter(f"{name}", cfg["value"], cfg["rank"], cfg["learnable"])
 
         _setup_vector("scale", pos_scale_setup, neg_scale_setup, DEFAULT_SCALE)
         _setup_vector("rec_weight", pos_rec_weight_setup, neg_rec_weight_setup, DEFAULT_REC_WEIGHT)
@@ -245,12 +245,12 @@ class LeakyIntegrator(TTLayer):
             neg_mem_moved = self._to_working_dim(self.neg_mem)
 
             pos_mem_moved_delta = torch.where(mem_delta >= 0, mem_delta, 0.0)
-            neg_mem_moved_delta = torch.where(mem_delta >= 0, mem_delta, 0.0)
+            neg_mem_moved_delta = torch.where(mem_delta <= 0, mem_delta, 0.0)
 
             if self.ema_pos_mem:
                 pos_mem_moved_delta = pos_mem_moved_delta * (1 - self.pos_beta)
 
-            if self.ema_neg_rec:
+            if self.ema_neg_mem:
                 neg_mem_moved_delta = neg_mem_moved_delta * (1 - self.neg_beta)
 
             pos_mem_moved = pos_mem_moved * self.pos_beta + pos_mem_moved_delta
