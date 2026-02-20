@@ -111,7 +111,7 @@ class RLI(LeakyIntegrator):
             gamma_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             bias_rank: Literal[0, 1] = 1,
-            ema_beta: bool = False,
+            ema_beta: bool = True,
             learn_beta: bool = True,
             learn_gamma: bool = True,
             learn_rec_weight: bool = True,
