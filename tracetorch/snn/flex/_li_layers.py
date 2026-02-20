@@ -10,13 +10,14 @@ class LI(LeakyIntegrator):
             num_neurons: int,
             beta: Union[float, torch.Tensor] = 0.9,
             dim: int = -1,
+            ema_beta: bool = False,
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
         beta_setup = {
             "value": beta,
             "rank": beta_rank,
-            "ema": True,
+            "ema": ema_beta,
             "learnable": learn_beta,
         }
 
@@ -36,20 +37,21 @@ class DLI(LeakyIntegrator):
             dim: int = -1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
+            ema_beta: bool = False,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
         pos_beta_setup = {
             "value": pos_beta,
             "rank": pos_beta_rank,
-            "ema": True,
+            "ema": ema_beta,
             "learnable": learn_pos_beta,
         }
 
         neg_beta_setup = {
             "value": neg_beta,
             "rank": neg_beta_rank,
-            "ema": True,
+            "ema": ema_beta,
             "learnable": learn_neg_beta,
         }
 
@@ -70,6 +72,7 @@ class SLI(LeakyIntegrator):
             dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
+            ema_beta: bool = False,
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
@@ -83,7 +86,7 @@ class SLI(LeakyIntegrator):
         beta_setup = {
             "value": beta,
             "rank": beta_rank,
-            "ema": True,
+            "ema": ema_beta,
             "learnable": learn_beta,
         }
 
@@ -108,6 +111,7 @@ class RLI(LeakyIntegrator):
             gamma_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             bias_rank: Literal[0, 1] = 1,
+            ema_beta: bool = False,
             learn_beta: bool = True,
             learn_gamma: bool = True,
             learn_rec_weight: bool = True,
@@ -116,7 +120,7 @@ class RLI(LeakyIntegrator):
         beta_setup = {
             "value": beta,
             "rank": beta_rank,
-            "ema": True,
+            "ema": ema_beta,
             "learnable": learn_beta,
         }
 

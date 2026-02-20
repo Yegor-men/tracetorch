@@ -10,6 +10,7 @@ class LI(TTLayer):
             num_neurons: int,
             beta: Union[float, torch.Tensor] = 0.9,
             dim: int = -1,
+            ema_beta: bool = False,
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
@@ -17,6 +18,7 @@ class LI(TTLayer):
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.ema = ema_beta
 
     def forward(self, x):
         self._ensure_states(x)
@@ -24,7 +26,8 @@ class LI(TTLayer):
         x_moved = self._to_working_dim(x)
 
         mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + x_moved * (1 - self.beta)
+        mem_delta = x_moved * (1 - self.beta) if self.ema else x_moved
+        mem_moved = mem_moved * self.beta + mem_delta
 
         self.mem = self._from_working_dim(mem_moved)
 
@@ -40,6 +43,7 @@ class DLI(TTLayer):
             dim: int = -1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
+            ema_beta: bool = False,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
@@ -49,6 +53,7 @@ class DLI(TTLayer):
         self._initialize_state("neg_mem")
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.ema = ema_beta
 
     def forward(self, x):
         self._ensure_states(x)
@@ -58,8 +63,15 @@ class DLI(TTLayer):
         pos_mem_moved = self._to_working_dim(self.pos_mem)
         neg_mem_moved = self._to_working_dim(self.neg_mem)
 
-        pos_mem_moved = pos_mem_moved * self.pos_beta + torch.where(x_moved >= 0, x_moved, 0.0) * (1 - self.pos_beta)
-        neg_mem_moved = neg_mem_moved * self.neg_beta + torch.where(x_moved <= 0, x_moved, 0.0) * (1 - self.neg_beta)
+        pos_mem_moved_delta = torch.where(x_moved >= 0, x_moved, 0.0)
+        neg_mem_moved_delta = torch.where(x_moved <= 0, x_moved, 0.0)
+
+        if self.ema:
+            pos_mem_moved_delta = pos_mem_moved_delta * (1 - self.pos_beta)
+            neg_mem_moved_delta = neg_mem_moved_delta * (1 - self.neg_beta)
+
+        pos_mem_moved = pos_mem_moved * self.pos_beta + pos_mem_moved_delta
+        neg_mem_moved = neg_mem_moved * self.neg_beta + neg_mem_moved_delta
 
         self.pos_mem = self._from_working_dim(pos_mem_moved)
         self.neg_mem = self._from_working_dim(neg_mem_moved)
@@ -78,6 +90,7 @@ class SLI(TTLayer):
             dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
+            ema_beta: bool = False,
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
@@ -88,6 +101,7 @@ class SLI(TTLayer):
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.ema = ema_beta
 
     def forward(self, x):
         self._ensure_states(x)
@@ -97,8 +111,10 @@ class SLI(TTLayer):
         syn_moved = self._to_working_dim(self.syn)
         syn_moved = syn_moved * self.alpha + x_moved * (1 - self.alpha)
 
+        mem_delta = syn_moved * (1 - self.beta) if self.ema else syn_moved
+
         mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + syn_moved * (1 - self.beta)
+        mem_moved = mem_moved * self.beta + mem_delta
 
         self.syn = self._from_working_dim(syn_moved)
         self.mem = self._from_working_dim(mem_moved)
@@ -119,6 +135,7 @@ class RLI(TTLayer):
             gamma_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             bias_rank: Literal[0, 1] = 1,
+            ema_beta: bool = False,
             learn_beta: bool = True,
             learn_gamma: bool = True,
             learn_rec_weight: bool = True,
@@ -135,6 +152,7 @@ class RLI(TTLayer):
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
         self._register_parameter("bias", bias, bias_rank, learn_bias)
+        self.ema = ema_beta
 
     def forward(self, x):
         self._ensure_states(x)
@@ -147,8 +165,11 @@ class RLI(TTLayer):
 
         mem_delta = rec_moved + x_moved + self.bias
 
+        if self.ema:
+            mem_delta = mem_delta * (1 - self.beta)
+
         mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + mem_delta * (1 - self.beta)
+        mem_moved = mem_moved * self.beta + mem_delta
 
         self.mem = self._from_working_dim(mem_moved)
         self.rec = self._from_working_dim(rec_moved)
