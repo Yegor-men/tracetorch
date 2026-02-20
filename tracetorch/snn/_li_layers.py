@@ -143,12 +143,12 @@ class RLI(TTLayer):
         prev_output_moved = self._to_working_dim(self.prev_output)
 
         rec_moved = self._to_working_dim(self.rec)
-        rec_moved = rec_moved * self.gamma + prev_output_moved * (1 - self.gamma)
+        rec_moved = rec_moved * self.gamma + prev_output_moved * (1 - self.gamma) * self.rec_weight
 
-        mem_delta = rec_moved * self.rec_weight + x_moved + self.bias
+        mem_delta = rec_moved + x_moved + self.bias
 
         mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + mem_delta
+        mem_moved = mem_moved * self.beta + mem_delta * (1 - self.beta)
 
         self.mem = self._from_working_dim(mem_moved)
         self.rec = self._from_working_dim(rec_moved)

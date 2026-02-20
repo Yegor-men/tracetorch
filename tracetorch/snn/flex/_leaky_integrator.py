@@ -212,19 +212,18 @@ class LeakyIntegrator(TTLayer):
             else:
                 rec_moved = self._to_working_dim(self.rec)
 
-                pos_rec_moved_delta = torch.where(prev_output_moved >= 0, prev_output_moved, 0.0)
-                neg_rec_moved_delta = torch.where(prev_output_moved <= 0, prev_output_moved, 0.0)
-
                 # rec_weight scaling must happen BEFORE integration into mem_delta, for mathematical reasons
                 if self.use_rec_weight:
                     if self.dual_rec_weight:
+                        pos_rec_moved_delta = torch.where(prev_output_moved >= 0, prev_output_moved, 0.0)
+                        neg_rec_moved_delta = torch.where(prev_output_moved <= 0, prev_output_moved, 0.0)
+
                         pos_rec_moved_delta = pos_rec_moved_delta * self.pos_rec_weight
                         neg_rec_moved_delta = neg_rec_moved_delta * self.neg_rec_weight
-                    else:
-                        pos_rec_moved_delta = pos_rec_moved_delta * self.rec_weight
-                        neg_rec_moved_delta = neg_rec_moved_delta * self.rec_weight
 
-                rec_moved_delta = pos_rec_moved_delta + neg_rec_moved_delta
+                        rec_moved_delta = pos_rec_moved_delta + neg_rec_moved_delta
+                    else:
+                        rec_moved_delta = prev_output_moved * self.rec_weight
 
                 if self.ema_rec:
                     rec_moved_delta = rec_moved_delta * (1 - self.gamma)
@@ -264,24 +263,25 @@ class LeakyIntegrator(TTLayer):
 
             mem_moved = mem_moved * self.beta + mem_delta
 
-        pos_output_moved = torch.zeros_like(mem_moved)
-        neg_output_moved = torch.zeros_like(mem_moved)
-
         if self.use_pos_threshold or self.use_neg_threshold:
+            output = torch.zeros_like(x)
+            output_moved = self._to_working_dim(output)
             if self.use_pos_threshold:
                 if self.passthrough_pos_threshold:
-                    pos_output_moved = torch.where(mem_moved >= 0, mem_moved, 0.0)
+                    pos_spikes = torch.where(mem_moved >= 0, mem_moved, 0.0)
                 else:
-                    pos_output_moved = self.pos_threshold_heaviside(mem_moved - self.pos_threshold)
+                    pos_spikes = self.pos_threshold_heaviside(mem_moved - self.pos_threshold)
+                output_moved = output_moved + pos_spikes
 
             if self.use_neg_threshold:
                 if self.passthrough_neg_threshold:
-                    neg_output_moved = torch.where(mem_moved <= 0, mem_moved, 0.0)
+                    neg_spikes = torch.where(mem_moved <= 0, mem_moved, 0.0)
                 else:
-                    neg_output_moved = -self.neg_threshold_heaviside(self.neg_threshold - mem_moved)
+                    neg_spikes = -self.neg_threshold_heaviside(self.neg_threshold - mem_moved)
+                output_moved = output_moved + neg_spikes
 
             if self.use_pos_threshold and not self.passthrough_pos_threshold:
-                threshold_subtraction = pos_output_moved * self.pos_threshold
+                threshold_subtraction = pos_spikes * self.pos_threshold
                 if self.dual_beta:
                     pos_mem_moved = pos_mem_moved - threshold_subtraction * 0.5
                     neg_mem_moved = neg_mem_moved - threshold_subtraction * 0.5
@@ -289,30 +289,26 @@ class LeakyIntegrator(TTLayer):
                     mem_moved = mem_moved - threshold_subtraction
 
             if self.use_neg_threshold and not self.passthrough_neg_threshold:
-                threshold_subtraction = neg_output_moved * self.neg_threshold
+                threshold_subtraction = neg_spikes * self.neg_threshold
                 if self.dual_beta:
                     pos_mem_moved = pos_mem_moved - threshold_subtraction * 0.5
                     neg_mem_moved = neg_mem_moved - threshold_subtraction * 0.5
                 else:
                     mem_moved = mem_moved - threshold_subtraction
-
         else:
-            pos_output_moved = torch.where(mem_moved >= 0, mem_moved, 0.0)
-            neg_output_moved = torch.where(mem_moved <= 0, mem_moved, 0.0)
+            output_moved = mem_moved
 
         # to decouple scale from rec_weight, these things happen separately
         if self.use_gamma:
-            self.prev_output = self._from_working_dim(pos_output_moved + neg_output_moved)
+            self.prev_output = self._from_working_dim(output_moved)
 
         if self.use_scale:
             if self.dual_scale:
-                pos_output_moved = pos_output_moved * self.pos_scale
-                neg_output_moved = neg_output_moved * self.neg_scale
+                output_moved = output_moved * torch.where(output_moved > 0, self.pos_scale, 1.0)
+                output_moved = output_moved * torch.where(output_moved < 0, self.neg_scale, 1.0)
             else:
-                pos_output_moved = pos_output_moved * self.scale
-                neg_output_moved = neg_output_moved * self.scale
+                output_moved = output_moved * self.scale
 
-        output_moved = pos_output_moved + neg_output_moved
         output = self._from_working_dim(output_moved)
 
         if self.dual_beta:
