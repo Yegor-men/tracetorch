@@ -28,17 +28,15 @@ class LIB(TTLayer):
 
     def forward(self, x):
         self._ensure_states(x)
+        x = self._to_working_dim(x)
 
-        x_moved = self._to_working_dim(x)
+        mem = self._to_working_dim(self.mem)
+        mem = mem * self.beta + x
+        spikes = self.heaviside(mem - self.threshold)
+        mem = mem - spikes * self.threshold
 
-        mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + x_moved
-
-        spikes_moved = self.heaviside(mem_moved - self.threshold)
-        mem_moved = mem_moved - spikes_moved * self.threshold
-        spikes = self._from_working_dim(spikes_moved)
-
-        self.mem = self._from_working_dim(mem_moved)
+        spikes = self._from_working_dim(spikes)
+        self.mem = self._from_working_dim(mem)
 
         return spikes
 
@@ -71,24 +69,22 @@ class DLIB(TTLayer):
 
     def forward(self, x):
         self._ensure_states(x)
+        x = self._to_working_dim(x)
 
-        x_moved = self._to_working_dim(x)
+        pos_mem = self._to_working_dim(self.pos_mem)
+        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0)
+        neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0)
 
-        pos_mem_moved = self._to_working_dim(self.pos_mem)
-        neg_mem_moved = self._to_working_dim(self.neg_mem)
+        mem = pos_mem + neg_mem
 
-        pos_mem_moved = pos_mem_moved * self.pos_beta + torch.where(x_moved >= 0, x_moved, 0.0)
-        neg_mem_moved = neg_mem_moved * self.neg_beta + torch.where(x_moved < 0, x_moved, 0.0)
+        spikes = self.heaviside(mem - self.threshold)
+        pos_mem = pos_mem - spikes * self.threshold * 0.5
+        neg_mem = neg_mem - spikes * self.threshold * 0.5
 
-        mem_moved = pos_mem_moved + neg_mem_moved
-
-        spikes_moved = self.heaviside(mem_moved - self.threshold)
-        pos_mem_moved = pos_mem_moved - spikes_moved * self.threshold * 0.5
-        neg_mem_moved = neg_mem_moved - spikes_moved * self.threshold * 0.5
-        spikes = self._from_working_dim(spikes_moved)
-
-        self.pos_mem = self._from_working_dim(pos_mem_moved)
-        self.neg_mem = self._from_working_dim(neg_mem_moved)
+        spikes = self._from_working_dim(spikes)
+        self.pos_mem = self._from_working_dim(pos_mem)
+        self.neg_mem = self._from_working_dim(neg_mem)
 
         return spikes
 
@@ -122,21 +118,19 @@ class SLIB(TTLayer):
 
     def forward(self, x):
         self._ensure_states(x)
+        x = self._to_working_dim(x)
 
-        x_moved = self._to_working_dim(x)
+        syn = self._to_working_dim(x)
+        syn = syn * self.alpha + x * (1 - self.alpha)
 
-        syn_moved = self._to_working_dim(x)
-        syn_moved = syn_moved * self.alpha + x_moved * (1 - self.alpha)
+        mem = self._to_working_dim(self.mem)
+        mem = mem * self.beta + syn
+        spikes = self.heaviside(mem - self.threshold)
+        mem = mem - spikes * self.threshold
 
-        mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + syn_moved
-
-        spikes_moved = self.heaviside(mem_moved - self.threshold)
-        mem_moved = mem_moved - spikes_moved * self.threshold
-        spikes = self._from_working_dim(spikes_moved)
-
-        self.syn = self._from_working_dim(syn_moved)
-        self.mem = self._from_working_dim(mem_moved)
+        spikes = self._from_working_dim(spikes)
+        self.syn = self._from_working_dim(syn)
+        self.mem = self._from_working_dim(mem)
 
         return spikes
 
@@ -176,24 +170,104 @@ class RLIB(TTLayer):
 
     def forward(self, x):
         self._ensure_states(x)
+        x = self._to_working_dim(x)
 
-        x_moved = self._to_working_dim(x)
+        rec = self._to_working_dim(self.rec)
+        prev_output = self._to_working_dim(self.prev_output)
+        rec = rec * self.gamma + prev_output * (1 - self.gamma)
 
-        rec_moved = self._to_working_dim(self.rec)
-        prev_output_moved = self._to_working_dim(self.prev_output)
-        rec_moved = rec_moved * self.gamma + prev_output_moved * (1 - self.gamma)
+        mem_delta = rec * self.rec_weight + x
 
-        mem_delta = rec_moved * self.rec_weight + x_moved
+        mem = self._to_working_dim(self.mem)
+        mem = mem * self.beta + mem_delta
 
-        mem_moved = self._to_working_dim(self.mem)
-        mem_moved = mem_moved * self.beta + mem_delta
+        spikes = self.heaviside(mem - self.threshold)
+        mem = mem - spikes * self.threshold
 
-        spikes_moved = self.heaviside(mem_moved - self.threshold)
-        mem_moved = mem_moved - spikes_moved * self.threshold
-        spikes = self._from_working_dim(spikes_moved)
-
-        self.mem = self._from_working_dim(mem_moved)
-        self.rec = self._from_working_dim(rec_moved)
+        spikes = self._from_working_dim(spikes)
+        self.mem = self._from_working_dim(mem)
+        self.rec = self._from_working_dim(rec)
         self.prev_output = spikes
 
         return spikes
+
+
+class DSLIB(TTLayer):
+    def __init__(
+            self,
+            num_neurons: int,
+            pos_alpha: Union[float, torch.Tensor] = 0.5,
+            neg_alpha: Union[float, torch.Tensor] = 0.5,
+            pos_beta: Union[float, torch.Tensor] = 0.9,
+            neg_beta: Union[float, torch.Tensor] = 0.9,
+            threshold: Union[float, torch.Tensor] = 1.0,
+            dim: int = -1,
+            pos_alpha_rank: Literal[0, 1] = 1,
+            neg_alpha_rank: Literal[0, 1] = 1,
+            pos_beta_rank: Literal[0, 1] = 1,
+            neg_beta_rank: Literal[0, 1] = 1,
+            threshold_rank: Literal[0, 1] = 1,
+            learn_pos_alpha: bool = True,
+            learn_neg_alpha: bool = True,
+            learn_pos_beta: bool = True,
+            learn_neg_beta: bool = True,
+            learn_threshold: bool = True,
+            surrogate_derivative=functional.atan_surrogate(2.0),
+    ):
+        super().__init__(num_neurons, dim)
+
+        self._initialize_state("pos_syn")
+        self._initialize_state("neg_syn")
+        self._register_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
+        self._register_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
+
+        self._initialize_state("pos_mem")
+        self._initialize_state("neg_mem")
+        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+
+        self.heaviside = surrogate_derivative
+        self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+
+    def forward(self, x):
+        self._ensure_states(x)
+        x = self._to_working_dim(x)
+
+        pos_syn = self._to_working_dim(self.pos_syn)
+        neg_syn = self._to_working_dim(self.neg_syn)
+        pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
+        neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
+
+        self.pos_syn = self._from_working_dim(pos_syn)
+        self.neg_syn = self._from_working_dim(neg_syn)
+
+        syn = pos_syn + neg_syn
+
+        pos_mem = self._to_working_dim(self.pos_mem)
+        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0)
+        neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0)
+
+        mem = pos_mem + neg_mem
+
+        spikes = self.heaviside(mem - self.threshold)
+        pos_mem = pos_mem - spikes * self.threshold * 0.5
+        neg_mem = neg_mem - spikes * self.threshold * 0.5
+
+        spikes = self._from_working_dim(spikes)
+        self.pos_mem = self._from_working_dim(pos_mem)
+        self.neg_mem = self._from_working_dim(neg_mem)
+
+        return spikes
+
+
+class DRLIB(TTLayer):
+    pass
+
+
+class SRLIB(TTLayer):
+    pass
+
+
+class DSRLIB(TTLayer):
+    pass
