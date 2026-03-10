@@ -11,9 +11,10 @@ class TestLayerEquivalence:
 
     @pytest.fixture(autouse=True)
     def setup(self):
+
         torch.manual_seed(42)
         self.num_neurons = 10
-        self.batch_size = 4
+        self.batch_size = 100
         self.num_timesteps = 100
         self.dim = -1
         self.lr = 1e-2
@@ -32,12 +33,7 @@ class TestLayerEquivalence:
         self.neg_rec_weight = torch.randn(self.num_neurons)
         self.bias = torch.randn(self.num_neurons) / 3.0
 
-    def create_test_data(self):
-        """Create consistent test data for all tests"""
-        return torch.randn(self.timesteps, self.batch_size, self.num_neurons)
-
-    def test_li_equivalence(self):
-        """Test LI layer equivalence"""
+    def test_li(self):
         self._test_layer_equivalence(
             lambda: snn.LI(
                 self.num_neurons,
@@ -50,8 +46,7 @@ class TestLayerEquivalence:
             "LI"
         )
 
-    def test_dli_equivalence(self):
-        """Test DLI layer equivalence"""
+    def test_dli(self):
         self._test_layer_equivalence(
             lambda: snn.DLI(
                 self.num_neurons,
@@ -66,8 +61,7 @@ class TestLayerEquivalence:
             "DLI"
         )
 
-    def test_sli_equivalence(self):
-        """Test SLI layer equivalence"""
+    def test_sli(self):
         self._test_layer_equivalence(
             lambda: snn.SLI(
                 self.num_neurons,
@@ -82,24 +76,19 @@ class TestLayerEquivalence:
             "SLI"
         )
 
-    def test_rli_equivalence(self):
-        """Test RLI layer equivalence"""
+    def test_lib(self):
         self._test_layer_equivalence(
-            lambda: snn.RLI(
+            lambda: snn.LIB(
                 self.num_neurons,
                 beta=self.pos_beta,
-                gamma=self.pos_gamma,
-                rec_weight=self.pos_rec_weight,
-                bias=self.bias,
+                threshold=self.pos_threshold,
             ),
-            lambda: snn.flex.RLI(
+            lambda: snn.flex.LIB(
                 self.num_neurons,
                 beta=self.pos_beta,
-                gamma=self.pos_gamma,
-                rec_weight=self.pos_rec_weight,
-                bias=self.bias,
+                threshold=self.pos_threshold,
             ),
-            "RLI"
+            layer_name="LIB"
         )
 
     def _test_layer_equivalence(self, base_layer_factory, flex_layer_factory, layer_name):
@@ -128,7 +117,7 @@ class TestLayerEquivalence:
                 torch.testing.assert_close(
                     base_out, flex_out,
                     rtol=1e-5, atol=1e-6,
-                    msg=f"{layer_name} forward pass mismatch at timestep {t}\nBase:{base_out}\nFlex:{flex_out}"
+                    msg=f"{layer_name} forward pass mismatch at timestep {t}\ndiff:{base_out - flex_out}"
                 )
 
         # Test 2: Training equivalence (simpler approach)
@@ -148,7 +137,7 @@ class TestLayerEquivalence:
             torch.testing.assert_close(
                 base_out, flex_out,
                 rtol=1e-5, atol=1e-6,
-                msg=f"{layer_name} training forward mismatch at step {t}\nBase:{base_out}\nFlex:{flex_out}"
+                msg=f"{layer_name} training forward mismatch at step {t}\ndiff:{base_out - flex_out}"
             )
 
             # Calculate loss
