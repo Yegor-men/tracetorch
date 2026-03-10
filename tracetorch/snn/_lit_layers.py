@@ -175,20 +175,17 @@ class RLIT(TTLayer):
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             dim: int = -1,
             beta_rank: Literal[0, 1] = 1,
             gamma_rank: Literal[0, 1] = 1,
             pos_threshold_rank: Literal[0, 1] = 1,
             neg_threshold_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_gamma: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_rec_weight: bool = True,
-            learn_bias: bool = True,
             surrogate_derivative=functional.atan_surrogate(2.0),
     ):
         super().__init__(num_neurons, dim)
@@ -205,7 +202,6 @@ class RLIT(TTLayer):
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
-        self._register_parameter("bias", bias, bias_rank, learn_bias)
 
     def forward(self, x):
         self._ensure_states(x)
@@ -216,7 +212,7 @@ class RLIT(TTLayer):
         prev_output_moved = self._to_working_dim(self.prev_output)
         rec_moved = rec_moved * self.gamma + prev_output_moved * (1 - self.gamma)
 
-        mem_delta = rec_moved * self.rec_weight + x_moved + self.bias
+        mem_delta = rec_moved * self.rec_weight + x_moved
 
         mem_moved = self._to_working_dim(self.mem)
         mem_moved = mem_moved * self.beta + mem_delta
