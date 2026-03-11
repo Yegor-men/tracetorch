@@ -132,6 +132,10 @@ class TTLayer(nn.Module):
         """Move tensor back from working dimension"""
         return tensor.movedim(-1, self.dim)
 
+    def _count_params(self, total_list):
+        """Append parameter count to the list."""
+        total_list.append(sum(p.numel() for p in self.parameters()))
+
 
 class TTModel(nn.Module):
     """
@@ -144,8 +148,126 @@ class TTModel(nn.Module):
         super().__init__()
 
     def get_param_count(self) -> int:
-        total_params = sum(p.numel() for p in self.parameters())
-        return total_params
+        """Count learnable parameters only from SNN layers (TTLayers)."""
+        param_counts = []
+        self._call_recursive("_count_params", param_counts)
+        return sum(param_counts)
+
+    def save_states(self) -> Dict[str, torch.Tensor]:
+        """Save all hidden states from TTLayers in the model.
+
+        states = model.save_states()
+        torch.save(states, "model_states.pt")
+
+        Returns:
+            Dictionary mapping layer_state_name -> tensor, compatible with torch.save()
+        """
+        states = {}
+
+        def collect_states(obj, path=""):
+            if isinstance(obj, TTLayer):
+                for state_name in obj._state_names:
+                    state_value = getattr(obj, state_name)
+                    if state_value is not None:
+                        # Use dot notation for unique identification
+                        full_name = f"{path}.{state_name}" if path else state_name
+                        states[full_name] = state_value.detach().clone()
+
+            # Recurse into submodules and containers (similar to _call_recursive)
+            if isinstance(obj, nn.Module):
+                for name, child in obj._modules.items():
+                    child_path = f"{path}.{name}" if path else name
+                    collect_states(child, child_path)
+
+            # Handle container attributes
+            try:
+                attrs = getattr(obj, "__dict__", {})
+            except Exception:
+                attrs = {}
+
+            for attr_name, attr_value in attrs.items():
+                if attr_value is None:
+                    continue
+                if isinstance(attr_value, (list, tuple, set)):
+                    for i, el in enumerate(attr_value):
+                        collect_states(el, f"{path}.{attr_name}[{i}]")
+                elif isinstance(attr_value, dict):
+                    for key, el in attr_value.items():
+                        collect_states(el, f"{path}.{attr_name}[{key}]")
+                elif isinstance(attr_value, (nn.Module, object)) and not isinstance(attr_value, TTLayer):
+                    collect_states(attr_value, f"{path}.{attr_name}")
+
+        collect_states(self)
+        return states
+
+    def load_states(self, states: Dict[str, torch.Tensor], strict: bool = True) -> None:
+        """Load hidden states into TTLayers.
+
+        states = torch.load("model_states.pt")
+        model.load_states(states)
+
+        Args:
+            states: Dictionary from save_states() or torch.load()
+            strict: If True, raise error for missing/extra states
+        """
+        loaded_count = 0
+        missing_states = []
+
+        def distribute_states(obj, path=""):
+            nonlocal loaded_count
+
+            if isinstance(obj, TTLayer):
+                for state_name in obj._state_names:
+                    full_name = f"{path}.{state_name}" if path else state_name
+
+                    if full_name in states:
+                        state_tensor = states[full_name]
+                        current_state = getattr(obj, state_name)
+
+                        # Validate shape if current state exists
+                        if current_state is not None:
+                            if current_state.shape != state_tensor.shape:
+                                raise ValueError(
+                                    f"Shape mismatch for {full_name}: "
+                                    f"expected {current_state.shape}, got {state_tensor.shape}"
+                                )
+
+                        # Set the state, ensuring it's on the same device
+                        setattr(obj, state_name, state_tensor.to(
+                            obj.mem.device if hasattr(obj, 'mem') and obj.mem is not None else 'cpu'))
+                        loaded_count += 1
+                    else:
+                        missing_states.append(full_name)
+
+            # Recurse (same logic as save_states)
+            if isinstance(obj, nn.Module):
+                for name, child in obj._modules.items():
+                    child_path = f"{path}.{name}" if path else name
+                    distribute_states(child, child_path)
+
+            try:
+                attrs = getattr(obj, "__dict__", {})
+            except Exception:
+                attrs = {}
+
+            for attr_name, attr_value in attrs.items():
+                if attr_value is None:
+                    continue
+                if isinstance(attr_value, (list, tuple, set)):
+                    for i, el in enumerate(attr_value):
+                        distribute_states(el, f"{path}.{attr_name}[{i}]")
+                elif isinstance(attr_value, dict):
+                    for key, el in attr_value.items():
+                        distribute_states(el, f"{path}.{attr_name}[{key}]")
+                elif isinstance(attr_value, (nn.Module, object)) and not isinstance(attr_value, TTLayer):
+                    distribute_states(attr_value, f"{path}.{attr_name}")
+
+        distribute_states(self)
+
+        if strict and missing_states:
+            raise ValueError(f"Missing states for: {missing_states}")
+
+        print(f"Loaded {loaded_count} states")
 
     def zero_states(self) -> None:
         """Public API — zero any stateful child that implements zero_states()."""
@@ -156,7 +278,7 @@ class TTModel(nn.Module):
         self._call_recursive("detach_states")
 
     # --- internal recursive walker ---
-    def _call_recursive(self, method_name: str) -> None:
+    def _call_recursive(self, method_name: str, *args, **kwargs) -> None:
         visited: Set[int] = set()
 
         def recurse(obj: Any) -> None:
@@ -170,9 +292,9 @@ class TTModel(nn.Module):
                 fn = getattr(obj, method_name, None)
                 if callable(fn):
                     try:
-                        fn()
+                        fn(*args, **kwargs)
                     except TypeError:
-                        fn()
+                        fn(*args, **kwargs)
 
             # 2) Handle TTModel instances that override the method
             elif isinstance(obj, TTModel):
