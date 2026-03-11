@@ -143,9 +143,12 @@ class Layer(snn.TTModel):
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
+        nn.init.zeros_(self.lin.bias)
 
     def forward(self, x):
-        return self.lin(self.lif(x))
+        spk = self.lif(x)
+        delta = self.lin(spk)
+        return x + delta
 
 
 class SNN(snn.TTModel):
@@ -172,8 +175,10 @@ class SNN(snn.TTModel):
         return self.dec(self.net(self.enc(x)))
 
 
-model = SNN(128, 3).to(device)
-print(f"\nNum params: {model.get_param_count():,}")
+model = SNN(128, 10).to(device)
+total_params = sum(p.numel() for p in model.parameters())
+snn_params = model.get_param_count()
+print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
 
 loss_fn = tt.loss.soft_cross_entropy
