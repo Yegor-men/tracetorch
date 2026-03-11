@@ -163,11 +163,11 @@ if __name__ == '__main__':
             ema_param.data.mul_(decay).add_(param.data, alpha=1 - decay)
 
 
-    optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
     loss_fn = nn.CrossEntropyLoss()
     optimizer_steps = 0
     accum_steps = 0
-    num_epochs = 1
+    num_epochs = 10
 
     total_steps = num_epochs * len(train_dataloader) // minibatch_size
     warmup_steps = 1000
@@ -282,8 +282,10 @@ if __name__ == '__main__':
                 print(f"Saved generation to {sample_filename}")
 
                 os.makedirs("checkpoints", exist_ok=True)
-                model_path = os.path.join("checkpoints", f"model_step_{optimizer_steps}.safetensors")
+                model_path = os.path.join("checkpoints", f"model_step_{optimizer_steps}_ema.safetensors")
                 save_file(ema_model.state_dict(), model_path)
+                model_path = os.path.join("checkpoints", f"model_step_{optimizer_steps}.safetensors")
+                save_file(model.state_dict(), model_path)
                 print(f"Saved model checkpoint to {model_path}")
 
     writer.close()

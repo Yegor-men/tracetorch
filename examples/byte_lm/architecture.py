@@ -4,19 +4,25 @@ import tracetorch as tt
 from tracetorch import snn
 
 
-class ResidualSpike(snn.TTModule):
+class ResidualSpike(snn.TTModel):
     def __init__(self, hidden_dim):
         super().__init__()
-        self.lif = snn.BSRLIF(
+        self.lif = snn.DSRLITS(
             hidden_dim,
-            alpha=torch.rand(hidden_dim),
-            beta=torch.rand(hidden_dim),
-            gamma=torch.rand(hidden_dim),
+            pos_alpha=torch.rand(hidden_dim),
+            neg_alpha=torch.rand(hidden_dim),
+            pos_beta=torch.rand(hidden_dim),
+            neg_beta=torch.rand(hidden_dim),
+            pos_gamma=torch.rand(hidden_dim),
+            neg_gamma=torch.rand(hidden_dim),
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
+            pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
-        nn.init.normal_(self.lin.weight, 0.0, 0.01)
         nn.init.zeros_(self.lin.bias)
 
     def forward(self, x):
@@ -25,7 +31,7 @@ class ResidualSpike(snn.TTModule):
         return x + delta
 
 
-class SNNLM(snn.TTModule):
+class SNNLM(snn.TTModel):
     def __init__(
             self,
             hidden_dim: int,
@@ -44,10 +50,16 @@ class SNNLM(snn.TTModule):
         self.net = nn.Sequential(*layers)
 
         self.dec = nn.Sequential(
-            nn.Dropout(dec_dropout),
+            snn.DSLI(
+                hidden_dim,
+                pos_alpha=torch.rand(hidden_dim),
+                neg_alpha=torch.rand(hidden_dim),
+                pos_beta=torch.rand(hidden_dim),
+                neg_beta=torch.rand(hidden_dim),
+            ),
+            # nn.Dropout(dec_dropout),
             nn.Linear(hidden_dim, 256)
         )
-        # nn.init.xavier_uniform_(self.dec[-1].weight)
         nn.init.zeros_(self.dec[-1].weight)
         nn.init.zeros_(self.dec[-1].bias)
 
