@@ -16,14 +16,18 @@ class LIB(TTLayer):
             threshold_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_threshold: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     def forward(self, x):
@@ -32,13 +36,19 @@ class LIB(TTLayer):
 
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + x
-        spikes = self.heaviside(mem - self.threshold)
+
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
         self.mem = self._from_working_dim(mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class DLIB(TTLayer):
@@ -55,7 +65,9 @@ class DLIB(TTLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -64,7 +76,9 @@ class DLIB(TTLayer):
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     def forward(self, x):
@@ -78,7 +92,9 @@ class DLIB(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -86,7 +102,10 @@ class DLIB(TTLayer):
         self.pos_mem = self._from_working_dim(pos_mem)
         self.neg_mem = self._from_working_dim(neg_mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class SLIB(TTLayer):
@@ -103,7 +122,9 @@ class SLIB(TTLayer):
             learn_alpha: bool = True,
             learn_beta: bool = True,
             learn_threshold: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -113,7 +134,9 @@ class SLIB(TTLayer):
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     def forward(self, x):
@@ -125,14 +148,18 @@ class SLIB(TTLayer):
 
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + syn
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
         self.syn = self._from_working_dim(syn)
         self.mem = self._from_working_dim(mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class RLIB(TTLayer):
@@ -152,7 +179,9 @@ class RLIB(TTLayer):
             learn_gamma: bool = True,
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -163,7 +192,9 @@ class RLIB(TTLayer):
         self._initialize_state("prev_output")
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
@@ -182,14 +213,18 @@ class RLIB(TTLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
         self.mem = self._from_working_dim(mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class DSLIB(TTLayer):
@@ -212,7 +247,9 @@ class DSLIB(TTLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -226,7 +263,9 @@ class DSLIB(TTLayer):
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     def forward(self, x):
@@ -250,7 +289,8 @@ class DSLIB(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -258,7 +298,10 @@ class DSLIB(TTLayer):
         self.pos_mem = self._from_working_dim(pos_mem)
         self.neg_mem = self._from_working_dim(neg_mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class DRLIB(TTLayer):
@@ -287,7 +330,9 @@ class DRLIB(TTLayer):
             learn_threshold: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -302,7 +347,9 @@ class DRLIB(TTLayer):
         self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
         self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
@@ -334,7 +381,8 @@ class DRLIB(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -343,7 +391,10 @@ class DRLIB(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class SRLIB(TTLayer):
@@ -366,7 +417,9 @@ class SRLIB(TTLayer):
             learn_gamma: bool = True,
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -380,7 +433,9 @@ class SRLIB(TTLayer):
         self._initialize_state("prev_output")
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
@@ -402,14 +457,18 @@ class SRLIB(TTLayer):
 
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
         self.mem = self._from_working_dim(mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes
 
 
 class DSRLIB(TTLayer):
@@ -444,7 +503,9 @@ class DSRLIB(TTLayer):
             learn_threshold: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -464,7 +525,9 @@ class DSRLIB(TTLayer):
         self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
         self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
@@ -506,7 +569,8 @@ class DSRLIB(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        spikes = self.heaviside(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold)
+        spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -515,4 +579,7 @@ class DSRLIB(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(spike_prob)
+        else:
+            return spikes

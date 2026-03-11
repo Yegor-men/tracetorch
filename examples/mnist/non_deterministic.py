@@ -1,26 +1,3 @@
-"""
-A test on long sequence manipulations, MNIST
-
-The previous MNIST tutorial focused on if the model could learn to generalize to noisy and clean data using various
-training methods, such as full BPTT or BPTT truncated at each timestep, thus getting online learning. We tested both
-dense and sparse learning signals, and intentionally lowered the decay values to force the model to learn to accumulate
-charge. However, this isn't really an RNN model in the sense. We were just training the model to accumulate charge,
-not necessarily do anything useful. The order in which we got the signals didn't really matter, they'd just be
-accumulated anyway, and there was no need to manipulate the accumulated signals. If we were looking at this as a
-function through time, the previous example is monotonic, while this one is nonmonotonic. If the model can learn to
-figure out temporal dynamics from a sparse learning signal, we can hope that the model will be able to learn in RL or
-other systems of sparse learning signals. It's still imperfect, in that theoretically the model might somehow learn to
-represent each timestep and thus reverse engineer the coordinate, and now it's back to being a monotonic function, but
-still, it's a lot better than before and at that point you may raise the argument that the goal of any SNN is to turn
-a temporally nonmonotonic function into a monotonic one.
-
-The idea here is that the model inspects the image over 784 timesteps, it's basically sliding a 1x1 kernel across the
-image. It effectively gets a long chain of 1s and 0s throughout time that represent the image, and it must learn to map
-that long sequence to a classification. Unlike the previous example, here, we don't have a per timestep learning signal,
-we don't know at what timestep it becomes obvious what the number is, so the model must somehow store all this in
-working memory and figure it out.
-"""
-
 # ======================================================================================================================
 
 import torch
@@ -124,6 +101,15 @@ import tracetorch as tt
 from tracetorch import snn
 
 
+class Foobar(nn.Module):
+    def __init__(self, slope: float = 4.0):
+        super().__init__()
+        self.slope = nn.Parameter(torch.log(torch.expm1(torch.Tensor([slope]))))
+
+    def forward(self, x):
+        return nn.functional.sigmoid(nn.functional.softplus(self.slope) * x)
+
+
 class Layer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
@@ -141,15 +127,30 @@ class Layer(snn.TTModel):
             neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
             pos_rec_weight=torch.randn(hidden_dim) * 0.1,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
-            deterministic=True,
+            spike_fn=Foobar(4),
+            deterministic=False,
+            return_probs=True,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
 
+        # Store logprobs for REINFORCE
+        self.logprobs = []
+
     def forward(self, x):
-        spk = self.lif(x)
+        spk, pos_prob, neg_prob = self.lif(x)
+
+        # Calculate logprobs for REINFORCE
+        pos_logprob = torch.log(pos_prob + 1e-8) * (spk > 0).float() + \
+                      torch.log(1 - pos_prob + 1e-8) * (spk <= 0).float()
+        neg_logprob = torch.log(neg_prob + 1e-8) * (spk < 0).float() + \
+                      torch.log(1 - neg_prob + 1e-8) * (spk >= 0).float()
+
+        # Store for later use
+        self.logprobs.append(pos_logprob + neg_logprob)
+
         delta = self.lin(spk)
-        return x + delta
+        return (x + delta).detach()
 
 
 class SNN(snn.TTModel):
@@ -196,18 +197,38 @@ for e in range(num_epochs):
         model.zero_grad()
         model.zero_states()
 
+        # Clear logprobs at start of each episode
+        for layer in model.net:
+            layer.logprobs = []
+
+        # Forward pass
         for t in range(seq.size(0)):
             model_output = model(seq[t])
 
-        loss = loss_fn(model_output, label)
+        # Calculate reward based on classification accuracy
         pred_classes = model_output.argmax(dim=-1)
         true_classes = label.argmax(dim=-1)
+        accuracy = (pred_classes == true_classes).float()  # [B]
+        reward = accuracy  # Reward = 1 for correct, 0 for wrong
+
+        # REINFORCE loss for all layers
+        reinforce_loss = 0
+        for layer in model.net:
+            for timestep_logprobs in layer.logprobs:
+                # Average across neurons, then across batch
+                avg_logprob = timestep_logprobs.mean(dim=1)  # [B]
+                reinforce_loss += -(avg_logprob * reward).mean()
+
+        # Combine with classification loss (optional)
+        classification_loss = loss_fn(model_output, label)
+        total_loss = classification_loss + 0.1 * reinforce_loss  # Weighted combination
+
         frac_correct = (pred_classes == true_classes).sum().item() / batch_size
 
-        train_losses.append(loss.item())
+        train_losses.append(total_loss.item())
         train_accs.append(frac_correct)
 
-        loss.backward()
+        total_loss.backward()
         optimizer.step()
 
     plt.title("LOSS")

@@ -25,14 +25,18 @@ class LITS(TTLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -46,8 +50,12 @@ class LITS(TTLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + x
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -60,7 +68,10 @@ class LITS(TTLayer):
         spikes = self._from_working_dim(spikes)
         self.mem = self._from_working_dim(mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class DLITS(TTLayer):
@@ -86,7 +97,9 @@ class DLITS(TTLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -95,7 +108,9 @@ class DLITS(TTLayer):
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -114,8 +129,12 @@ class DLITS(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -131,7 +150,10 @@ class DLITS(TTLayer):
         self.pos_mem = self._from_working_dim(pos_mem)
         self.neg_mem = self._from_working_dim(neg_mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class SLITS(TTLayer):
@@ -157,7 +179,9 @@ class SLITS(TTLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -167,7 +191,9 @@ class SLITS(TTLayer):
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -184,8 +210,12 @@ class SLITS(TTLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + syn
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -199,7 +229,10 @@ class SLITS(TTLayer):
         self.syn = self._from_working_dim(syn)
         self.mem = self._from_working_dim(mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class RLITS(TTLayer):
@@ -228,7 +261,9 @@ class RLITS(TTLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             learn_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -239,7 +274,9 @@ class RLITS(TTLayer):
         self._initialize_state("prev_output")
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -261,8 +298,12 @@ class RLITS(TTLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -277,7 +318,10 @@ class RLITS(TTLayer):
         self.mem = self._from_working_dim(mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class DSLITS(TTLayer):
@@ -309,7 +353,9 @@ class DSLITS(TTLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -323,7 +369,9 @@ class DSLITS(TTLayer):
         self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -351,8 +399,12 @@ class DSLITS(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -368,7 +420,10 @@ class DSLITS(TTLayer):
         self.pos_mem = self._from_working_dim(pos_mem)
         self.neg_mem = self._from_working_dim(neg_mem)
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class DRLITS(TTLayer):
@@ -406,7 +461,9 @@ class DRLITS(TTLayer):
             learn_neg_scale: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -421,7 +478,9 @@ class DRLITS(TTLayer):
         self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -457,8 +516,12 @@ class DRLITS(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -475,7 +538,10 @@ class DRLITS(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class SRLITS(TTLayer):
@@ -507,7 +573,9 @@ class SRLITS(TTLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             learn_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -521,7 +589,9 @@ class SRLITS(TTLayer):
         self._initialize_state("prev_output")
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -547,8 +617,12 @@ class SRLITS(TTLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -563,7 +637,10 @@ class SRLITS(TTLayer):
         self.mem = self._from_working_dim(mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes
 
 
 class DSRLITS(TTLayer):
@@ -607,7 +684,9 @@ class DSRLITS(TTLayer):
             learn_neg_scale: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            surrogate_derivative=functional.atan_surrogate(2.0),
+            spike_fn=nn.Sigmoid(),
+            deterministic: bool = True,
+            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -627,7 +706,9 @@ class DSRLITS(TTLayer):
         self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
-        self.heaviside = surrogate_derivative
+        self.spike_fn = spike_fn
+        self.deterministic = bool(deterministic)
+        self.return_probs = bool(return_probs)
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -673,8 +754,12 @@ class DSRLITS(TTLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.heaviside(mem - self.pos_threshold)
-        neg_spikes = -self.heaviside(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+
+        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
+        pos_spikes = spike_quantizer(pos_spike_prob)
+        neg_spikes = -spike_quantizer(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -691,4 +776,7 @@ class DSRLITS(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
         self.prev_output = spikes
 
-        return spikes
+        if self.return_probs:
+            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+        else:
+            return spikes

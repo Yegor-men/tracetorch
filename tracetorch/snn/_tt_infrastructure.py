@@ -12,6 +12,8 @@ class TTLayer(nn.Module):
         self._state_names = set()
         self.num_neurons = num_neurons
         self.dim = dim
+        self.round_ste = functional.round_ste()
+        self.bernoulli_ste = functional.bernoulli_ste()
 
     def _register_parameter(
             self,
