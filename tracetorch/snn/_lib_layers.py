@@ -347,8 +347,172 @@ class DRLIB(TTLayer):
 
 
 class SRLIB(TTLayer):
-    pass
+    def __init__(
+            self,
+            num_neurons: int,
+            alpha: Union[float, torch.Tensor] = 0.5,
+            beta: Union[float, torch.Tensor] = 0.9,
+            gamma: Union[float, torch.Tensor] = 0.9,
+            threshold: Union[float, torch.Tensor] = 1.0,
+            rec_weight: Union[float, torch.Tensor] = 0.0,
+            dim: int = -1,
+            alpha_rank: Literal[0, 1] = 1,
+            beta_rank: Literal[0, 1] = 1,
+            gamma_rank: Literal[0, 1] = 1,
+            threshold_rank: Literal[0, 1] = 1,
+            rec_weight_rank: Literal[0, 1] = 1,
+            learn_alpha: bool = True,
+            learn_beta: bool = True,
+            learn_gamma: bool = True,
+            learn_threshold: bool = True,
+            learn_rec_weight: bool = True,
+            surrogate_derivative=functional.atan_surrogate(2.0),
+    ):
+        super().__init__(num_neurons, dim)
+
+        self._initialize_state("syn")
+        self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
+
+        self._initialize_state("mem")
+        self._register_decay("beta", beta, beta_rank, learn_beta)
+
+        self._initialize_state("rec")
+        self._initialize_state("prev_output")
+        self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
+
+        self.heaviside = surrogate_derivative
+        self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+
+        self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
+
+    def forward(self, x):
+        self._ensure_states(x)
+        x = self._to_working_dim(x)
+
+        syn = self._to_working_dim(x)
+        syn = syn * self.alpha + x * (1 - self.alpha)
+        self.syn = self._from_working_dim(syn)
+
+        rec = self._to_working_dim(self.rec)
+        prev_output = self._to_working_dim(self.prev_output)
+        rec = rec * self.gamma + prev_output * (1 - self.gamma)
+        self.rec = self._from_working_dim(rec)
+
+        mem_delta = rec * self.rec_weight + syn
+
+        mem = self._to_working_dim(self.mem)
+        mem = mem * self.beta + mem_delta
+        spikes = self.heaviside(mem - self.threshold)
+        mem = mem - spikes * self.threshold
+
+        spikes = self._from_working_dim(spikes)
+        self.mem = self._from_working_dim(mem)
+        self.prev_output = spikes
+
+        return spikes
 
 
 class DSRLIB(TTLayer):
-    pass
+    def __init__(
+            self,
+            num_neurons: int,
+            pos_alpha: Union[float, torch.Tensor] = 0.5,
+            neg_alpha: Union[float, torch.Tensor] = 0.5,
+            pos_beta: Union[float, torch.Tensor] = 0.9,
+            neg_beta: Union[float, torch.Tensor] = 0.9,
+            pos_gamma: Union[float, torch.Tensor] = 0.9,
+            neg_gamma: Union[float, torch.Tensor] = 0.9,
+            threshold: Union[float, torch.Tensor] = 1.0,
+            pos_rec_weight: Union[float, torch.Tensor] = 0.0,
+            neg_rec_weight: Union[float, torch.Tensor] = 0.0,
+            dim: int = -1,
+            pos_alpha_rank: Literal[0, 1] = 1,
+            neg_alpha_rank: Literal[0, 1] = 1,
+            pos_beta_rank: Literal[0, 1] = 1,
+            neg_beta_rank: Literal[0, 1] = 1,
+            pos_gamma_rank: Literal[0, 1] = 1,
+            neg_gamma_rank: Literal[0, 1] = 1,
+            threshold_rank: Literal[0, 1] = 1,
+            pos_rec_weight_rank: Literal[0, 1] = 1,
+            neg_rec_weight_rank: Literal[0, 1] = 1,
+            learn_pos_alpha: bool = True,
+            learn_neg_alpha: bool = True,
+            learn_pos_beta: bool = True,
+            learn_neg_beta: bool = True,
+            learn_pos_gamma: bool = True,
+            learn_neg_gamma: bool = True,
+            learn_threshold: bool = True,
+            learn_pos_rec_weight: bool = True,
+            learn_neg_rec_weight: bool = True,
+            surrogate_derivative=functional.atan_surrogate(2.0),
+    ):
+        super().__init__(num_neurons, dim)
+
+        self._initialize_state("pos_syn")
+        self._initialize_state("neg_syn")
+        self._register_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
+        self._register_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
+
+        self._initialize_state("pos_mem")
+        self._initialize_state("neg_mem")
+        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+
+        self._initialize_state("pos_rec")
+        self._initialize_state("neg_rec")
+        self._initialize_state("prev_output")
+        self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
+        self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
+
+        self.heaviside = surrogate_derivative
+        self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+
+        self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
+        self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
+
+    def forward(self, x):
+        self._ensure_states(x)
+        x = self._to_working_dim(x)
+
+        pos_syn = self._to_working_dim(self.pos_syn)
+        neg_syn = self._to_working_dim(self.neg_syn)
+        pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
+        neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
+
+        self.pos_syn = self._from_working_dim(pos_syn)
+        self.neg_syn = self._from_working_dim(neg_syn)
+
+        syn = pos_syn + neg_syn
+
+        pos_rec = self._to_working_dim(self.pos_rec)
+        neg_rec = self._to_working_dim(self.neg_rec)
+        prev_output = self._to_working_dim(self.prev_output)
+
+        pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
+        neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
+
+        self.pos_rec = self._from_working_dim(pos_rec)
+        self.neg_rec = self._from_working_dim(neg_rec)
+
+        rec = pos_rec + neg_rec
+
+        pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(syn >= 0, syn, 0.0)
+        neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(syn <= 0, syn, 0.0)
+
+        pos_mem = self._to_working_dim(self.pos_mem)
+        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = pos_mem * self.pos_beta + pos_mem_delta
+        neg_mem = neg_mem * self.neg_beta + neg_mem_delta
+
+        mem = pos_mem + neg_mem
+
+        spikes = self.heaviside(mem - self.threshold)
+        pos_mem = pos_mem - spikes * self.threshold * 0.5
+        neg_mem = neg_mem - spikes * self.threshold * 0.5
+
+        spikes = self._from_working_dim(spikes)
+        self.pos_mem = self._from_working_dim(pos_mem)
+        self.neg_mem = self._from_working_dim(neg_mem)
+        self.prev_output = spikes
+
+        return spikes
