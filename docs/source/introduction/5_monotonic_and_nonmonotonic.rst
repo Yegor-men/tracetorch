@@ -89,17 +89,17 @@ initialization looks like in the example byte level language model:
  .. code-block:: python
 
     snn.DSRLITS(
-        hidden_dim,
-        pos_alpha=torch.rand(hidden_dim),
-        neg_alpha=torch.rand(hidden_dim),
-        pos_beta=torch.rand(hidden_dim),
-        neg_beta=torch.rand(hidden_dim),
-        pos_gamma=torch.rand(hidden_dim),
-        neg_gamma=torch.rand(hidden_dim),
-        pos_threshold=torch.rand(hidden_dim),
-        neg_threshold=torch.rand(hidden_dim),
-        pos_scale=(torch.randn(hidden_dim) + 1.0),
-        neg_scale=(torch.randn(hidden_dim) + 1.0),
-        pos_rec_weight=torch.rand(hidden_dim),
-        neg_rec_weight=torch.rand(hidden_dim),
-    )
+            hidden_dim,
+            pos_alpha=torch.rand(hidden_dim),
+            neg_alpha=torch.rand(hidden_dim),
+            pos_beta=torch.rand(hidden_dim),
+            neg_beta=torch.rand(hidden_dim),
+            pos_gamma=torch.rand(hidden_dim),
+            neg_gamma=torch.rand(hidden_dim),
+            pos_threshold=torch.rand(hidden_dim),
+            neg_threshold=torch.rand(hidden_dim),
+            pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
+        )

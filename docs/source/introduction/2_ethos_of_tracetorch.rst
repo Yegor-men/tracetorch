@@ -7,13 +7,14 @@ abides by the KISS principle: Keep It Stupid Simple (not to be confused with Kee
 so that models will just work, with as little configuration as necessary for as much power as possible.
 
 At its core, the library employs a two tier architecture to balance computational efficiency with maximum flexibility.
-By default, traceTorch presents 32 default layers (``LI``, ``LIB``, ``LIT``, ``LITS``, ``DLI``, ``DLIB``, ``DLIT``, ``DLITS``, ``SLI``, ``SLIB``, ``SLIT``, ``SLITS``, ``RLI``, ``RLIB``,
-``RLIT``, ``RLITS``, ``DSLI``, ``DLIB``, ``DSLIT``, ``DSLITS``, ``DRLI``, ``DRLIB``, ``DRLIT``, ``DRLITS``, ``SRLI``, ``SRLIB``, ``SRLIT``,
-``SRLITS``, ``DSRLI``, ``DSRLIB``, ``DSRLIT``, ``DSRLITS``), each one written as a standalone class: optimized for its own
-specific task. But traceTorch also presents a single, highly configurable ``LeakyIntegrator`` superclass. Each of the default
-layers also exists in the ``LeakyIntegrator`` form as a light wrapper, and tests assure that the two versions work identically. The goal of this
-split it so have dedicated, optimized layers for the vast majority of applications, while also having the option of dipping
-into unique, custom configurations. This single source of truth enables:
+By default, traceTorch presents 28 default layers (``LI``, ``DLI``, ``SLI``, ``DSLI``, ``LIB``, ``DLIB``, ``SLIB``,
+``RLIB``, ``DSLIB``, ``DRLIB``, ``SRLIB``, ``DSRLIB``, ``LIT``, ``DLIT``, ``SLIT``, ``RLIT``, ``DSLIT``, ``DRLIT``,
+``SRLIT``, ``DSRLIT``, ``LITS``, ``DLITS``, ``SLITS``, ``RLITS``, ``DSLITS``, ``DRLITS``, ``SRLITS``, ``DSRLITS``),
+each one written as a standalone class: optimized for its own specific task. But traceTorch also presents a single,
+highly configurable ``LeakyIntegrator`` superclass. Each of the default layers also exists in the ``LeakyIntegrator``
+form as a light wrapper, and tests assure that the two versions work identically. The goal of this split it so have
+dedicated, optimized layers for the vast majority of applications, while also having the option of dipping into unique,
+custom configurations. This single source of truth enables:
 
 - **Extreme Composability**: new dynamics are often obtained by changing the initialization flags.
 - **Consistent Mental Model**: one superclass with toggleable flags makes for a simpler mental model than a bunch of

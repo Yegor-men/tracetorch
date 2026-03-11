@@ -40,7 +40,7 @@ torch.cuda.manual_seed_all(0)
 # ======================================================================================================================
 
 min_prob, max_prob, noise_offset = 0.0, 1.0, 0.0
-batch_size = 64
+batch_size = 100
 kernel_size = 4
 stride = 4
 pad = False
@@ -124,16 +124,23 @@ import tracetorch as tt
 from tracetorch import snn
 
 
-class Layer(snn.TTModule):
+class Layer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
-        self.lif = snn.BSRLIF(
+        self.lif = snn.DSRLITS(
             hidden_dim,
-            alpha=torch.rand(hidden_dim),
-            beta=torch.rand(hidden_dim),
-            gamma=torch.rand(hidden_dim),
+            pos_alpha=torch.rand(hidden_dim),
+            neg_alpha=torch.rand(hidden_dim),
+            pos_beta=torch.rand(hidden_dim),
+            neg_beta=torch.rand(hidden_dim),
+            pos_gamma=torch.rand(hidden_dim),
+            neg_gamma=torch.rand(hidden_dim),
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
+            pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
 
@@ -141,18 +148,19 @@ class Layer(snn.TTModule):
         return self.lin(self.lif(x))
 
 
-class SNN(snn.TTModule):
+class SNN(snn.TTModel):
     def __init__(self, hidden_dim: int = 128, num_layers: int = 3):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
         self.net = nn.Sequential(*[Layer(hidden_dim) for _ in range(num_layers)])
         self.dec = nn.Sequential(
-            snn.SRReadout(
+            snn.DSLI(
                 hidden_dim,
-                alpha=torch.rand(hidden_dim),
-                beta=torch.rand(hidden_dim),
-                gamma=torch.rand(hidden_dim),
+                pos_alpha=torch.rand(hidden_dim),
+                neg_alpha=torch.rand(hidden_dim),
+                pos_beta=torch.rand(hidden_dim),
+                neg_beta=torch.rand(hidden_dim),
             ),
             nn.Linear(hidden_dim, 10),
             nn.Softmax(-1)
@@ -166,7 +174,7 @@ class SNN(snn.TTModule):
 
 model = SNN(128, 3).to(device)
 print(f"\nNum params: {model.get_param_count():,}")
-optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
+optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
 
 loss_fn = tt.loss.soft_cross_entropy
 # loss_fn = nn.functional.mse_loss

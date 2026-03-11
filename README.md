@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.11.4-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.12.0-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.11.4-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.12.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -28,14 +28,15 @@ layers provide control over a vast amount of neuron mechanics:
 - `R~` prefix stands for `Recurrent`, meaning that the layer records its own outputs into a separate trace and
   re-integrates it back into the membrane.
 
-In total, this results in 32 specially made, performant layers which easily integrate and work with other PyTorch
-layers: `LI`, `LIB`, `LIT`, `LITS`, `DLI`, `DLIB`, `DLIT`, `DLITS`, `SLI`, `SLIB`, `SLIT`, `SLITS`, `RLI`, `RLIB`,
-`RLIT`, `RLITS`, `DSLI`, `DLIB`, `DSLIT`, `DSLITS`, `DRLI`, `DRLIB`, `DRLIT`, `DRLITS`, `SRLI`, `SRLIB`, `SRLIT`,
-`SRLITS`, `DSRLI`, `DSRLIB`, `DSRLIT`, `DSRLITS`.
+In total, this results in 28 specially made, performant layers which easily integrate and work with other PyTorch
+layers: `LI`, `DLI`, `SLI`, `DSLI`, `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`,
+`SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`, `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`,
+`DSRLITS`.
 
 traceTorch also handles hidden state management in an easy-to-use way. They are set to `None`, and then the size is
 lazily assigned based on the forward pass. Simply inherit from the `TTModel` class to gain access to powerful recursive
-methods `.zero_states()` and `.detach_states()` to recursively respectively set the states to `None` or to detach, no
+methods `.zero_states()` and `.detach_states()` to recursively respectively set the states to `None` or to detach; and
+`.save_states()` and `.load_states()` to save and load hidden states, working both with `.pt` and `.safetensors`, no
 matter how deeply hidden they are: PyTorch modules such as `nn.Sequential` or python classes and data structures; it
 doesn't matter. Additionally, traceTorch takes care of:
 
@@ -50,7 +51,7 @@ doesn't matter. Additionally, traceTorch takes care of:
 But overarching this, traceTorch also presents one unified architecture, replacing the restrictive layer zoo of
 countless disjoint neuron types with the `LeakyIntegrator` superclass. This design encapsulates the massive range of
 possible dynamics into declarative configuration on one class, resulting in thousands of possible combinations of
-features. All 32 of the layers also exist in the `LeakyIntegrator` form, and tests assert that the behavior of the two
+features. All 28 of the layers also exist in the `LeakyIntegrator` form, and tests assert that the behavior of the two
 versions don't differ.
 
 Subsequently, traceTorch also presents the `TTLayer`, a powerful class that handles all the boilerplate of
@@ -93,7 +94,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.11.4 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.12.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
@@ -170,9 +171,7 @@ on it.
 
 traceTorch still has a long way to go. Namely:
 
-- Finish the rest of the 32 base classes
-- Rewrite `LeakyIntegrator` to account for duality
-- Finish the rest of the 32 base classes for tests in `snn.flex`
+- Fix the `LeakyIntegrator` and make the 28 layer wrappers
 - Create tests to assert working order
 - Finish the `examples/` section for example code
 - Make proper requirements for each example in `examples/`

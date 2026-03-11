@@ -50,11 +50,11 @@ class OneHotMNIST(torch.utils.data.Dataset):
 num_epochs = 3
 num_timesteps = 20
 
-noise_offset = 0.1
-min_prob = 0.0
-max_prob = (1.0 / num_timesteps)
+# noise_offset = 0.1
+# min_prob = 0.0
+# max_prob = (1.0 / num_timesteps)
 
-# min_prob, max_prob, noise_offset = 0.0, 0.05, 0.01
+min_prob, max_prob, noise_offset = 0.0, 0.99, 0.01
 
 train_dataset = OneHotMNIST(train=True, min_val=min_prob, max_val=max_prob, offset=noise_offset)
 test_dataset = OneHotMNIST(train=False, min_val=min_prob, max_val=max_prob, offset=noise_offset)
@@ -66,21 +66,30 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
 test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 
-class SNN(snn.TTModule):
+class SNN(snn.TTModel):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(1, 8, 5, dilation=2),
+            nn.Conv2d(1, 32, 5, dilation=2),
             # kernel 5x5 @ dilation 2 becomes 9x9, 28-9+1=20
-            snn.LIF(8, torch.rand(8), 1.0, dim=-3),
-            nn.Conv2d(8, 16, 5, dilation=2),
+            snn.LIB(32, dim=-3),
+            nn.Conv2d(32, 128, 5, dilation=2),
             # kernel 5x5 @ dilation 2 becomes 9x9, 20-9+1 = 12
-            snn.LIF(16, torch.rand(16), 1.0, dim=-3),
-            nn.Conv2d(16, 16, 5, dilation=2),
+            snn.LIB(128, dim=-3),
+            nn.Conv2d(128, 256, 5, dilation=2),
             # kernel 5x5 @ dilation 2 becomes 9x9, 12-9+1 = 4
             nn.Flatten(),
-            snn.Readout(256, torch.rand(256)),  # 4x4x16=256
-            nn.Linear(256, 10),
+            nn.Linear(4 * 4 * 256, 128),
+            snn.LIB(128),
+            nn.Linear(128, 128),
+            snn.DLIB(128),
+            nn.Linear(128, 128),
+            snn.SLIB(128),
+            nn.Linear(128, 128),
+            snn.RLIB(128),
+            nn.Linear(128, 128),
+            snn.DSLI(128),
+            nn.Linear(128, 10),
             nn.Softmax(-1),
         )
         nn.init.zeros_(self.net[-2].weight)

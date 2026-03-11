@@ -34,18 +34,14 @@ array of various neuron mechanics. All layers sit in ``tracetorch.snn``. Detaile
   re-integrates it back into the membrane. The trace is ``rec`` which decays with ``gamma``, and is multiplicatively re-integrated
   into ``mem`` via ``rec_weight``.
 
-These combinations result in the following 32 default layers, which sit in ``tracetorch.snn``. These layers also exits
+These combinations result in the following 28 default layers, which sit in ``tracetorch.snn``. These layers also exits
 in ``tracetorch.snn.flex`` as their ``LeakyIntegrator`` counterparts, but it's not recommended to use the ``snn.flex``
 variants; as it carries all the extra weight of all the extra options which aren't used. ``snn.flex`` is reserved effectively entirely for ``LeakyIntegrator`` for custom experiments.
 
 #. ``LI`` - Leaky Integrator
 #. ``DLI`` - Dual Leaky Integrator
 #. ``SLI`` - Synaptic Leaky Integrator
-#. ``RLI`` - Recurrent Leaky Integrator
 #. ``DSLI`` - Dual Synaptic Leaky Integrator
-#. ``DRLI`` - Dual Recurrent Leaky Integrator
-#. ``SRLI`` - Synaptic Recurrent Leaky Integrator
-#. ``DSRLI`` - Dual Synaptic Recurrent Leaky Integrator
 #. ``LIB`` - Leaky Integrate Binary fire
 #. ``DLIB`` - Dual Leaky Integrate Binary fire
 #. ``SLIB`` - Synaptic Leaky Integrate Binary fire
