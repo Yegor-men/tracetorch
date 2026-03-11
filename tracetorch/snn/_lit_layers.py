@@ -132,8 +132,10 @@ class SLIT(TTLayer):
         super().__init__(num_neurons, dim)
         self._initialize_state("syn")
         self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
+
         self._initialize_state("mem")
         self._register_decay("beta", beta, beta_rank, learn_beta)
+
         self.heaviside = surrogate_derivative
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -146,7 +148,7 @@ class SLIT(TTLayer):
         syn = syn * self.alpha + x * (1 - self.alpha)
 
         mem = self._to_working_dim(self.mem)
-        mem = mem * self.beta + syn * (1 - self.beta)
+        mem = mem * self.beta + syn
 
         pos_spikes = self.heaviside(mem - self.pos_threshold)
         neg_spikes = -self.heaviside(-self.neg_threshold - mem)
@@ -157,7 +159,7 @@ class SLIT(TTLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self._from_working_dim(spikes)
-        self.syn = self._from_working_dim(spikes)
+        self.syn = self._from_working_dim(syn)
         self.mem = self._from_working_dim(mem)
 
         return spikes

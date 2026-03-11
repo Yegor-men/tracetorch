@@ -110,7 +110,7 @@ class DLITS(TTLayer):
         neg_mem = self._to_working_dim(self.neg_mem)
 
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0)
-        neg_mem = neg_mem * self.neg_beta + torch.where(x < 0, x, 0.0)
+        neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0)
 
         mem = pos_mem + neg_mem
 
@@ -182,7 +182,7 @@ class SLITS(TTLayer):
         syn = syn * self.alpha + x * (1 - self.alpha)
 
         mem = self._to_working_dim(self.mem)
-        mem = mem * self.beta + syn * (1 - self.beta)
+        mem = mem * self.beta + syn
 
         pos_spikes = self.heaviside(mem - self.pos_threshold)
         neg_spikes = -self.heaviside(-self.neg_threshold - mem)

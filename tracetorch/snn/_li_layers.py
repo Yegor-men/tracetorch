@@ -139,13 +139,13 @@ class DSLI(TTLayer):
 
         pos_syn = self._to_working_dim(self.pos_syn)
         neg_syn = self._to_working_dim(self.neg_syn)
-        pos_syn = pos_syn * self.pos_beta + torch.where(x >= 0, x, 0.0) * (1 - self.pos_beta)
-        neg_syn = neg_syn * self.neg_beta + torch.where(x <= 0, x, 0.0) * (1 - self.neg_beta)
+        pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
+        neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
         self.pos_syn = self._from_working_dim(pos_syn)
         self.neg_syn = self._from_working_dim(neg_syn)
 
-        syn = self.pos_mem + self.neg_mem
+        syn = pos_syn + neg_syn
 
         pos_mem = self._to_working_dim(self.pos_mem)
         neg_mem = self._to_working_dim(self.neg_mem)
