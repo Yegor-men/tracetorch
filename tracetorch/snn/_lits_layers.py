@@ -57,6 +57,23 @@ class LITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
 
@@ -69,7 +86,10 @@ class LITS(TTLayer):
         self.mem = self._from_working_dim(mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -136,6 +156,23 @@ class DLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
         pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
@@ -151,7 +188,10 @@ class DLITS(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -217,6 +257,23 @@ class SLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
 
@@ -230,7 +287,10 @@ class SLITS(TTLayer):
         self.mem = self._from_working_dim(mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -305,6 +365,23 @@ class RLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
 
@@ -319,7 +396,10 @@ class RLITS(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -406,6 +486,23 @@ class DSLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
         pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
@@ -421,7 +518,10 @@ class DSLITS(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -523,6 +623,23 @@ class DRLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
         pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
@@ -539,7 +656,10 @@ class DRLITS(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -624,6 +744,23 @@ class SRLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
 
@@ -638,7 +775,10 @@ class SRLITS(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes
 
@@ -761,6 +901,23 @@ class DSRLITS(TTLayer):
         pos_spikes = spike_quantizer(pos_spike_prob)
         neg_spikes = -spike_quantizer(neg_spike_prob)
 
+        if self.return_probs:
+            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
+            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
+            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
+            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
+
+            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
+            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
+            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
+            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
+
+            pr_sample = torch.zeros_like(pos_spike_prob)
+            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
+            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
+            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
+            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
         pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
@@ -777,6 +934,9 @@ class DSRLITS(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(pos_spike_prob), self._from_working_dim(neg_spike_prob)
+            pr_pos = self._from_working_dim(pos_spike_prob)
+            pr_neg = self._from_working_dim(neg_spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_pos, pr_neg, pr_sample
         else:
             return spikes

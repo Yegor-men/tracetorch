@@ -39,6 +39,16 @@ class LIB(TTLayer):
 
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
 
         mem = mem - spikes * self.threshold
 
@@ -46,7 +56,9 @@ class LIB(TTLayer):
         self.mem = self._from_working_dim(mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -94,6 +106,16 @@ class DLIB(TTLayer):
 
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
@@ -103,7 +125,9 @@ class DLIB(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -150,6 +174,16 @@ class SLIB(TTLayer):
         mem = mem * self.beta + syn
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
@@ -157,7 +191,9 @@ class SLIB(TTLayer):
         self.mem = self._from_working_dim(mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -215,6 +251,16 @@ class RLIB(TTLayer):
 
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
@@ -222,7 +268,9 @@ class RLIB(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -291,6 +339,16 @@ class DSLIB(TTLayer):
 
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -299,7 +357,9 @@ class DSLIB(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -383,6 +443,16 @@ class DRLIB(TTLayer):
 
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -392,7 +462,9 @@ class DRLIB(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -459,6 +531,16 @@ class SRLIB(TTLayer):
         mem = mem * self.beta + mem_delta
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
         mem = mem - spikes * self.threshold
 
         spikes = self._from_working_dim(spikes)
@@ -466,7 +548,9 @@ class SRLIB(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
 
@@ -571,6 +655,16 @@ class DSRLIB(TTLayer):
 
         spike_prob = self.spike_fn(mem - self.threshold)
         spikes = (self.round_ste if self.deterministic else self.bernoulli_ste)(spike_prob)
+        if self.return_probs:
+            pr_0 = 1 - spike_prob
+            pr_1 = spike_prob
+
+            pr_0_mask = spikes == 0
+            pr_1_mask = spikes == 1
+
+            pr_sample = torch.zeros_like(spike_prob)
+            pr_sample[pr_0_mask] = pr_0[pr_0_mask]
+            pr_sample[pr_1_mask] = pr_1[pr_1_mask]
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
 
@@ -580,6 +674,8 @@ class DSRLIB(TTLayer):
         self.prev_output = spikes
 
         if self.return_probs:
-            return spikes, self._from_working_dim(spike_prob)
+            pr_spike = self._from_working_dim(spike_prob)
+            pr_sample = self._from_working_dim(pr_sample)
+            return spikes, pr_spike, pr_sample
         else:
             return spikes
