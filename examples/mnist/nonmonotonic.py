@@ -48,11 +48,7 @@ num_workers = 0
 pin_memory = True
 
 
-def one_hot_encode(label):
-    return nn.functional.one_hot(torch.tensor(label), num_classes=10).float()
-
-
-class OneHotMNISTImage(torch.utils.data.Dataset):
+class MNIST(torch.utils.data.Dataset):
     def __init__(self, train=True, min_val=0.0, max_val=1.0, offset=0.0, root="data"):
         self.ds = datasets.MNIST(
             root=root,
@@ -104,14 +100,11 @@ def patch_collate(batch):
     # transpose to [T, B, area]
     seq = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
 
-    labels_tensor = torch.tensor(labels, dtype=torch.long)
-    labels_onehot = nn.functional.one_hot(labels_tensor, num_classes=10).float()  # [B, 10]
-
-    return imgs_b, seq, labels_onehot
+    return imgs_b, seq, torch.tensor(labels, dtype=torch.long)
 
 
-train_dataset = OneHotMNISTImage(train=True, min_val=min_prob, max_val=max_prob, offset=noise_offset)
-test_dataset = OneHotMNISTImage(train=False, min_val=min_prob, max_val=max_prob, offset=noise_offset)
+train_dataset = MNIST(train=True, min_val=min_prob, max_val=max_prob, offset=noise_offset)
+test_dataset = MNIST(train=False, min_val=min_prob, max_val=max_prob, offset=noise_offset)
 
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
@@ -124,7 +117,7 @@ import tracetorch as tt
 from tracetorch import snn
 
 
-class Layer(snn.TTModel):
+class ResidualLayer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
         self.lif = snn.DSRLITS(
@@ -157,7 +150,7 @@ class SNN(snn.TTModel):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
-        self.net = nn.Sequential(*[Layer(hidden_dim) for _ in range(num_layers)])
+        self.net = nn.Sequential(*[ResidualLayer(hidden_dim) for _ in range(num_layers)])
         self.dec = nn.Sequential(
             snn.DSLI(
                 hidden_dim,
@@ -167,27 +160,25 @@ class SNN(snn.TTModel):
                 neg_beta=torch.rand(hidden_dim),
             ),
             nn.Linear(hidden_dim, 10),
-            nn.Softmax(-1)
         )
-        nn.init.zeros_(self.dec[-2].weight)
-        nn.init.zeros_(self.dec[-2].bias)
+        nn.init.zeros_(self.dec[-1].weight)
+        nn.init.zeros_(self.dec[-1].bias)
 
     def forward(self, x):
         return self.dec(self.net(self.enc(x)))
 
 
-model = SNN(128, 10).to(device)
+model = SNN(256, 10).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
 
-loss_fn = tt.loss.soft_cross_entropy
-# loss_fn = nn.functional.mse_loss
+loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 10
+num_epochs = 1
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
@@ -201,8 +192,7 @@ for e in range(num_epochs):
 
         loss = loss_fn(model_output, label)
         pred_classes = model_output.argmax(dim=-1)
-        true_classes = label.argmax(dim=-1)
-        frac_correct = (pred_classes == true_classes).sum().item() / batch_size
+        frac_correct = (pred_classes == label).sum().item() / batch_size
 
         train_losses.append(loss.item())
         train_accs.append(frac_correct)
@@ -235,11 +225,42 @@ for e in range(num_epochs):
             loss = loss_fn(model_output, label)
             test_loss += loss.item()
             pred_classes = model_output.argmax(dim=-1)
-            true_classes = label.argmax(dim=-1)
-            frac_correct = (pred_classes == true_classes).sum().item() / batch_size
+            frac_correct = (pred_classes == label).sum().item() / batch_size
             test_acc += frac_correct
 
         test_loss /= len(test_dataloader)
         test_acc /= len(test_dataloader)
 
         print(f"TEST - Loss: {test_loss} | Acc: {test_acc}")
+
+with torch.no_grad():
+    img_batch, seq_batch, label_batch = next(iter(test_dataloader))
+    img_batch, seq_batch, label_batch = img_batch.to(device), seq_batch.to(device), label_batch.to(device)
+
+    for i in range(10):
+        img, seq, label = img_batch[i], seq_batch[:, i], label_batch[i]  # Extract i-th sample
+        model.zero_states()
+
+        input_spike_train = []
+        model_outputs = []
+        losses = []
+        running_loss = 0.0
+
+        for t in range(seq.size(0)):  # Iterate over timesteps
+            spk_input = torch.bernoulli(seq[t]).unsqueeze(0)  # [1, area]
+            input_spike_train.append(spk_input.squeeze(0))  # [area]
+
+            model_output = model(spk_input).squeeze(0)  # [10]
+            model_outputs.append(nn.functional.softmax(model_output, dim=-1))
+            loss = loss_fn(model_output, label.unsqueeze(0))
+            running_loss += loss.item() / seq.size(0)
+            losses.append(loss.item())
+
+        tt.plot.render_image(img.unsqueeze(0), title=f"Loss: {running_loss:.3f}")
+        # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
+        input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
+        tt.plot.spike_train([input_spike_tensor[j] for j in range(input_spike_tensor.size(0))], title="Input")
+        tt.plot.spike_train(model_outputs, title="Model Output")
+        plt.title("Loss over time")
+        plt.plot(losses)
+        plt.show()
