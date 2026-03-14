@@ -63,36 +63,38 @@ def foobar(x):
 
 
 class Layer(snn.TTModel):
-    def __init__(self, in_features, out_features: int):
+    def __init__(self, in_features, out_features):
         super().__init__()
         self.lin = nn.Linear(in_features, out_features)
         self.lif = snn.LIB(
             out_features,
-            # pos_alpha=torch.rand(out_features),
-            # neg_alpha=torch.rand(out_features),
             beta=torch.rand(out_features),
-            # pos_beta=torch.rand(out_features),
-            # neg_beta=torch.rand(out_features),
-            # pos_gamma=torch.rand(out_features),
-            # neg_gamma=torch.rand(out_features),
             threshold=torch.rand(out_features),
-            # neg_threshold=torch.rand(out_features),
-            # pos_scale=torch.randn(out_features) * 0.5 + 1.0,
-            # neg_scale=torch.randn(out_features) * 0.5 + 1.0,
-            # pos_rec_weight=torch.randn(out_features) * 0.1,
-            # neg_rec_weight=torch.randn(out_features) * 0.1,
             spike_fn=foobar,
             deterministic=False,
             return_probs=True,
         )
+
+        # Critic network - predicts reward for each neuron
+        self.critic = nn.Sequential(
+            nn.Linear(in_features, out_features // 2),
+            nn.ReLU(),
+            nn.Linear(out_features // 2, out_features)
+        )
+
         self.logprobs = []
+        self.predicted_rewards = []
 
     def forward(self, x):
-        # spk, pos_prob, neg_prob, pr_sample = self.lif(self.lin(x))
-        spk, pos_prob, pr_sample = self.lif(self.lin(x))
+        spk, spk_prob, pr_sample = self.lif(self.lin(x))
+
+        # Predict reward for this layer
+        predicted_reward = self.critic(x.detach()).mean(dim=-1)  # [B] - average across neurons
+
+        # Store for advantage calculation
+        self.predicted_rewards.append(predicted_reward)
 
         logprob = -torch.log(pr_sample).mean(dim=-1)  # [B]
-
         self.logprobs.append(logprob)
 
         return spk
@@ -103,22 +105,32 @@ class Decoder(snn.TTModel):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_features, in_features),
-            snn.DSLI(
+            snn.LI(
                 in_features,
-                pos_alpha=torch.rand(in_features),
-                neg_alpha=torch.rand(in_features),
-                pos_beta=torch.rand(in_features),
-                neg_beta=torch.rand(in_features),
+                beta=torch.rand(in_features),
             ),
             nn.Linear(in_features, 10),
             nn.Softmax(-1),
         )
         nn.init.zeros_(self.net[-2].weight)
         nn.init.zeros_(self.net[-2].bias)
+
+        # Critic for final layer
+        self.critic = nn.Sequential(
+            nn.Linear(in_features, in_features // 2),
+            nn.ReLU(),
+            nn.Linear(in_features // 2, 1)  # Single reward prediction
+        )
+
         self.logprobs = []
+        self.predicted_rewards = []
 
     def forward(self, x):
         prob_dist = self.net(x)
+
+        # Predict reward
+        predicted_reward = self.critic(x.detach()).squeeze(-1)  # [B]
+        self.predicted_rewards.append(predicted_reward)
 
         sample_indices = torch.multinomial(prob_dist, 1).squeeze(-1)
         onehot_sample = nn.functional.one_hot(sample_indices, num_classes=10).float()
@@ -168,6 +180,7 @@ for e in range(num_epochs):
         # Clear logprobs at start of each episode
         for layer in model.net:
             layer.logprobs = []
+            layer.predicted_rewards = []
 
         # Single timestep - see whole image at once
         model_output = model(torch.bernoulli(image))
@@ -176,17 +189,26 @@ for e in range(num_epochs):
         pred_classes = model_output.argmax(dim=-1)
         true_classes = label.argmax(dim=-1) if label.dim() > 1 else label
         accuracy = (pred_classes == true_classes).float()  # [B]
-        advantage = torch.where(accuracy == 1.0,
-                                torch.tensor(1.0, device=device),
-                                torch.tensor(-0.1, device=device))  # [B]
+        actual_reward = torch.where(accuracy == 1.0,
+                                    torch.tensor(1.0, device=device),
+                                    torch.tensor(-0.1, device=device))  # [B]
 
         # REINFORCE loss for all layers
         reinforce_loss = 0
+        critic_loss = 0
         for layer in model.net:
-            for timestep_logprobs in layer.logprobs:
+            for i, (timestep_logprobs, predicted_reward) in enumerate(zip(layer.logprobs, layer.predicted_rewards)):
+                # Advantage = actual_reward - predicted_reward
+                advantage = actual_reward - predicted_reward
+
+                # Actor loss (REINFORCE with advantage)
                 reinforce_loss += (timestep_logprobs * advantage).mean()
 
-        total_loss = reinforce_loss
+                # Critic loss (MSE between predicted and actual reward)
+                critic_loss += nn.functional.mse_loss(predicted_reward, actual_reward)
+
+        # Total loss = actor + critic
+        total_loss = reinforce_loss + 0.5 * critic_loss
 
         frac_correct = (pred_classes == true_classes).sum().item() / batch_size
 
