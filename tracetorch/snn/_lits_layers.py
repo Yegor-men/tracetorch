@@ -27,7 +27,6 @@ class LITS(TTLayer):
             learn_neg_scale: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -35,8 +34,7 @@ class LITS(TTLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -53,26 +51,8 @@ class LITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -85,13 +65,7 @@ class LITS(TTLayer):
         spikes = self._from_working_dim(spikes)
         self.mem = self._from_working_dim(mem)
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class DLITS(TTLayer):
@@ -119,7 +93,6 @@ class DLITS(TTLayer):
             learn_neg_scale: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -129,8 +102,8 @@ class DLITS(TTLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -152,26 +125,8 @@ class DLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -187,13 +142,7 @@ class DLITS(TTLayer):
         self.pos_mem = self._from_working_dim(pos_mem)
         self.neg_mem = self._from_working_dim(neg_mem)
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class SLITS(TTLayer):
@@ -221,7 +170,6 @@ class SLITS(TTLayer):
             learn_neg_scale: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -232,8 +180,8 @@ class SLITS(TTLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -253,26 +201,8 @@ class SLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -286,13 +216,7 @@ class SLITS(TTLayer):
         self.syn = self._from_working_dim(syn)
         self.mem = self._from_working_dim(mem)
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class RLITS(TTLayer):
@@ -323,7 +247,6 @@ class RLITS(TTLayer):
             learn_rec_weight: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -335,8 +258,8 @@ class RLITS(TTLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -361,26 +284,8 @@ class RLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -395,13 +300,7 @@ class RLITS(TTLayer):
         self.mem = self._from_working_dim(mem)
         self.prev_output = spikes
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class DSLITS(TTLayer):
@@ -435,7 +334,6 @@ class DSLITS(TTLayer):
             learn_neg_scale: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -450,8 +348,8 @@ class DSLITS(TTLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -482,26 +380,8 @@ class DSLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -517,13 +397,7 @@ class DSLITS(TTLayer):
         self.pos_mem = self._from_working_dim(pos_mem)
         self.neg_mem = self._from_working_dim(neg_mem)
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class DRLITS(TTLayer):
@@ -563,7 +437,6 @@ class DRLITS(TTLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -579,8 +452,8 @@ class DRLITS(TTLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -619,26 +492,8 @@ class DRLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -655,13 +510,7 @@ class DRLITS(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
         self.prev_output = spikes
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class SRLITS(TTLayer):
@@ -695,7 +544,6 @@ class SRLITS(TTLayer):
             learn_rec_weight: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -710,8 +558,8 @@ class SRLITS(TTLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -740,26 +588,8 @@ class SRLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -774,13 +604,7 @@ class SRLITS(TTLayer):
         self.mem = self._from_working_dim(mem)
         self.prev_output = spikes
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes
 
 
 class DSRLITS(TTLayer):
@@ -826,7 +650,6 @@ class DSRLITS(TTLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=nn.Sigmoid(),
             deterministic: bool = True,
-            return_probs: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -847,8 +670,7 @@ class DSRLITS(TTLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.deterministic = bool(deterministic)
-        self.return_probs = bool(return_probs)
+        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -897,26 +719,8 @@ class DSRLITS(TTLayer):
         pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
         neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
 
-        spike_quantizer = self.round_ste if self.deterministic else self.bernoulli_ste
-        pos_spikes = spike_quantizer(pos_spike_prob)
-        neg_spikes = -spike_quantizer(neg_spike_prob)
-
-        if self.return_probs:
-            pr_pos0_neg0 = (1 - pos_spike_prob) * (1 - neg_spike_prob)
-            pr_pos0_neg1 = (1 - pos_spike_prob) * neg_spike_prob
-            pr_pos1_neg0 = pos_spike_prob * (1 - neg_spike_prob)
-            pr_pos1_neg1 = pos_spike_prob * neg_spike_prob
-
-            pr_pos0_neg0_mask = (pos_spikes == 0) & (neg_spikes == 0)
-            pr_pos0_neg1_mask = (pos_spikes == 1) & (neg_spikes == 0)
-            pr_pos1_neg0_mask = (pos_spikes == 0) & (neg_spikes == -1)
-            pr_pos1_neg1_mask = (pos_spikes == 1) & (neg_spikes == -1)
-
-            pr_sample = torch.zeros_like(pos_spike_prob)
-            pr_sample[pr_pos0_neg0_mask] = pr_pos0_neg0[pr_pos0_neg0_mask]
-            pr_sample[pr_pos0_neg1_mask] = pr_pos1_neg0[pr_pos0_neg1_mask]
-            pr_sample[pr_pos1_neg0_mask] = pr_pos0_neg1[pr_pos1_neg0_mask]
-            pr_sample[pr_pos1_neg1_mask] = pr_pos1_neg1[pr_pos1_neg1_mask]
+        pos_spikes = self.quant_fn(pos_spike_prob)
+        neg_spikes = -self.quant_fn(neg_spike_prob)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -933,10 +737,4 @@ class DSRLITS(TTLayer):
         self.neg_mem = self._from_working_dim(neg_mem)
         self.prev_output = spikes
 
-        if self.return_probs:
-            pr_pos = self._from_working_dim(pos_spike_prob)
-            pr_neg = self._from_working_dim(neg_spike_prob)
-            pr_sample = self._from_working_dim(pr_sample)
-            return spikes, pr_pos, pr_neg, pr_sample
-        else:
-            return spikes
+        return spikes

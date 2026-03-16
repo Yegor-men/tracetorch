@@ -120,20 +120,10 @@ from tracetorch import snn
 class ResidualLayer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
-        self.lif = snn.DSRLITS(
+        self.lif = snn.LIB(
             hidden_dim,
-            pos_alpha=torch.rand(hidden_dim),
-            neg_alpha=torch.rand(hidden_dim),
-            pos_beta=torch.rand(hidden_dim),
-            neg_beta=torch.rand(hidden_dim),
-            pos_gamma=torch.rand(hidden_dim),
-            neg_gamma=torch.rand(hidden_dim),
-            pos_threshold=torch.rand(hidden_dim),
-            neg_threshold=torch.rand(hidden_dim),
-            pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
-            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
+            beta=torch.rand(hidden_dim),
+            threshold=torch.rand(hidden_dim),
             deterministic=True,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
@@ -152,12 +142,9 @@ class SNN(snn.TTModel):
         self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
         self.net = nn.Sequential(*[ResidualLayer(hidden_dim) for _ in range(num_layers)])
         self.dec = nn.Sequential(
-            snn.DSLI(
+            snn.LI(
                 hidden_dim,
-                pos_alpha=torch.rand(hidden_dim),
-                neg_alpha=torch.rand(hidden_dim),
-                pos_beta=torch.rand(hidden_dim),
-                neg_beta=torch.rand(hidden_dim),
+                beta=torch.rand(hidden_dim),
             ),
             nn.Linear(hidden_dim, 10),
         )
@@ -168,7 +155,7 @@ class SNN(snn.TTModel):
         return self.dec(self.net(self.enc(x)))
 
 
-model = SNN(256, 10).to(device)
+model = SNN(128, 10).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
