@@ -137,6 +137,10 @@ class Foobar(nn.Module):
         return nn.functional.sigmoid(nn.functional.softplus(self.slope) * x)
 
 
+def foobar(x):
+    return nn.functional.sigmoid(2.0 * x)
+
+
 class ResidualSpike(snn.TTModel):
     def __init__(self, hidden_dim):
         super().__init__()
@@ -154,8 +158,8 @@ class ResidualSpike(snn.TTModel):
             neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
             pos_rec_weight=torch.randn(hidden_dim) * 0.1,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
-            spike_fn=Foobar(4),
-            deterministic=False,
+            spike_fn=foobar,
+            deterministic=True,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
@@ -224,7 +228,7 @@ if __name__ == '__main__':
     log_dir = f'tensorboard/birdclef_{timestamp}'
     writer = SummaryWriter(log_dir=log_dir)
 
-    batch_size = 32  # Batch size 16 easily handles[1024, 313] sequences on consumer hardware
+    batch_size = 32  # Batch size 32 easily handles[1024, 313] sequences on consumer hardware
     minibatch_size = 1
 
     train_ds = BirdCLEFDataset(split='train')
@@ -246,7 +250,7 @@ if __name__ == '__main__':
     for param in ema_model.parameters():
         param.requires_grad = False
 
-    optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-5)
     loss_fn = nn.CrossEntropyLoss()
 
     optimizer_steps = 0
@@ -263,7 +267,10 @@ if __name__ == '__main__':
     for e in range(num_epochs):
         model.train()
         ema_model.eval()
-        train_loss = 0.0
+
+        train_loss_accum = 0.0
+        train_correct_accum = 0
+        train_samples_accum = 0
 
         for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
             x = x.to(device)  # [313, B, 1024]
@@ -274,20 +281,24 @@ if __name__ == '__main__':
 
             model.detach_states()
             model.zero_states()
-            running_loss = 0.0
 
             # Forward pass over every timestep sequentially
             for t in range(x.size(0)):
                 x_t = x[t]
                 model_output = model(x_t)
-                loss_t = loss_fn(model_output, y)
-                running_loss += loss_t
 
-            running_loss = running_loss / x.size(0)
-            scaled_loss = running_loss / minibatch_size
+            # ONLY compute loss and accuracy at the final timestep
+            loss = loss_fn(model_output, y)
+
+            scaled_loss = loss / minibatch_size
             scaled_loss.backward()
+
             accum_steps += 1
-            train_loss += running_loss.item()
+            train_loss_accum += loss.item()
+
+            preds = model_output.argmax(dim=-1)
+            train_correct_accum += (preds == y).sum().item()
+            train_samples_accum += y.size(0)
 
             if accum_steps % minibatch_size == 0:
                 current_lr = optimizer.param_groups[0]["lr"]
@@ -299,12 +310,20 @@ if __name__ == '__main__':
                 update_ema_model(model, ema_model)
                 optimizer.zero_grad()
 
-                train_loss /= minibatch_size
-                writer.add_scalars("loss", {"train": train_loss}, optimizer_steps)
-                train_loss = 0.0
+                # Log Train Loss and Accuracy
+                avg_train_loss = train_loss_accum / minibatch_size
+                train_acc = train_correct_accum / train_samples_accum
 
-            # Validation Loop every 100 steps
-            if optimizer_steps % 100 == 0 and optimizer_steps != 0:
+                writer.add_scalars("loss", {"train": avg_train_loss}, optimizer_steps)
+                writer.add_scalars("accuracy", {"train": train_acc}, optimizer_steps)
+
+                # Reset accumulators
+                train_loss_accum = 0.0
+                train_correct_accum = 0
+                train_samples_accum = 0
+
+            # Validation Loop every 400 steps
+            if optimizer_steps % 400 == 0 and optimizer_steps != 0:
                 val_loss = 0.0
                 correct = 0
                 total_samples = 0
@@ -316,25 +335,23 @@ if __name__ == '__main__':
                         y = y.to(device)
                         ema_model.zero_states()
 
-                        running_loss = 0.0
                         for t in range(x.size(0)):
                             model_output = ema_model(x[t])
-                            running_loss += loss_fn(model_output, y)
 
-                        # Use final timestep output for accuracy metrics
+                        # ONLY compute loss and accuracy at the final timestep
+                        loss = loss_fn(model_output, y)
+                        val_loss += loss.item()
+
                         preds = model_output.argmax(dim=-1)
                         correct += (preds == y).sum().item()
                         total_samples += y.size(0)
-
-                        running_loss = running_loss / x.size(0)
-                        val_loss += running_loss.item()
 
                 if len(val_dataloader) > 0:
                     val_loss /= len(val_dataloader)
                     accuracy = correct / total_samples
 
                     writer.add_scalars("loss", {"val": val_loss}, optimizer_steps)
-                    writer.add_scalar("accuracy/val", accuracy, optimizer_steps)
+                    writer.add_scalars("accuracy", {"val": accuracy}, optimizer_steps)
 
                     os.makedirs("checkpoints", exist_ok=True)
                     model_path = os.path.join("checkpoints", f"birdclef_step_{optimizer_steps}_ema.safetensors")
