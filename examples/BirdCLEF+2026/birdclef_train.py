@@ -1,7 +1,6 @@
 import os
 import copy
 import random
-import ast
 import pandas as pd
 import numpy as np
 import torchaudio
@@ -12,10 +11,9 @@ from tqdm import tqdm
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
-from safetensors.torch import save_file, load_file
+from safetensors.torch import save_file
 import librosa
 from sklearn.metrics import roc_auc_score
-import torch.nn.functional as F
 
 import tracetorch as tt
 from tracetorch import snn
@@ -31,131 +29,92 @@ if device == "cuda":
 # Evaluation Metric Helper
 # =====================================================================
 def compute_macro_roc_auc(preds, targets):
-    """
-    Exact implementation of the Kaggle BirdCLEF 2026 ROC-AUC metric.
-    Only scores classes that have >0 true positive labels in the given targets.
-    """
-    target_sums = targets.sum(axis=0)
-    scored_columns = np.where(target_sums > 0)[0]
+    binary_targets = (targets > 0.0).astype(np.float32)
+    target_sums = binary_targets.sum(axis=0)
 
+    scored_columns = np.where((target_sums > 0) & (target_sums < len(targets)))[0]
     if len(scored_columns) == 0:
-        return 0.5  # If absolutely no positive targets exist, return random guessing baseline
+        return 0.5
 
-    return roc_auc_score(targets[:, scored_columns], preds[:, scored_columns], average='macro')
+    return roc_auc_score(binary_targets[:, scored_columns], preds[:, scored_columns], average='macro')
 
 
 # =====================================================================
-# 1. Dataset & Dataloader
+# 1. Dataset & Dataloader (Full 60s Soundscapes)
 # =====================================================================
-class BirdCLEFDataset(Dataset):
-    def __init__(self, data_dir='data/birdclef-2026', split='train', duration=5.0, sr=32000):
-        self.data_dir = data_dir
+class FullSoundscapeDataset(Dataset):
+    def __init__(self, df_labels, class_to_idx, data_dir='data/birdclef-2026', sr=32000):
         self.sr = sr
-        self.num_samples = int(duration * sr)
-
-        self.audio_dir = os.path.join(data_dir, "train_audio")
-        self.csv_path = os.path.join(data_dir, "train.csv")
-
-        if not os.path.exists(self.csv_path) or not os.path.exists(self.audio_dir):
-            raise FileNotFoundError(
-                f"\n[ERROR] Could not find the dataset at {data_dir}.\n"
-                f"Please ensure:\n"
-                f"1. {self.csv_path} exists.\n"
-                f"2. {self.audio_dir}/ exists."
-            )
+        # Exactly 60 seconds
+        self.num_samples = int(60.0 * sr)
+        self.audio_dir = os.path.join(data_dir, "train_soundscapes")
+        self.class_to_idx = class_to_idx
 
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
-            sample_rate=self.sr,
-            n_fft=2048,
-            hop_length=512,
-            n_mels=256,
-            power=2.0
-        )
+            sample_rate=self.sr, n_fft=2048, hop_length=512, n_mels=256, power=2.0)
         self.db_transform = torchaudio.transforms.AmplitudeToDB(top_db=80)
 
+        # Group labels by filename
         self.samples = []
-        df_full = pd.read_csv(self.csv_path)
+        unique_files = df_labels['filename'].unique()
 
-        filename_col = 'filename' if 'filename' in df_full.columns else df_full.columns[0]
-        label_col = 'primary_label' if 'primary_label' in df_full.columns else df_full.columns[1]
+        for filename in unique_files:
+            file_path = os.path.join(self.audio_dir, str(filename))
+            if not file_path.endswith('.ogg'): file_path += '.ogg'
 
-        self.classes = sorted(df_full[label_col].astype(str).unique().tolist())
-        self.class_to_idx = {c: i for i, c in enumerate(self.classes)}
+            # Target matrix: 12 chunks (5s each), num_classes
+            Y_matrix = torch.zeros((12, len(self.class_to_idx)), dtype=torch.float32)
 
-        if split == 'train':
-            df = df_full.sample(frac=0.8, random_state=42)
-        else:
-            df = df_full.drop(df_full.sample(frac=0.8, random_state=42).index)
+            file_df = df_labels[df_labels['filename'] == filename]
+            for _, row in file_df.iterrows():
+                # start column is 0, 5, 10, etc.
+                time_parts = str(row['start']).split(':')
+                start_sec = sum(float(x) * (60 ** i) for i, x in enumerate(reversed(time_parts)))
+                # start_sec = float(row['start'])
+                chunk_idx = int(start_sec // 5)
 
-        for _, row in df.iterrows():
-            file_path = os.path.join(self.audio_dir, str(row[filename_col]))
-            if not file_path.endswith('.ogg'):
-                file_path += '.ogg'
+                if chunk_idx >= 12: continue
 
-            # Parse primary and secondary labels for Multi-Hot Encoding
-            primary = str(row[label_col])
-            secondaries = []
-            if 'secondary_labels' in row:
-                try:
-                    parsed = ast.literal_eval(row['secondary_labels'])
-                    if isinstance(parsed, list):
-                        secondaries = [str(lbl) for lbl in parsed]
-                except Exception:
-                    pass
+                birds_str = str(row['primary_label'])
+                birds = birds_str.split() if ' ' in birds_str else [birds_str]
+                for b in birds:
+                    if b in self.class_to_idx:
+                        Y_matrix[chunk_idx, self.class_to_idx[b]] = 1.0
 
-            label_indices = [self.class_to_idx[primary]]
-            for sec in secondaries:
-                if sec in self.class_to_idx:
-                    label_indices.append(self.class_to_idx[sec])
-
-            self.samples.append((file_path, label_indices))
-
-        print(f"Loaded {split} split: {len(self.samples)} real audio samples spanning {len(self.classes)} classes.")
+            self.samples.append((file_path, Y_matrix))
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        file_path, label_indices = self.samples[idx]
+        file_path, Y_matrix = self.samples[idx]
 
         try:
-            waveform_np, _ = librosa.load(file_path, sr=self.sr, mono=True)
+            # Load exact 60 seconds
+            waveform_np, _ = librosa.load(file_path, sr=self.sr, mono=True, duration=60.0)
             waveform = torch.from_numpy(waveform_np).unsqueeze(0)
-        except Exception as e:
-            if not hasattr(self, '_printed_error'):
-                print(f"\n[CRITICAL ERROR] Failed to load audio!")
-                self._printed_error = True
+        except Exception:
             waveform = torch.zeros(1, self.num_samples)
 
-        if waveform.shape[1] > self.num_samples:
-            start = random.randint(0, waveform.shape[1] - self.num_samples)
-            waveform = waveform[:, start:start + self.num_samples]
-        elif waveform.shape[1] < self.num_samples:
-            pad = self.num_samples - waveform.shape[1]
-            waveform = torch.nn.functional.pad(waveform, (0, pad))
+        if waveform.shape[1] < self.num_samples:
+            waveform = torch.nn.functional.pad(waveform, (0, self.num_samples - waveform.shape[1]))
 
         spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec).squeeze(0)
+        X = ((spec_db + 80.0) / 80.0).transpose(0, 1)  # [~3750, 256]
 
-        spec_current = (spec_db + 80.0) / 80.0
-
-        X = spec_current.transpose(0, 1)  # [L, E] -> [313, 256]
-
-        Y = torch.zeros(len(self.classes), dtype=torch.float32)
-        Y[label_indices] = 1.0
-
-        return X, Y
+        return X, Y_matrix
 
 
 def collate_fn(batch):
     X, Y = zip(*batch)
-    X = torch.stack(X).transpose(0, 1)  # ->[L, B, 256]
-    Y = torch.stack(Y)  # ->[B, num_classes] (float32)
+    X = torch.stack(X).transpose(0, 1)  # [3750, B, 256]
+    Y = torch.stack(Y)  # [B, 12, num_classes]
     return X, Y
 
 
 # =====================================================================
-# 2. traceTorch Architecture
+# 2. traceTorch Architecture (Unchanged)
 # =====================================================================
 class Foobar(nn.Module):
     def __init__(self, slope: float = 4.0):
@@ -200,29 +159,14 @@ class ResidualSpike(snn.TTModel):
         nn.init.zeros_(self.lin.bias)
 
     def forward(self, x):
-        spk = self.lif(x)
-        delta = self.lin(spk)
-        return x + delta
+        return x + self.lin(self.lif(x))
 
 
 class SNN(snn.TTModel):
-    def __init__(
-            self,
-            in_features: int,
-            hidden_features: int,
-            num_layers: int,
-            out_features: int,
-    ):
+    def __init__(self, in_features, hidden_features, num_layers, out_features):
         super().__init__()
-
-        self.enc = nn.Sequential(
-            nn.Linear(in_features, hidden_features),
-            nn.Dropout(0.0),
-        )
-
-        layers = [ResidualSpike(hidden_features) for _ in range(num_layers)]
-        self.net = nn.Sequential(*layers)
-
+        self.enc = nn.Sequential(nn.Linear(in_features, hidden_features), nn.Dropout(0.0))
+        self.net = nn.Sequential(*[ResidualSpike(hidden_features) for _ in range(num_layers)])
         self.dec = nn.Sequential(
             snn.DSLI(
                 hidden_features,
@@ -258,138 +202,173 @@ def update_ema_model(model, ema_model, decay: float = 0.999):
 # 3. Training & Validation Loop
 # =====================================================================
 if __name__ == '__main__':
-    import subprocess
-    import webbrowser
-    import time
-    from torch.utils.tensorboard import SummaryWriter
+    import subprocess, webbrowser, time
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = f'tensorboard/birdclef_{timestamp}'
+    log_dir = f'tensorboard/birdclef_60s_{timestamp}'
     writer = SummaryWriter(log_dir=log_dir)
 
-    subprocess.Popen(['tensorboard', '--logdir', 'tensorboard', '--port', '6006'],
-                     stderr=subprocess.DEVNULL)
-    time.sleep(2)
-    webbrowser.open('http://localhost:6006')
+    # --- Setup Datasets ---
+    data_dir = 'data/birdclef-2026'
 
-    batch_size = 60
-    minibatch_size = 1
+    # Still load focal train.csv JUST to get the absolute list of 234 classes
+    df_focal_all = pd.read_csv(os.path.join(data_dir, "train.csv"))
+    label_col = 'primary_label' if 'primary_label' in df_focal_all.columns else df_focal_all.columns[1]
+    classes = sorted(df_focal_all[label_col].astype(str).unique().tolist())
+    class_to_idx = {c: i for i, c in enumerate(classes)}
+    num_classes = len(classes)
 
-    train_ds = BirdCLEFDataset(split='train')
-    val_ds = BirdCLEFDataset(split='val')
-    num_classes = len(train_ds.classes)
+    # Load Soundscapes Labels
+    ss_csv_path = os.path.join(data_dir, "train_soundscapes_labels.csv")
+    df_ss_all = pd.read_csv(ss_csv_path)
+
+    # Get unique labeled files (approx 123)
+    unique_ss_files = df_ss_all['filename'].unique()
+    np.random.shuffle(unique_ss_files)
+
+    # Split the ~123 files into 80/20 train/val
+    split_idx = int(len(unique_ss_files) * 0.8)
+    train_files = unique_ss_files[:split_idx]
+    val_files = unique_ss_files[split_idx:]
+
+    df_ss_train = df_ss_all[df_ss_all['filename'].isin(train_files)]
+    df_ss_val = df_ss_all[df_ss_all['filename'].isin(val_files)]
+
+    train_ds = FullSoundscapeDataset(df_ss_train, class_to_idx, data_dir=data_dir)
+    val_ds = FullSoundscapeDataset(df_ss_val, class_to_idx, data_dir=data_dir)
+
+    print(f"Training on {len(train_ds)} 60s soundscapes.")
+    print(f"Validating on {len(val_ds)} 60s soundscapes.")
+
+    # Extremely low batch size to prevent 3750-timestep OOM
+    # Accumulate 15 times to get an effective batch size of 60
+    batch_size = 4
+    grad_accum_steps = 15
 
     train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn, num_workers=4)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_fn, num_workers=4)
 
     model = SNN(in_features=256, hidden_features=1024, num_layers=10, out_features=num_classes).to(device)
-    model.load_state_dict(load_file("checkpoints/_birdclef_step_1600_ema.safetensors"))
-
     ema_model = copy.deepcopy(model)
     ema_model.eval()
-    for param in ema_model.parameters():
-        param.requires_grad = False
+    for param in ema_model.parameters(): param.requires_grad = False
 
     optimizer = torch.optim.AdamW(model.parameters(), 1e-5)
-
-    # Reverting to raw, unweighted BCE for pure calibration
     loss_fn = nn.BCEWithLogitsLoss()
 
-    optimizer_steps = 0
-    accum_steps = 0
-    num_epochs = 10
-
-    total_steps = num_epochs * max(1, len(train_dataloader)) // minibatch_size
+    optimizer_steps, accum_steps, num_epochs = 0, 0, 10
+    total_steps = num_epochs * max(1, len(train_dataloader)) // grad_accum_steps
     warmup_steps = max(1, total_steps // 10)
-    cosine_steps = total_steps - warmup_steps
-    warmup_scheduler = LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_steps)
-    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=cosine_steps, eta_min=1e-6)
-    scheduler = SequentialLR(optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps])
+    scheduler = SequentialLR(optimizer, schedulers=[
+        LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_steps),
+        CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=1e-6)
+    ], milestones=[warmup_steps])
 
     for e in range(num_epochs):
         model.train()
         train_loss_accum = 0.0
 
         for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
-            x = x.to(device)  # [313, B, 256]
-            y = y.to(device)  # [B, num_classes]
-
+            x, y = x.to(device), y.to(device)
             x = add_spec_noise(x, p=0.1)
 
             model.detach_states()
             model.zero_states()
 
-            # Pass over time, keep only final output
-            for t in range(x.size(0)):
-                model_output = model(x[t])
+            # Dynamic timeline slicing
+            frames_per_chunk = x.size(0) / 12.0
+            step_losses = 0.0
 
-            loss = loss_fn(model_output, y)
-            scaled_loss = loss / minibatch_size
-            scaled_loss.backward()
+            # For tracking batch ROC-AUC
+            chunk_preds_train = torch.zeros_like(y)
+            chunk_counts = torch.zeros(12, device=device)
+
+            for t in range(x.size(0)):
+                model_output = model(x[t])  # [B, num_classes]
+
+                # Determine which 5s chunk we are currently in
+                chunk_idx = min(int(t / frames_per_chunk), 11)
+
+                target = y[:, chunk_idx, :]
+                step_losses += loss_fn(model_output, target)
+
+                # Accumulate for ROC-AUC
+                chunk_preds_train[:, chunk_idx, :] += model_output
+                chunk_counts[chunk_idx] += 1
+
+            # Average loss over all 3750 steps
+            loss = step_losses / x.size(0)
+            (loss / grad_accum_steps).backward()
 
             accum_steps += 1
             train_loss_accum += loss.item()
 
-            if accum_steps % minibatch_size == 0:
-                current_lr = optimizer.param_groups[0]["lr"]
-                writer.add_scalar("learning_rate", current_lr, optimizer_steps)
-
+            if accum_steps % grad_accum_steps == 0:
+                writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], optimizer_steps)
                 optimizer.step()
                 scheduler.step()
                 optimizer_steps += 1
                 update_ema_model(model, ema_model)
                 optimizer.zero_grad()
 
-                # Calculate Training ROC-AUC for this specific batch
                 with torch.no_grad():
-                    train_probs = torch.sigmoid(model_output).cpu().numpy()
-                    train_targets = y.cpu().numpy()
+                    # Average logits within each chunk
+                    for c in range(12):
+                        if chunk_counts[c] > 0:
+                            chunk_preds_train[:, c, :] /= chunk_counts[c]
+
+                    train_probs = torch.sigmoid(chunk_preds_train).view(-1, num_classes).cpu().numpy()
+                    train_targets = y.view(-1, num_classes).cpu().numpy()
                     train_roc_auc = compute_macro_roc_auc(train_probs, train_targets)
 
-                avg_train_loss = train_loss_accum / minibatch_size
-
-                # Log to the shared main tags so they appear on the same graphs
-                writer.add_scalars("Loss", {"Train": avg_train_loss}, optimizer_steps)
+                writer.add_scalars("Loss", {"Train": train_loss_accum / grad_accum_steps}, optimizer_steps)
                 writer.add_scalars("ROC_AUC", {"Train": train_roc_auc}, optimizer_steps)
-
                 train_loss_accum = 0.0
 
             # ==========================================
             # VALIDATION LOOP (Every 200 steps)
             # ==========================================
             if optimizer_steps % 200 == 0 and optimizer_steps != 0:
-
                 def evaluate_model(eval_model, name):
                     eval_model.eval()
                     val_loss = 0.0
-                    all_preds = []
-                    all_targets = []
+                    all_preds, all_targets = [], []
 
                     with torch.no_grad():
-                        for j, (x_val, y_val) in tqdm(enumerate(val_dataloader), total=len(val_dataloader),
-                                                      desc=f"VAL ({name})"):
-                            x_val = x_val.to(device)
-                            y_val = y_val.to(device)
+                        for x_val, y_val in tqdm(val_dataloader, desc=f"VAL ({name})"):
+                            x_val, y_val = x_val.to(device), y_val.to(device)
                             eval_model.zero_states()
+
+                            frames_per_chunk_val = x_val.size(0) / 12.0
+                            step_losses_val = 0.0
+
+                            chunk_preds_val = torch.zeros_like(y_val)
+                            chunk_counts_val = torch.zeros(12, device=device)
 
                             for t in range(x_val.size(0)):
                                 model_output_val = eval_model(x_val[t])
+                                chunk_idx = min(int(t / frames_per_chunk_val), 11)
 
-                            loss_val = loss_fn(model_output_val, y_val)
-                            val_loss += loss_val.item()
+                                target_val = y_val[:, chunk_idx, :]
+                                step_losses_val += loss_fn(model_output_val, target_val)
 
-                            probs = torch.sigmoid(model_output_val)
+                                chunk_preds_val[:, chunk_idx, :] += model_output_val
+                                chunk_counts_val[chunk_idx] += 1
+
+                            val_loss += (step_losses_val / x_val.size(0)).item()
+
+                            for c in range(12):
+                                if chunk_counts_val[c] > 0:
+                                    chunk_preds_val[:, c, :] /= chunk_counts_val[c]
+
+                            probs = torch.sigmoid(chunk_preds_val).view(-1, num_classes)
 
                             all_preds.append(probs.cpu().numpy())
-                            all_targets.append(y_val.cpu().numpy())
+                            all_targets.append(y_val.view(-1, num_classes).cpu().numpy())
 
                     if len(val_dataloader) > 0:
-                        val_loss /= len(val_dataloader)
-                        all_preds = np.concatenate(all_preds, axis=0)
-                        all_targets = np.concatenate(all_targets, axis=0)
-
-                        roc_auc = compute_macro_roc_auc(all_preds, all_targets)
-                        return val_loss, roc_auc
+                        return val_loss / len(val_dataloader), compute_macro_roc_auc(np.concatenate(all_preds),
+                                                                                     np.concatenate(all_targets))
                     return 0.0, 0.0
 
 
@@ -398,29 +377,19 @@ if __name__ == '__main__':
                 print("Evaluating EMA Model...")
                 ema_val_loss, ema_roc_auc = evaluate_model(ema_model, "EMA")
 
-                # Log to the same shared main tags
                 writer.add_scalars("Loss", {"Val_Base": base_val_loss, "Val_EMA": ema_val_loss}, optimizer_steps)
                 writer.add_scalars("ROC_AUC", {"Val_Base": base_roc_auc, "Val_EMA": ema_roc_auc}, optimizer_steps)
 
                 os.makedirs("checkpoints", exist_ok=True)
-                ema_path = os.path.join("checkpoints", f"birdclef_step_{optimizer_steps}_ema.safetensors")
-                base_path = os.path.join("checkpoints", f"birdclef_step_{optimizer_steps}_base.safetensors")
-                save_file(ema_model.state_dict(), ema_path)
-                save_file(model.state_dict(), base_path)
+                save_file(ema_model.state_dict(),
+                          os.path.join("checkpoints", f"birdclef_step_{optimizer_steps}_ema.safetensors"))
+                save_file(model.state_dict(),
+                          os.path.join("checkpoints", f"birdclef_step_{optimizer_steps}_base.safetensors"))
 
                 print(f"\nSaved models. Base ROC-AUC: {base_roc_auc:.4f} | EMA ROC-AUC: {ema_roc_auc:.4f}\n")
-
-                # Explicitly return base model to train mode
                 model.train()
 
-    # ==========================================
     # END OF TRAINING SAVE
-    # ==========================================
-    os.makedirs("checkpoints", exist_ok=True)
-    ema_path_final = os.path.join("checkpoints", "birdclef_final_ema.safetensors")
-    base_path_final = os.path.join("checkpoints", "birdclef_final_base.safetensors")
-    save_file(ema_model.state_dict(), ema_path_final)
-    save_file(model.state_dict(), base_path_final)
-    print(f"\nTraining Complete! Saved final models to {ema_path_final} and {base_path_final}")
-
+    save_file(ema_model.state_dict(), os.path.join("checkpoints", "birdclef_final_ema.safetensors"))
+    save_file(model.state_dict(), os.path.join("checkpoints", "birdclef_final_base.safetensors"))
     writer.close()
