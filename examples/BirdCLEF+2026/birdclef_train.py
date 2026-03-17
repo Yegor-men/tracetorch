@@ -11,6 +11,7 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 from safetensors.torch import save_file
+import librosa
 
 import tracetorch as tt
 from tracetorch import snn
@@ -42,26 +43,26 @@ class BirdCLEFDataset(Dataset):
                 f"2. {self.audio_dir}/ exists."
             )
 
-        # EXACTLY 1024 frequency bins and 313 time steps
-        self.spec_transform = torchaudio.transforms.Spectrogram(
-            n_fft=2046,  # 2046 // 2 + 1 = 1024 bins
-            hop_length=512,  # 160000 / 512 = 312.5 -> 313 frames
+        # Switched to MelSpectrogram: Logarithmic frequencies, perfectly mimicking biological hearing
+        # 256 mel bins is highly compressed but retains all necessary acoustic features.
+        self.mel_transform = torchaudio.transforms.MelSpectrogram(
+            sample_rate=self.sr,
+            n_fft=2048,
+            hop_length=512,  # 160000 / 512 = 312.5 -> 313 frames (62.5 Hz)
+            n_mels=256,  # E dimension is now 256
             power=2.0
         )
-        self.db_transform = torchaudio.transforms.AmplitudeToDB()
+        self.db_transform = torchaudio.transforms.AmplitudeToDB(top_db=80)
 
         self.samples = []
         df_full = pd.read_csv(self.csv_path)
 
-        # Auto-detect column names since Kaggle changes them slightly
         filename_col = 'filename' if 'filename' in df_full.columns else df_full.columns[0]
         label_col = 'primary_label' if 'primary_label' in df_full.columns else df_full.columns[1]
 
-        # Sort classes alphabetically to ensure indices are perfectly stable across runs
         self.classes = sorted(df_full[label_col].astype(str).unique().tolist())
         self.class_to_idx = {c: i for i, c in enumerate(self.classes)}
 
-        # 80/20 Train/Test split
         if split == 'train':
             df = df_full.sample(frac=0.8, random_state=42)
         else:
@@ -69,7 +70,6 @@ class BirdCLEFDataset(Dataset):
 
         for _, row in df.iterrows():
             file_path = os.path.join(self.audio_dir, str(row[filename_col]))
-            # Some CSVs don't include the .ogg extension, add it if missing
             if not file_path.endswith('.ogg'):
                 file_path += '.ogg'
 
@@ -83,19 +83,21 @@ class BirdCLEFDataset(Dataset):
     def __len__(self):
         return len(self.samples)
 
+    # ... inside __getitem__ ...
     def __getitem__(self, idx):
         file_path, label_idx = self.samples[idx]
 
         try:
-            waveform, sr = torchaudio.load(file_path)
-            # Standardize to correct sample rate
-            if sr != self.sr:
-                waveform = torchaudio.functional.resample(waveform, sr, self.sr)
-            # Mix down to mono
-            if waveform.shape[0] > 1:
-                waveform = waveform.mean(dim=0, keepdim=True)
-        except Exception:
-            # Failsafe for missing or corrupted audio files in the dataset
+            # librosa is bulletproof and supports OGG out of the box with soundfile
+            waveform_np, _ = librosa.load(file_path, sr=self.sr, mono=True)
+            waveform = torch.from_numpy(waveform_np).unsqueeze(0)  # Make it [1, samples]
+
+        except Exception as e:
+            if not hasattr(self, '_printed_error'):
+                print(f"\n[CRITICAL ERROR] Failed to load audio!")
+                print(f"Attempted path: {file_path}")
+                print(f"Error: {e}")
+                self._printed_error = True
             waveform = torch.zeros(1, self.num_samples)
 
         # Random crop or pad to exactly 5 seconds
@@ -106,21 +108,23 @@ class BirdCLEFDataset(Dataset):
             pad = self.num_samples - waveform.shape[1]
             waveform = torch.nn.functional.pad(waveform, (0, pad))
 
-        # STFT ->[1024, 313]
-        spec = self.spec_transform(waveform)
+        # Mel-Spectrogram -> [256, 313]
+        spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec).squeeze(0)
 
-        # Standardize frequencies (crucial for SNN stability)
-        spec_db = (spec_db - spec_db.mean()) / (spec_db.std() + 1e-6)
+        # SNN Current Injection Scaling: Shift from [-80, 0] dB to [0.0, 1.0] electric current
+        spec_current = (spec_db + 80.0) / 80.0
+        # spec_current = spec_current.clamp(0.0, 1.0)
 
-        X = spec_db.transpose(0, 1)  # [L, E] -> [313, 1024]
+        X = spec_current.transpose(0, 1)  # [L, E] -> [313, 256]
         Y = torch.tensor(label_idx, dtype=torch.long)
-        return X, Y
+
+        return X, Y  # <--- EXPLICIT RETURN ADDED HERE!
 
 
 def collate_fn(batch):
     X, Y = zip(*batch)
-    X = torch.stack(X).transpose(0, 1)  # -> [L, B, 1024]
+    X = torch.stack(X).transpose(0, 1)  # ->[L, B, 256]
     Y = torch.stack(Y)  # -> [B]
     return X, Y
 
@@ -141,17 +145,26 @@ def foobar(x):
     return nn.functional.sigmoid(2.0 * x)
 
 
+dsrlits_min_timescale = tt.functional.halflife_to_decay(1)
+dsrlits_max_timescale = tt.functional.halflife_to_decay(50)
+dsrlits_diff = dsrlits_max_timescale - dsrlits_min_timescale
+dsli_timescale = tt.functional.halflife_to_decay(150)
+
+print(f"DSRLITS: {dsrlits_min_timescale:.5f} | {dsrlits_max_timescale:.5f}")
+print(f"DSLI: {dsli_timescale:.5f}")
+
+
 class ResidualSpike(snn.TTModel):
     def __init__(self, hidden_dim):
         super().__init__()
         self.lif = snn.DSRLITS(
             hidden_dim,
-            pos_alpha=torch.rand(hidden_dim),
-            neg_alpha=torch.rand(hidden_dim),
-            pos_beta=torch.rand(hidden_dim),
-            neg_beta=torch.rand(hidden_dim),
-            pos_gamma=torch.rand(hidden_dim),
-            neg_gamma=torch.rand(hidden_dim),
+            pos_alpha=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            neg_alpha=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            pos_beta=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            neg_beta=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            pos_gamma=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            neg_gamma=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
             pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
@@ -180,7 +193,6 @@ class SNN(snn.TTModel):
     ):
         super().__init__()
 
-        # Replaced Embedding with a Linear projection since we are feeding continuous frequencies
         self.enc = nn.Sequential(
             nn.Linear(in_features, hidden_features),
             nn.Dropout(0.0),
@@ -192,10 +204,10 @@ class SNN(snn.TTModel):
         self.dec = nn.Sequential(
             snn.DSLI(
                 hidden_features,
-                pos_alpha=torch.rand(hidden_features),
-                neg_alpha=torch.rand(hidden_features),
-                pos_beta=torch.rand(hidden_features),
-                neg_beta=torch.rand(hidden_features),
+                pos_alpha=torch.rand(hidden_features) * (1 - dsli_timescale) + dsli_timescale,
+                neg_alpha=torch.rand(hidden_features) * (1 - dsli_timescale) + dsli_timescale,
+                pos_beta=torch.rand(hidden_features) * (1 - dsli_timescale) + dsli_timescale,
+                neg_beta=torch.rand(hidden_features) * (1 - dsli_timescale) + dsli_timescale,
             ),
             nn.Dropout(0.0),
             nn.Linear(hidden_features, out_features)
@@ -224,22 +236,41 @@ def update_ema_model(model, ema_model, decay: float = 0.999):
 # 3. Training Loop
 # =====================================================================
 if __name__ == '__main__':
+    import subprocess
+    import webbrowser
+    import time
+    from torch.utils.tensorboard import SummaryWriter
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f'tensorboard/birdclef_{timestamp}'
     writer = SummaryWriter(log_dir=log_dir)
 
-    batch_size = 32  # Batch size 32 easily handles[1024, 313] sequences on consumer hardware
+    subprocess.Popen(['tensorboard', '--logdir', 'tensorboard', '--port', '6006'],
+                     stderr=subprocess.DEVNULL)
+    time.sleep(2)
+    webbrowser.open('http://localhost:6006')
+
+    batch_size = 60
     minibatch_size = 1
 
     train_ds = BirdCLEFDataset(split='train')
     val_ds = BirdCLEFDataset(split='val')
     num_classes = len(train_ds.classes)
 
-    # Note: num_workers set to 4 to speed up audio loading
     train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn, num_workers=4)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_fn, num_workers=4)
 
-    model = SNN(in_features=1024, hidden_features=1024, num_layers=10, out_features=num_classes).to(device)
+    # --- SANITY CHECK ---
+    dummy_x, dummy_y = next(iter(train_dataloader))
+    print(
+        f"\n[SANITY CHECK] Dataloader Output Shape -> X: {dummy_x.shape} (Expected:[313, {batch_size}, 256]), Y: {dummy_y.shape}\n")
+
+    images_to_plot = dummy_x.permute(1, 0, 2).unsqueeze(1)
+    print(f"MAX: {torch.max(images_to_plot)} | AVG: {torch.mean(images_to_plot)} | STDEV: {torch.std(images_to_plot)}")
+    tt.plot.render_image(images_to_plot)
+
+    # Switched in_features from 1024 down to 256 to match the Mel bins
+    model = SNN(in_features=256, hidden_features=1024, num_layers=10, out_features=num_classes).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
     snn_params = model.get_param_count()
@@ -273,10 +304,9 @@ if __name__ == '__main__':
         train_samples_accum = 0
 
         for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
-            x = x.to(device)  # [313, B, 1024]
+            x = x.to(device)  # [313, B, 256]
             y = y.to(device)  # [B]
 
-            # Frequency dropout as data augmentation
             x = add_spec_noise(x, p=0.1)
 
             model.detach_states()
@@ -310,14 +340,12 @@ if __name__ == '__main__':
                 update_ema_model(model, ema_model)
                 optimizer.zero_grad()
 
-                # Log Train Loss and Accuracy
                 avg_train_loss = train_loss_accum / minibatch_size
                 train_acc = train_correct_accum / train_samples_accum
 
                 writer.add_scalars("loss", {"train": avg_train_loss}, optimizer_steps)
                 writer.add_scalars("accuracy", {"train": train_acc}, optimizer_steps)
 
-                # Reset accumulators
                 train_loss_accum = 0.0
                 train_correct_accum = 0
                 train_samples_accum = 0
@@ -338,7 +366,6 @@ if __name__ == '__main__':
                         for t in range(x.size(0)):
                             model_output = ema_model(x[t])
 
-                        # ONLY compute loss and accuracy at the final timestep
                         loss = loss_fn(model_output, y)
                         val_loss += loss.item()
 
