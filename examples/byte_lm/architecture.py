@@ -4,6 +4,15 @@ import tracetorch as tt
 from tracetorch import snn
 
 
+class Foobar(nn.Module):
+    def __init__(self, slope: float = 4.0):
+        super().__init__()
+        self.slope = nn.Parameter(torch.log(torch.expm1(torch.Tensor([slope]))))
+
+    def forward(self, x):
+        return nn.functional.sigmoid(nn.functional.softplus(self.slope) * x)
+
+
 class ResidualSpike(snn.TTModel):
     def __init__(self, hidden_dim):
         super().__init__()
@@ -21,6 +30,8 @@ class ResidualSpike(snn.TTModel):
             neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
             pos_rec_weight=torch.randn(hidden_dim) * 0.1,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
+            spike_fn=Foobar(4),
+            deterministic=False,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
@@ -50,14 +61,7 @@ class SNNLM(snn.TTModel):
         self.net = nn.Sequential(*layers)
 
         self.dec = nn.Sequential(
-            snn.DSLI(
-                hidden_dim,
-                pos_alpha=torch.rand(hidden_dim),
-                neg_alpha=torch.rand(hidden_dim),
-                pos_beta=torch.rand(hidden_dim),
-                neg_beta=torch.rand(hidden_dim),
-            ),
-            # nn.Dropout(dec_dropout),
+            nn.Dropout(dec_dropout),
             nn.Linear(hidden_dim, 256)
         )
         nn.init.zeros_(self.dec[-1].weight)

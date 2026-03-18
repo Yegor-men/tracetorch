@@ -139,16 +139,18 @@ if __name__ == '__main__':
 
     atexit.register(cleanup)
 
-    batch_size = 16
+    batch_size = 128
     minibatch_size = 1
-    seq_len = 1024
+    seq_len = 128
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=0)
 
     from architecture import SNNLM
 
     model = SNNLM(1024, 10).to(device)
-    # model.load_state_dict(load_file("checkpoints/step_20300_e2_bpb15334.safetensors"))
-    print(f"\nNum params: {model.get_param_count():,}")
+    # model.load_state_dict(load_file("checkpoints/_model_step_4100_ema.safetensors"))
+    total_params = sum(p.numel() for p in model.parameters())
+    snn_params = model.get_param_count()
+    print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
     print(f"num batches: {len(train_dataloader):,}")
 
     ema_model = copy.deepcopy(model)
@@ -163,7 +165,7 @@ if __name__ == '__main__':
             ema_param.data.mul_(decay).add_(param.data, alpha=1 - decay)
 
 
-    optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
     loss_fn = nn.CrossEntropyLoss()
     optimizer_steps = 0
     accum_steps = 0
