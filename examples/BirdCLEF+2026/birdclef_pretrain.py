@@ -49,7 +49,6 @@ class UnlabeledChunkDataset(Dataset):
             sample_rate=self.sr, n_fft=2048, hop_length=512, n_mels=256, power=2.0)
         self.db_transform = torchaudio.transforms.AmplitudeToDB(top_db=80)
 
-        # Expand every 60s file into 12 discrete 5s chunks (0 to 11)
         self.samples = [(f, idx) for f in filenames for idx in range(12)]
 
     def __len__(self):
@@ -72,12 +71,12 @@ class UnlabeledChunkDataset(Dataset):
 
         spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec).squeeze(0)
-        X = ((spec_db + 80.0) / 80.0).transpose(0, 1)  # [~313, 256]
+        X = ((spec_db + 80.0) / 80.0).transpose(0, 1)
         return X
 
 
 def collate_unlabeled(batch):
-    X = torch.stack(batch).transpose(0, 1)  # [Time, Batch, 256]
+    X = torch.stack(batch).transpose(0, 1)
     return X
 
 
@@ -100,7 +99,6 @@ if __name__ == '__main__':
 
     data_dir = 'data/birdclef-2026'
 
-    # Filter out labeled files to avoid contamination
     ss_csv_path = os.path.join(data_dir, "train_soundscapes_labels.csv")
     df_ss_all = pd.read_csv(ss_csv_path)
     labeled_files = set([f + '.ogg' if not f.endswith('.ogg') else f for f in df_ss_all['filename'].unique()])
@@ -109,14 +107,13 @@ if __name__ == '__main__':
     unlabeled_files = [f for f in all_files if f.endswith('.ogg') and f not in labeled_files]
     random.shuffle(unlabeled_files)
 
-    split_idx = int(len(unlabeled_files) * 0.9)  # 90/10 split
+    split_idx = int(len(unlabeled_files) * 0.9)
     train_ds = UnlabeledChunkDataset(unlabeled_files[:split_idx], data_dir=data_dir)
     val_ds = UnlabeledChunkDataset(unlabeled_files[split_idx:], data_dir=data_dir)
 
     print(f"Pretraining on {len(train_ds)} chunks (5s each).")
     print(f"Validating on {len(val_ds)} chunks (5s each).")
 
-    # Massively scaled up batch size thanks to much shorter sequence lengths
     batch_size = 50
     grad_accum_steps = 1
 
@@ -125,8 +122,28 @@ if __name__ == '__main__':
     val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_unlabeled,
                                 num_workers=4)
 
+    # ==========================================
+    # SANITY CHECKS & PARAMETER LOGGING
+    # ==========================================
     world_model = SNNWorldModel().to(device)
     pred_decoder = PredictiveDecoder().to(device)
+
+    total_params = sum(p.numel() for p in world_model.parameters()) + sum(p.numel() for p in pred_decoder.parameters())
+    snn_params = world_model.get_param_count()
+    print(f"\nTotal Params: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
+    print(f"Num Train Batches: {len(train_dataloader):,}\n")
+
+    # Fetch 1 batch to verify shape and render spectrogram
+    x_sanity = next(iter(train_dataloader))
+    print(f"Sanity Check - X shape (Time, Batch, Freq): {x_sanity.shape}")
+
+    # Fix orientation: [Time, Batch, Freq] ->[Batch, 1, Freq, Time]
+    x_vis = x_sanity.permute(1, 2, 0).unsqueeze(1)
+    import tracetorch as tt
+
+    tt.plot.render_image(x_vis)
+    print("Rendered Sanity Check Image.\n")
+    # ==========================================
 
     ema_world_model, ema_pred_decoder = copy.deepcopy(world_model), copy.deepcopy(pred_decoder)
     ema_world_model.eval()
@@ -185,34 +202,58 @@ if __name__ == '__main__':
                 writer.add_scalars("Loss", {"Train_MSE": train_loss_accum / grad_accum_steps}, optimizer_steps)
                 train_loss_accum = 0.0
 
-            if optimizer_steps % 500 == 0 and optimizer_steps != 0:
-                ema_world_model.eval()
-                ema_pred_decoder.eval()
-                val_loss = 0.0
+                if optimizer_steps % 500 == 0:
+                    ema_world_model.eval()
+                    ema_pred_decoder.eval()
+                    val_loss = 0.0
 
-                with torch.no_grad():
-                    for x_val in tqdm(val_dataloader, desc="VAL"):
-                        x_val = x_val.to(device)
-                        x_in_val, x_tgt_val = x_val[:-1], x_val[1:]
+                    with torch.no_grad():
+                        for val_step, x_val in enumerate(tqdm(val_dataloader, desc="VAL")):
+                            x_val = x_val.to(device)
+                            x_in_val, x_tgt_val = x_val[:-1], x_val[1:]
 
-                        ema_world_model.zero_states()
-                        step_losses_val = 0.0
+                            ema_world_model.zero_states()
+                            step_losses_val = 0.0
 
-                        for t in range(x_in_val.size(0)):
-                            step_losses_val += loss_fn(ema_pred_decoder(ema_world_model(x_in_val[t])), x_tgt_val[t])
+                            # Track outputs for the very first validation batch
+                            first_batch_preds = [] if val_step == 0 else None
 
-                        val_loss += (step_losses_val / x_in_val.size(0)).item()
+                            for t in range(x_in_val.size(0)):
+                                pred = ema_pred_decoder(ema_world_model(x_in_val[t]))
+                                step_losses_val += loss_fn(pred, x_tgt_val[t])
 
-                if len(val_dataloader) > 0:
-                    writer.add_scalars("Loss", {"Val_MSE": val_loss / len(val_dataloader)}, optimizer_steps)
+                                if val_step == 0:
+                                    first_batch_preds.append(pred)
 
-                os.makedirs("checkpoints", exist_ok=True)
-                save_file(ema_world_model.state_dict(),
-                          os.path.join("checkpoints", f"world_model_step_{optimizer_steps}_ema.safetensors"))
-                save_file(ema_pred_decoder.state_dict(),
-                          os.path.join("checkpoints", f"pred_decoder_step_{optimizer_steps}_ema.safetensors"))
-                world_model.train()
-                pred_decoder.train()
+                            val_loss += (step_losses_val / x_in_val.size(0)).item()
+
+                            # Render images for the first batch
+                            if val_step == 0:
+                                import tracetorch as tt
+
+                                # Stack predictions back into [Time, Batch, Freq]
+                                preds_tensor = torch.stack(first_batch_preds)
+
+                                # Convert both to [Batch, 1, Freq, Time] for horizontal visualization
+                                tgt_vis = x_tgt_val.permute(1, 2, 0).unsqueeze(1)
+                                preds_vis = preds_tensor.permute(1, 2, 0).unsqueeze(1)
+
+                                print("\n--- Validation Batch 0: EXPECTED ---")
+                                tt.plot.render_image(tgt_vis)
+                                print("--- Validation Batch 0: PREDICTED ---")
+                                tt.plot.render_image(preds_vis)
+                                print()
+
+                    if len(val_dataloader) > 0:
+                        writer.add_scalars("Loss", {"Val_MSE": val_loss / len(val_dataloader)}, optimizer_steps)
+
+                    os.makedirs("checkpoints", exist_ok=True)
+                    save_file(ema_world_model.state_dict(),
+                              os.path.join("checkpoints", f"world_model_step_{optimizer_steps}_ema.safetensors"))
+                    save_file(ema_pred_decoder.state_dict(),
+                              os.path.join("checkpoints", f"pred_decoder_step_{optimizer_steps}_ema.safetensors"))
+                    world_model.train()
+                    pred_decoder.train()
 
     os.makedirs("checkpoints", exist_ok=True)
     save_file(ema_world_model.state_dict(), os.path.join("checkpoints", "world_model_final_ema.safetensors"))

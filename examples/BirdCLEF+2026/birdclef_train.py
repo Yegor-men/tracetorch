@@ -63,7 +63,6 @@ class CleanAudioDataset(Dataset):
             sample_rate=self.sr, n_fft=2048, hop_length=512, n_mels=256, power=2.0)
         self.db_transform = torchaudio.transforms.AmplitudeToDB(top_db=80)
 
-        # Map class names to all their respective files to enable organic concatenation
         self.class_files_map = self.df.groupby('primary_label')['filename'].apply(list).to_dict()
 
     def _safe_load(self, filename):
@@ -72,7 +71,6 @@ class CleanAudioDataset(Dataset):
             wf, _ = librosa.load(file_path, sr=self.sr, mono=True)
             return torch.from_numpy(wf)
         except Exception:
-            # Fallback zero tensor so process doesn't completely die on bad files
             return torch.zeros(self.sr)
 
     def __len__(self):
@@ -83,7 +81,6 @@ class CleanAudioDataset(Dataset):
         primary_label = row['primary_label']
         filename = str(row['filename'])
 
-        # Establish Target labels (Primary + Secondary)
         Y = torch.zeros(len(self.class_to_idx), dtype=torch.float32)
         if primary_label in self.class_to_idx:
             Y[self.class_to_idx[primary_label]] = 1.0
@@ -98,16 +95,13 @@ class CleanAudioDataset(Dataset):
             for sl in sec_labels:
                 if sl in self.class_to_idx: Y[self.class_to_idx[sl]] = 1.0
 
-        # Organic audio concatenation to avoid zero-padding
         waveform_parts = []
         current_length = 0
 
-        # Pull original file
         wf = self._safe_load(filename)
         waveform_parts.append(wf)
         current_length += wf.shape[0]
 
-        # Keep appending random files of the SAME species until we satisfy the 5s requirement
         available_files = self.class_files_map.get(primary_label, [filename])
         while current_length < self.target_length:
             next_filename = random.choice(available_files)
@@ -117,12 +111,10 @@ class CleanAudioDataset(Dataset):
 
         waveform = torch.cat(waveform_parts, dim=0)
 
-        # Slice perfectly down to exactly 5s randomly
         max_start = current_length - self.target_length
         start = torch.randint(0, max_start + 1, (1,)).item() if max_start > 0 else 0
         waveform = waveform[start:start + self.target_length].unsqueeze(0)
 
-        # Transform to Spectrogram
         spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec).squeeze(0)
         X = ((spec_db + 80.0) / 80.0).transpose(0, 1)
@@ -216,7 +208,6 @@ if __name__ == '__main__':
 
     data_dir = 'data/birdclef-2026'
 
-    # 1. Setup Data
     df_train = pd.read_csv(os.path.join(data_dir, "train.csv"))
     label_col = 'primary_label' if 'primary_label' in df_train.columns else df_train.columns[1]
     classes = sorted(df_train[label_col].astype(str).unique().tolist())
@@ -231,4 +222,145 @@ if __name__ == '__main__':
     print(f"Training on {len(train_ds)} organically concatenated 5s crops.")
     print(f"Validating on {len(val_ds)} messy labeled 60s soundscapes.")
 
-    batch_size = 16
+    batch_size = 50
+    grad_accum_steps = 1
+
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_clean,
+                                  num_workers=4)
+    val_dataloader = DataLoader(val_ds, batch_size=4, shuffle=False, collate_fn=collate_labeled, num_workers=4)
+
+    # ==========================================
+    # SANITY CHECKS & PARAMETER LOGGING
+    # ==========================================
+    world_model = SNNWorldModel().to(device)
+    # world_model.load_state_dict(load_file("checkpoints/world_model_final_ema.safetensors"))
+    world_model.eval()
+    for param in world_model.parameters(): param.requires_grad = False
+
+    class_decoder = ClassificationDecoder(latent_dim=1024, num_classes=num_classes).to(device)
+    ema_class_decoder = copy.deepcopy(class_decoder)
+    ema_class_decoder.eval()
+    for param in ema_class_decoder.parameters(): param.requires_grad = False
+
+    total_params = sum(p.numel() for p in world_model.parameters()) + sum(p.numel() for p in class_decoder.parameters())
+    snn_params = world_model.get_param_count()
+    print(f"\nTotal Params: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
+    print(f"Num Train Batches: {len(train_dataloader):,}\n")
+
+    # Fetch 1 batch to verify shape and render spectrogram
+    x_sanity, y_sanity = next(iter(train_dataloader))
+    print(f"Sanity Check - X shape (Time, Batch, Freq): {x_sanity.shape} | Y shape: {y_sanity.shape}")
+
+    # Fix orientation: [Time, Batch, Freq] -> [Batch, Freq, Time] -> [Batch, 1, Freq, Time]
+    x_vis = x_sanity.permute(1, 2, 0).unsqueeze(1)
+    import tracetorch as tt
+
+    tt.plot.render_image(x_vis)
+    print("Rendered Sanity Check Image.\n")
+    # ==========================================
+
+    optimizer = torch.optim.AdamW(class_decoder.parameters(), lr=1e-3)
+    loss_fn = nn.BCEWithLogitsLoss()
+
+    optimizer_steps, accum_steps, num_epochs = 0, 0, 5
+    total_steps = num_epochs * max(1, len(train_dataloader)) // grad_accum_steps
+    warmup_steps = max(1, total_steps // 10)
+    scheduler = SequentialLR(optimizer, schedulers=[
+        LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_steps),
+        CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=1e-6)
+    ], milestones=[warmup_steps])
+
+    for e in range(num_epochs):
+        class_decoder.train()
+        train_loss_accum = 0.0
+
+        for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
+            x, y = x.to(device), y.to(device)
+            x = add_spec_noise(x, p=0.1)
+
+            world_model.zero_states()
+
+            all_step_logits = []
+
+            for t in range(x.size(0)):
+                with torch.no_grad():
+                    latents = world_model(x[t])
+
+                logits = class_decoder(latents)
+                all_step_logits.append(logits)
+
+            # [Time, Batch, num_classes]
+            all_step_logits = torch.stack(all_step_logits)
+
+            # Temporal Pooling over the exact 5s window.
+            # Using mean is mathematically identical to a linear sum but keeps values bounded for BCEWithLogitsLoss
+            clip_logits = torch.mean(all_step_logits, dim=0)
+
+            loss = loss_fn(clip_logits, y)
+            (loss / grad_accum_steps).backward()
+
+            accum_steps += 1
+            train_loss_accum += loss.item()
+
+            if accum_steps % grad_accum_steps == 0:
+                writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], optimizer_steps)
+                optimizer.step()
+                scheduler.step()
+                optimizer_steps += 1
+
+                update_ema_model(class_decoder, ema_class_decoder)
+                optimizer.zero_grad()
+
+                writer.add_scalars("Loss", {"Train_BCE": train_loss_accum / grad_accum_steps}, optimizer_steps)
+                train_loss_accum = 0.0
+
+                if optimizer_steps % 250 == 0:
+                    def evaluate_decoder(decoder, name):
+                        decoder.eval()
+                        all_preds, all_targets = [], []
+
+                        with torch.no_grad():
+                            for x_val, y_val in tqdm(val_dataloader, desc=f"VAL ({name})", leave=False):
+                                x_val, y_val = x_val.to(device), y_val.to(device)
+                                world_model.zero_states()
+
+                                frames_per_chunk_val = x_val.size(0) / 12.0
+
+                                chunk_logits_sum = torch.zeros_like(y_val)
+                                chunk_counts = torch.zeros(12, device=device)
+
+                                for t in range(x_val.size(0)):
+                                    logits = decoder(world_model(x_val[t]))
+                                    chunk_idx = min(int(t / frames_per_chunk_val), 11)
+                                    chunk_logits_sum[:, chunk_idx, :] += logits
+                                    chunk_counts[chunk_idx] += 1
+
+                                for c in range(12):
+                                    if chunk_counts[c] > 0:
+                                        # Mean pool across each specific 5s soundscape chunk
+                                        chunk_logits_sum[:, c, :] /= chunk_counts[c]
+
+                                probs = torch.sigmoid(chunk_logits_sum).view(-1, num_classes)
+                                all_preds.append(probs.cpu().numpy())
+                                all_targets.append(y_val.view(-1, num_classes).cpu().numpy())
+
+                        if len(val_dataloader) > 0:
+                            return compute_macro_roc_auc(np.concatenate(all_preds), np.concatenate(all_targets))
+                        return 0.0
+
+
+                    print("\nEvaluating Base Decoder...")
+                    base_roc_auc = evaluate_decoder(class_decoder, "Base")
+                    print("Evaluating EMA Decoder...")
+                    ema_roc_auc = evaluate_decoder(ema_class_decoder, "EMA")
+
+                    writer.add_scalars("ROC_AUC", {"Val_Base": base_roc_auc, "Val_EMA": ema_roc_auc}, optimizer_steps)
+
+                    os.makedirs("checkpoints", exist_ok=True)
+                    save_file(ema_class_decoder.state_dict(),
+                              os.path.join("checkpoints", f"class_decoder_step_{optimizer_steps}_ema.safetensors"))
+                    print(f"\nSaved decoders. Base ROC-AUC: {base_roc_auc:.4f} | EMA ROC-AUC: {ema_roc_auc:.4f}\n")
+
+                    class_decoder.train()
+
+    save_file(ema_class_decoder.state_dict(), os.path.join("checkpoints", "class_decoder_final_ema.safetensors"))

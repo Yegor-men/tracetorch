@@ -11,7 +11,6 @@ def foobar(x):
 dsrlits_min_timescale = tt.functional.halflife_to_decay(1)
 dsrlits_max_timescale = tt.functional.halflife_to_decay(50)
 dsrlits_diff = dsrlits_max_timescale - dsrlits_min_timescale
-dsli_timescale = tt.functional.halflife_to_decay(150)
 
 
 class ResidualSpike(snn.TTModel):
@@ -19,12 +18,12 @@ class ResidualSpike(snn.TTModel):
         super().__init__()
         self.lif = snn.DSRLITS(
             hidden_dim,
-            pos_alpha=torch.rand(hidden_dim),
-            neg_alpha=torch.rand(hidden_dim),
-            pos_beta=torch.rand(hidden_dim),
-            neg_beta=torch.rand(hidden_dim),
-            pos_gamma=torch.rand(hidden_dim),
-            neg_gamma=torch.rand(hidden_dim),
+            pos_alpha=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            neg_alpha=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            pos_beta=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            neg_beta=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            pos_gamma=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
+            neg_gamma=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
             pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
@@ -42,34 +41,20 @@ class ResidualSpike(snn.TTModel):
 
 
 class SNNWorldModel(snn.TTModel):
-    def __init__(self, in_features=256, hidden_features=1024, num_layers=10, latent_dim=4096):
+    def __init__(self, in_features=256, hidden_features=1024, num_layers=10):
         super().__init__()
         self.enc = nn.Sequential(nn.Linear(in_features, hidden_features), nn.Dropout(0.0))
 
-        # Core SNN Body
         self.net = nn.Sequential(*[ResidualSpike(hidden_features) for _ in range(num_layers)])
 
-        # Projection to massive latent state if dimensions differ
-        self.proj = nn.Linear(hidden_features, latent_dim) if hidden_features != latent_dim else nn.Identity()
-
-        # Terminal DSLI: This layer acts strictly as the tracked memory/latent-state
-        self.state_layer = snn.DSLI(
-            latent_dim,
-            pos_alpha=torch.rand(latent_dim),
-            neg_alpha=torch.rand(latent_dim),
-            pos_beta=torch.rand(latent_dim),
-            neg_beta=torch.rand(latent_dim),
-        )
-
     def forward(self, x):
-        features = self.net(self.enc(x))
-        projected = self.proj(features)
-        # Returns the massive hidden state vector directly
-        return self.state_layer(projected)
+        emb_sound = self.enc(x)
+        att_sound = self.net(emb_sound)
+        return att_sound
 
 
 class PredictiveDecoder(nn.Module):
-    def __init__(self, latent_dim=4096, out_features=256):
+    def __init__(self, latent_dim=1024, out_features=256):
         super().__init__()
         self.dec = nn.Sequential(
             nn.Dropout(0.1),
@@ -80,10 +65,10 @@ class PredictiveDecoder(nn.Module):
 
     def forward(self, x):
         return self.dec(x)
-
+2
 
 class ClassificationDecoder(nn.Module):
-    def __init__(self, latent_dim=4096, num_classes=234):
+    def __init__(self, latent_dim=1024, num_classes=234):
         super().__init__()
         self.dec = nn.Sequential(
             nn.Dropout(0.1),
