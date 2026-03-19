@@ -138,6 +138,64 @@ class TTLayer(nn.Module):
         """Append parameter count to the list."""
         total_list.append(sum(p.numel() for p in self.parameters()))
 
+    def TTcompile(self):
+        """Compile layer for inference by pre-computing parameters"""
+        if hasattr(self, '_compiled') and self._compiled:
+            return
+
+        # Store compilation metadata for uncompile
+        self._compile_metadata = {}
+
+        # Find all raw_* parameters and their corresponding properties
+        for attr_name in list(self.__dict__.keys()):
+            if attr_name.startswith('raw_'):
+                param_name = attr_name[4:]  # Remove 'raw_' prefix
+
+                # Get current computed value
+                computed_value = getattr(self, param_name)
+
+                # Store metadata for uncompile
+                self._compile_metadata[param_name] = {
+                    'raw_value': getattr(self, attr_name).detach().clone(),
+                    'is_parameter': isinstance(getattr(self, param_name), nn.Parameter),
+                    'learnable': hasattr(self, f'learn_{param_name}') and getattr(self, f'learn_{param_name}')
+                }
+
+                # Replace raw parameter with pre-computed buffer
+                delattr(self, attr_name)
+                self.register_buffer(param_name, computed_value.detach().clone())
+
+                # Remove the property (will be replaced by direct attribute access)
+                if hasattr(self.__class__, param_name):
+                    delattr(self.__class__, param_name)
+
+        self._compiled = True
+
+    def TTuncompile(self):
+        """Uncompile layer to restore training capabilities"""
+        if not hasattr(self, '_compiled') or not self._compiled:
+            return
+
+        # Restore raw_* parameters from metadata
+        for param_name, metadata in self._compile_metadata.items():
+            # Remove the compiled buffer
+            if hasattr(self, param_name):
+                delattr(self, param_name)
+
+            # Restore raw parameter
+            raw_name = f"raw_{param_name}"
+            if metadata['learnable']:
+                setattr(self, raw_name, nn.Parameter(metadata['raw_value']))
+            else:
+                self.register_buffer(raw_name, metadata['raw_value'])
+
+            # Recreate the property (this is tricky - need to recreate the original property)
+            # We'll need to store the activation function type during initial registration
+
+        # Clean up
+        delattr(self, '_compiled')
+        delattr(self, '_compile_metadata')
+
 
 class TTModel(nn.Module):
     """
@@ -202,7 +260,7 @@ class TTModel(nn.Module):
         collect_states(self)
         return states
 
-    def load_states(self, states: Dict[str, torch.Tensor], strict: bool = True) -> None:
+    def load_states(self, states: Dict[str, torch.Tensor], strict: bool = True, device=None) -> None:
         """Load hidden states into TTLayers.
 
         states = torch.load("model_states.pt")
@@ -211,6 +269,7 @@ class TTModel(nn.Module):
         Args:
             states: Dictionary from save_states() or torch.load()
             strict: If True, raise error for missing/extra states
+            device: Target device for loaded states (auto-detected if None)
         """
         loaded_count = 0
         missing_states = []
@@ -234,9 +293,24 @@ class TTModel(nn.Module):
                                     f"expected {current_state.shape}, got {state_tensor.shape}"
                                 )
 
-                        # Set the state, ensuring it's on the same device
-                        setattr(obj, state_name, state_tensor.to(
-                            obj.mem.device if hasattr(obj, 'mem') and obj.mem is not None else 'cpu'))
+                        # Use provided device, or detect from parameters/buffers, or fallback to current device
+                        target_device = device
+                        if target_device is None:
+                            # Try to get device from existing parameters
+                            for param in obj.parameters():
+                                target_device = param.device
+                                break
+                            else:
+                                # Try to get device from existing buffers
+                                for buffer in obj.buffers():
+                                    target_device = buffer.device
+                                    break
+                                else:
+                                    # Fallback to the state tensor's device
+                                    target_device = state_tensor.device
+
+                        # Set the state, ensuring it's on the correct device
+                        setattr(obj, state_name, state_tensor.to(target_device))
                         loaded_count += 1
                     else:
                         missing_states.append(full_name)
@@ -349,3 +423,11 @@ class TTModel(nn.Module):
 
         # start recursion from self
         recurse(self)
+
+    def TTcompile(self):
+        """Recursively compile all TTLayer instances for inference"""
+        self._call_recursive("TTcompile")
+
+    def TTuncompile(self):
+        """Recursively uncompile all TTLayer instances"""
+        self._call_recursive("TTuncompile")

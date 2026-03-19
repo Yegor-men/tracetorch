@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.13.1-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.14.0-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.13.1-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.14.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -63,9 +63,8 @@ just inherit from `TTLayer` to create your own SNN layers that comply with the t
 
 In short, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with SNNs in
 PyTorch to feel significantly more natural and less frustrating than in existing alternatives, while preserving (and in
-many cases enhancing) the expressive power needed for real models and research. It presents ready to use SNN layers,
-a powerful superclass for experimenting with SNN dynamics, and the necessary foundation so that you can make your own
-SNN layers too. traceTorch ultimately rewards users who value minimalism, composition, and long-term extensibility.
+many cases enhancing) the expressive power needed for real models and research. traceTorch ultimately rewards users who
+value minimalism, composition, and long-term extensibility.
 
 ## Documentation
 
@@ -88,7 +87,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.13.1 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.14.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
@@ -165,6 +164,7 @@ on it.
 
 traceTorch still has a long way to go. Namely:
 
+- Clean up the experimental `TTcompile`, `TTuncompile`, `save_states`, `load_states` methods for `TTModel`
 - Fix the `LeakyIntegrator` superclass and create the 28 tests
 - Finish the `examples/` section for example code for various examples
 - Make proper requirements for each example in `examples/`
