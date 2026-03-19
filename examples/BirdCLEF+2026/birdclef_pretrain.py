@@ -10,7 +10,7 @@ from tqdm import tqdm
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
-from safetensors.torch import save_file
+from safetensors.torch import save_file, load_file
 import librosa
 import subprocess
 import webbrowser
@@ -115,7 +115,7 @@ if __name__ == '__main__':
     print(f"Validating on {len(val_ds)} chunks (5s each).")
 
     batch_size = 50
-    grad_accum_steps = 1
+    grad_accum_steps = 4
 
     train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_unlabeled,
                                   num_workers=4)
@@ -127,6 +127,8 @@ if __name__ == '__main__':
     # ==========================================
     world_model = SNNWorldModel().to(device)
     pred_decoder = PredictiveDecoder().to(device)
+    world_model.load_state_dict(load_file("checkpoints/_world_model_step_2000_ema.safetensors"))
+    pred_decoder.load_state_dict(load_file("checkpoints/_pred_decoder_step_2000_ema.safetensors"))
 
     total_params = sum(p.numel() for p in world_model.parameters()) + sum(p.numel() for p in pred_decoder.parameters())
     snn_params = world_model.get_param_count()

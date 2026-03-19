@@ -233,7 +233,7 @@ if __name__ == '__main__':
     # SANITY CHECKS & PARAMETER LOGGING
     # ==========================================
     world_model = SNNWorldModel().to(device)
-    # world_model.load_state_dict(load_file("checkpoints/world_model_final_ema.safetensors"))
+    world_model.load_state_dict(load_file("checkpoints/world_model_step_500_ema.safetensors"))
     world_model.eval()
     for param in world_model.parameters(): param.requires_grad = False
 
@@ -314,7 +314,7 @@ if __name__ == '__main__':
                 writer.add_scalars("Loss", {"Train_BCE": train_loss_accum / grad_accum_steps}, optimizer_steps)
                 train_loss_accum = 0.0
 
-                if optimizer_steps % 250 == 0:
+                if optimizer_steps % 500 == 0:
                     def evaluate_decoder(decoder, name):
                         decoder.eval()
                         all_preds, all_targets = [], []
