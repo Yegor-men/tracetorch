@@ -36,10 +36,18 @@ class ResidualSpike(snn.TTModel):
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
 
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, 4 * hidden_dim),
+            nn.SiLU(),
+            nn.Linear(4 * hidden_dim, hidden_dim),
+        )
+        nn.init.normal_(self.ffn[-1].weight, 0.0, 0.01)
+        nn.init.zeros_(self.ffn[-1].bias)
+
     def forward(self, x):
         spk = self.lif(x)
         delta = self.lin(spk)
-        return x + delta
+        return x + self.ffn(x + delta)
 
 
 class SNNLM(snn.TTModel):

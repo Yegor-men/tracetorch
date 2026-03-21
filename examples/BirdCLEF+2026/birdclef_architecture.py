@@ -3,11 +3,6 @@ from torch import nn
 import tracetorch as tt
 from tracetorch import snn
 
-
-def foobar(x):
-    return nn.functional.sigmoid(4.0 * x)
-
-
 min_timescale = tt.functional.halflife_to_decay(0.2)
 max_timescale = tt.functional.halflife_to_decay(62.5)
 timescale_diff = max_timescale - min_timescale
@@ -30,8 +25,6 @@ class ResidualSpike(snn.TTModel):
             neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
             pos_rec_weight=torch.randn(hidden_dim) * 0.1,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
-            spike_fn=foobar,
-            deterministic=False,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
@@ -43,17 +36,22 @@ class ResidualSpike(snn.TTModel):
 class BirdClassifierSNN(snn.TTModel):
     def __init__(self, in_features=256, hidden_features=1024, num_layers=10, num_classes=234):
         super().__init__()
-        self.enc = nn.Sequential(nn.Linear(in_features, hidden_features), nn.Dropout(0.0))
+        self.enc = nn.Sequential(nn.Linear(in_features, hidden_features))
 
         self.net = nn.Sequential(*[ResidualSpike(hidden_features) for _ in range(num_layers)])
 
         self.dec = nn.Sequential(
-            nn.Dropout(0.1),
-            nn.Linear(hidden_features, num_classes)
+            snn.DSLI(
+                hidden_features,
+                pos_alpha=torch.rand(hidden_features) * timescale_diff + min_timescale,
+                neg_alpha=torch.rand(hidden_features) * timescale_diff + min_timescale,
+                pos_beta=torch.rand(hidden_features) * timescale_diff + min_timescale,
+                neg_beta=torch.rand(hidden_features) * timescale_diff + min_timescale,
+            ),
+            nn.Linear(hidden_features, num_classes),
         )
         nn.init.zeros_(self.dec[-1].weight)
         nn.init.zeros_(self.dec[-1].bias)
 
     def forward(self, x):
-        # Maps [Batch, Freq] -> [Batch, num_classes] for a single timestep
         return self.dec(self.net(self.enc(x)))
