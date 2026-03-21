@@ -16,8 +16,8 @@ class LIB(TTLayer):
             threshold_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -60,8 +60,8 @@ class DLIB(TTLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -113,8 +113,8 @@ class SLIB(TTLayer):
             learn_alpha: bool = True,
             learn_beta: bool = True,
             learn_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -167,8 +167,8 @@ class RLIB(TTLayer):
             learn_gamma: bool = True,
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -232,8 +232,8 @@ class DSLIB(TTLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -312,8 +312,8 @@ class DRLIB(TTLayer):
             learn_threshold: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -396,8 +396,8 @@ class SRLIB(TTLayer):
             learn_gamma: bool = True,
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -479,8 +479,8 @@ class DSRLIB(TTLayer):
             learn_threshold: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 

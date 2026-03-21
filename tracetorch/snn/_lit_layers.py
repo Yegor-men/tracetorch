@@ -19,8 +19,8 @@ class LIT(TTLayer):
             learn_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -73,8 +73,8 @@ class DLIT(TTLayer):
             learn_neg_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -137,8 +137,8 @@ class SLIT(TTLayer):
             learn_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
         self._initialize_state("syn")
@@ -200,8 +200,8 @@ class RLIT(TTLayer):
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -274,8 +274,8 @@ class DSLIT(TTLayer):
             learn_neg_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -364,8 +364,8 @@ class DRLIT(TTLayer):
             learn_neg_threshold: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -458,8 +458,8 @@ class SRLIT(TTLayer):
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
@@ -551,8 +551,8 @@ class DSRLIT(TTLayer):
             learn_neg_threshold: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=nn.Sigmoid(),
-            deterministic: bool = True,
+            spike_fn=functional.sigmoid4x,
+            deterministic: bool = False,
     ):
         super().__init__(num_neurons, dim)
 
