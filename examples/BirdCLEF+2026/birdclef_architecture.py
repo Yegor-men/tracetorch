@@ -3,7 +3,7 @@ from torch import nn
 import tracetorch as tt
 from tracetorch import snn
 
-min_timescale = tt.functional.halflife_to_decay(0.2)
+min_timescale = tt.functional.halflife_to_decay(1)
 max_timescale = tt.functional.halflife_to_decay(62.5)
 timescale_diff = max_timescale - min_timescale
 
@@ -23,8 +23,8 @@ class ResidualSpike(snn.TTModel):
             neg_threshold=torch.rand(hidden_dim),
             pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
             neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
-            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
+            pos_rec_weight=torch.randn(hidden_dim) * 0.5,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.5,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
