@@ -196,11 +196,14 @@ class CleanAudioDataset(Dataset):
         delta = self.compute_deltas(spec_norm)
         delta_delta = self.compute_deltas(delta)
 
-        # VARIANCE MATCHING: Scale delta and acceleration to have the same
-        # energy/magnitude as the base spectrogram, without blowing up the SNN.
-        spec_std = spec_norm.std() + 1e-8
-        delta = (delta / (delta.std() + 1e-8)) * spec_std
-        delta_delta = (delta_delta / (delta_delta.std() + 1e-8)) * spec_std
+        # Mathematical Variance Matching for Torchaudio Deltas (win_length=5)
+        # Filter sum of squares is exactly 0.1. Thus, std dev scales by sqrt(0.1).
+        # We multiply by the inverse to restore the magnitude to match spec_norm.
+        delta_scalar = 1.0 / (0.1 ** 0.5)  # ~3.1622
+        accel_scalar = 1.0 / 0.1  # 10.0
+
+        delta = delta * delta_scalar
+        delta_delta = delta_delta * accel_scalar
 
         # Concatenate into 3 channels * 256 = 768 Features
         combined = torch.cat([spec_norm, delta, delta_delta], dim=1).squeeze(0)
