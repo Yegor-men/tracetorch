@@ -35,61 +35,6 @@ if device == "cuda":
 
 
 # =====================================================================
-# 1. ARCHITECTURE
-# =====================================================================
-def foobar(x):
-    return nn.functional.sigmoid(4.0 * x)
-
-
-dsrlits_min_timescale = tt.functional.halflife_to_decay(1)
-dsrlits_max_timescale = tt.functional.halflife_to_decay(50)
-dsrlits_diff = dsrlits_max_timescale - dsrlits_min_timescale
-
-
-class ResidualSpike(snn.TTModel):
-    def __init__(self, hidden_dim):
-        super().__init__()
-        self.lif = snn.DSRLITS(
-            hidden_dim,
-            pos_alpha=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
-            neg_alpha=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
-            pos_beta=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
-            neg_beta=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
-            pos_gamma=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
-            neg_gamma=torch.rand(hidden_dim) * dsrlits_diff + dsrlits_min_timescale,
-            pos_threshold=torch.rand(hidden_dim),
-            neg_threshold=torch.rand(hidden_dim),
-            pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
-            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
-            spike_fn=foobar,
-            deterministic=False,
-        )
-        self.lin = nn.Linear(hidden_dim, hidden_dim)
-        nn.init.zeros_(self.lin.bias)
-
-    def forward(self, x):
-        return x + self.lin(self.lif(x))
-
-
-class BirdClassifierSNN(snn.TTModel):
-    def __init__(self, in_features=256, hidden_features=1024, num_layers=10, num_classes=234):
-        super().__init__()
-        self.enc = nn.Sequential(nn.Linear(in_features, hidden_features), nn.Dropout(0.0))
-        self.net = nn.Sequential(*[ResidualSpike(hidden_features) for _ in range(num_layers)])
-        self.dec = nn.Sequential(
-            nn.Dropout(0.1),
-            nn.Linear(hidden_features, num_classes)
-        )
-        nn.init.zeros_(self.dec[-1].weight)
-        nn.init.zeros_(self.dec[-1].bias)
-
-    def forward(self, x):
-        return self.dec(self.net(self.enc(x)))
-
-
-# =====================================================================
 # 2. UTILS & CUSTOM LOSS
 # =====================================================================
 @torch.no_grad()
@@ -131,21 +76,10 @@ def focal_loss_with_logits(logits, targets, gamma=2.0):
     Focal Loss pushes the model to ignore 'easy' predictions (like the 233 background classes)
     and focus all gradient energy on hard mistakes (false positives/negatives).
     """
-    # Get raw BCE loss (unreduced so we can scale each class independently)
     bce_loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, targets, reduction='none')
-
-    # Calculate probabilities
     probs = torch.sigmoid(logits)
-
-    # p_t is the probability of the TRUE class
-    # If target=1, p_t = probs. If target=0, p_t = 1 - probs.
     p_t = probs * targets + (1 - probs) * (1 - targets)
-
-    # Modulating factor: (1 - p_t)^gamma
-    # If model is 99% sure and correct, weight becomes (1 - 0.99)^2 = 0.0001 (gradient vanishes)
     focal_weight = (1 - p_t) ** gamma
-
-    # Apply weight and return mean
     return (focal_weight * bce_loss).mean()
 
 
@@ -153,12 +87,15 @@ def focal_loss_with_logits(logits, targets, gamma=2.0):
 # 3. DATASET
 # =====================================================================
 class CleanAudioDataset(Dataset):
-    def __init__(self, df, class_to_idx, data_dir='data/birdclef-2026', sr=32000, duration=5.0):
+    def __init__(self, df, class_to_idx, data_dir='data/birdclef-2026', sr=32000, duration=5.0, use_delta=False,
+                 delta_decay=0.0):
         self.df = df
         self.class_to_idx = class_to_idx
         self.audio_dir = os.path.join(data_dir, "train_audio")
         self.sr = sr
         self.target_length = int(duration * sr)
+        self.use_delta = use_delta
+        self.delta_decay = delta_decay
 
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=self.sr, n_fft=2048, hop_length=512, n_mels=256, power=2.0)
@@ -219,7 +156,25 @@ class CleanAudioDataset(Dataset):
 
         spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec).squeeze(0)
-        X = (spec_db / 80.0).transpose(0, 1)
+        X = (spec_db / 80.0).transpose(0, 1)  # Shape: [Time, Freq]
+
+        # -------------------------------------------------------------
+        # EMA DELTA SPECTROGRAM LOGIC
+        # -------------------------------------------------------------
+        if self.use_delta:
+            delta_X = torch.empty_like(X)
+            # Initial EMA context is absolute silence (0.0 vector)
+            ema_context = torch.zeros_like(X[0])
+
+            for t in range(X.size(0)):
+                # Output is current value minus the trailing background average
+                delta_X[t] = X[t] - ema_context
+                # Update the background context
+                ema_context = self.delta_decay * ema_context + (1.0 - self.delta_decay) * X[t]
+
+            X = delta_X
+        # -------------------------------------------------------------
+
         return X, Y
 
 
@@ -240,6 +195,12 @@ def find_free_port(start_port=6006):
 # 4. MAIN SCRIPT
 # =====================================================================
 if __name__ == '__main__':
+
+    # --- DELTA TOGGLES ---
+    USE_DELTA = True
+    DELTA_DECAY = 0.0
+    # ---------------------
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f'tensorboard/birdclef_train_{timestamp}'
     writer = SummaryWriter(log_dir=log_dir)
@@ -269,8 +230,10 @@ if __name__ == '__main__':
     train_df = df_full.sample(frac=0.9, random_state=42)
     val_df = df_full.drop(train_df.index)
 
-    train_ds = CleanAudioDataset(train_df, class_to_idx, data_dir=data_dir, duration=5.0)
-    val_ds = CleanAudioDataset(val_df, class_to_idx, data_dir=data_dir, duration=5.0)
+    train_ds = CleanAudioDataset(train_df, class_to_idx, data_dir=data_dir, duration=5.0, use_delta=USE_DELTA,
+                                 delta_decay=DELTA_DECAY)
+    val_ds = CleanAudioDataset(val_df, class_to_idx, data_dir=data_dir, duration=5.0, use_delta=USE_DELTA,
+                               delta_decay=DELTA_DECAY)
 
     print(f"Training on {len(train_ds)} 5s crops (Train_Audio).")
     print(f"Validating on {len(val_ds)} 5s crops (Train_Audio).")
@@ -278,14 +241,25 @@ if __name__ == '__main__':
     batch_size = 50
     grad_accum_steps = 1
 
-    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_clean,
-                                  num_workers=4)
-    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_clean, num_workers=4)
+    train_dataloader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate_clean,
+        num_workers=4,
+    )
+    val_dataloader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate_clean,
+        num_workers=4,
+    )
+
+    from birdclef_architecture import BirdClassifierSNN
 
     model = BirdClassifierSNN(num_classes=num_classes).to(device)
-
-    # Uncomment to load previous state
-    # model.load_state_dict(load_file("checkpoints/_model_step_1750_base.safetensors"))
+    # model.load_state_dict(load_file("checkpoints/_model_step_4000_ema.safetensors"))
 
     ema_model = copy.deepcopy(model)
     ema_model.eval()
@@ -309,10 +283,6 @@ if __name__ == '__main__':
     # -----------------------------------------------------------------
     # BALANCED DUAL-LOSS SETUP
     # -----------------------------------------------------------------
-    # Initial Custom CE is ~ ln(num_classes). Initial BCE is ~ ln(2).
-    # Scale BCE up so both losses exert equal force at initialization.
-    # For 234 classes, bce_weight will be exactly ~7.87.
-    # bce_loss_fn = nn.BCEWithLogitsLoss()
     bce_weight = float(np.log(num_classes) / np.log(2.0))
     print(f"BCE Scale Weight calculated as: {bce_weight:.4f}")
     # -----------------------------------------------------------------
@@ -324,6 +294,49 @@ if __name__ == '__main__':
         LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_steps),
         CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=1e-6)
     ], milestones=[warmup_steps])
+
+
+    # Moving evaluate_model to the top-level to keep the code clean
+    def evaluate_model(eval_model, name):
+        eval_model.eval()
+        all_preds, all_targets = [], []
+        val_loss_sum = 0.0
+        val_ce_sum = 0.0
+        val_bce_sum = 0.0
+
+        with torch.no_grad():
+            for x_val, y_val in tqdm(val_dataloader, desc=f"VAL ({name})", leave=False):
+                x_val, y_val = x_val.to(device), y_val.to(device)
+                eval_model.zero_states()
+
+                val_step_logits = []
+                for t in range(x_val.size(0)):
+                    val_step_logits.append(eval_model(x_val[t]))
+
+                val_step_logits = torch.stack(val_step_logits)
+                val_clip_logits = torch.mean(val_step_logits, dim=0)
+
+                val_ce = custom_multi_class_ce_loss(val_clip_logits, y_val)
+                val_bce = focal_loss_with_logits(val_clip_logits, y_val)
+                val_loss = val_ce + (bce_weight * val_bce)
+
+                val_loss_sum += val_loss.item()
+                val_ce_sum += val_ce.item()
+                val_bce_sum += val_bce.item()
+
+                probs = torch.sigmoid(val_clip_logits)
+                all_preds.append(probs.cpu().numpy())
+                all_targets.append(y_val.cpu().numpy())
+
+        num_batches = len(val_dataloader)
+        avg_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
+        avg_ce = val_ce_sum / num_batches if num_batches > 0 else 0.0
+        avg_bce = val_bce_sum / num_batches if num_batches > 0 else 0.0
+
+        roc = compute_macro_roc_auc(np.concatenate(all_preds),
+                                    np.concatenate(all_targets)) if num_batches > 0 else 0.0
+        return avg_loss, avg_ce, avg_bce, roc
+
 
     for e in range(num_epochs):
         model.train()
@@ -349,14 +362,21 @@ if __name__ == '__main__':
 
             # Compute combined balanced loss
             ce_loss = custom_multi_class_ce_loss(clip_logits, y)
-            # bce_loss = bce_loss_fn(clip_logits, y)
             bce_loss = focal_loss_with_logits(clip_logits, y)
 
             loss = ce_loss + (bce_weight * bce_loss)
-            (loss / grad_accum_steps).backward()
+
+            # ---------------------------------------------
+            # GRADIENT SHOCK ABSORBER (CRITICAL FIX)
+            # ---------------------------------------------
+            loss = loss / grad_accum_steps
+            loss.backward()
+            if accum_steps % grad_accum_steps == grad_accum_steps - 1 or grad_accum_steps == 1:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # ---------------------------------------------
 
             accum_steps += 1
-            train_loss_accum += loss.item()
+            train_loss_accum += loss.item() * grad_accum_steps  # scale back up for logging
             train_ce_accum += ce_loss.item()
             train_bce_accum += bce_loss.item()
 
@@ -375,7 +395,6 @@ if __name__ == '__main__':
                 batch_roc = compute_macro_roc_auc(np.concatenate(train_preds_accum),
                                                   np.concatenate(train_targets_accum))
 
-                # Log all 3 separately to TensorBoard
                 writer.add_scalars("Loss", {"Train": train_loss_accum / grad_accum_steps}, optimizer_steps)
                 writer.add_scalars("CE_Loss", {"Train": train_ce_accum / grad_accum_steps}, optimizer_steps)
                 writer.add_scalars("BCE_Loss", {"Train": train_bce_accum / grad_accum_steps}, optimizer_steps)
