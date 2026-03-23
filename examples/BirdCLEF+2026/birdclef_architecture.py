@@ -23,8 +23,8 @@ class ResidualSpike(snn.TTModel):
             neg_threshold=torch.rand(hidden_dim),
             pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
             neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            pos_rec_weight=torch.randn(hidden_dim) * 0.5,
-            neg_rec_weight=torch.randn(hidden_dim) * 0.5,
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)
