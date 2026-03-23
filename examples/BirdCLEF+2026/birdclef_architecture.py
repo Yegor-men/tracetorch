@@ -34,7 +34,8 @@ class ResidualSpike(snn.TTModel):
 
 
 class BirdClassifierSNN(snn.TTModel):
-    def __init__(self, in_features=256, hidden_features=1024, num_layers=10, num_classes=234):
+    # Updated default in_features to 768 (256 Base + 256 Delta + 256 Delta-Delta)
+    def __init__(self, in_features=768, hidden_features=1024, num_layers=10, num_classes=234):
         super().__init__()
         self.enc = nn.Sequential(nn.Linear(in_features, hidden_features))
 

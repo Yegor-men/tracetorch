@@ -13,7 +13,7 @@ from tqdm import tqdm
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
-from safetensors.torch import save_file, load_file
+from safetensors.torch import save_file
 import subprocess
 import webbrowser
 import time
@@ -21,7 +21,7 @@ import atexit
 from sklearn.metrics import roc_auc_score
 
 import tracetorch as tt
-from tracetorch import snn
+from birdclef_architecture import BirdClassifierSNN
 
 # Fix the 'too many fds' multiprocessing error
 import torch.multiprocessing
@@ -35,7 +35,7 @@ if device == "cuda":
 
 
 # =====================================================================
-# 2. UTILS & CUSTOM LOSS
+# 1. UTILS & CUSTOM LOSS
 # =====================================================================
 @torch.no_grad()
 def update_ema_model(model, ema_model, decay: float = 0.999):
@@ -52,18 +52,7 @@ def compute_macro_roc_auc(preds, targets):
     return roc_auc_score(binary_targets[:, scored_columns], preds[:, scored_columns], average='macro')
 
 
-def add_spec_noise(tensor: torch.Tensor, p: float = 0.1, device=None) -> torch.Tensor:
-    if p <= 0: return tensor
-    if device is None: device = tensor.device
-    mask = torch.rand(tensor.shape, device=device) > p
-    return tensor * mask
-
-
 def custom_multi_class_ce_loss(logits, targets):
-    """
-    Computes avg(-ln(prob)) ONLY for the positive target classes.
-    Softmax forces the negatives toward zero implicitly.
-    """
     lsm = torch.nn.functional.log_softmax(logits, dim=1)
     sum_lsm_positives = (targets * lsm).sum(dim=1)
     num_positives = torch.clamp(targets.sum(dim=1), min=1.0)
@@ -72,10 +61,6 @@ def custom_multi_class_ce_loss(logits, targets):
 
 
 def focal_loss_with_logits(logits, targets, gamma=2.0):
-    """
-    Focal Loss pushes the model to ignore 'easy' predictions (like the 233 background classes)
-    and focus all gradient energy on hard mistakes (false positives/negatives).
-    """
     bce_loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, targets, reduction='none')
     probs = torch.sigmoid(logits)
     p_t = probs * targets + (1 - probs) * (1 - targets)
@@ -83,23 +68,71 @@ def focal_loss_with_logits(logits, targets, gamma=2.0):
     return (focal_weight * bce_loss).mean()
 
 
+def find_free_port(start_port=6006):
+    port = start_port
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(('localhost', port)) != 0: return port
+        port += 1
+
+
+# =====================================================================
+# 2. EVALUATION FUNCTION
+# =====================================================================
+def evaluate_model(eval_model, val_loader, bce_weight):
+    eval_model.eval()
+    all_preds, all_targets = [], []
+    val_loss_sum, val_ce_sum, val_bce_sum = 0.0, 0.0, 0.0
+
+    with torch.no_grad():
+        for x_val, y_val in tqdm(val_loader, desc="Evaluating", leave=False):
+            x_val, y_val = x_val.to(device), y_val.to(device)
+            eval_model.zero_states()
+
+            val_step_logits = []
+            for t in range(x_val.size(0)):
+                val_step_logits.append(eval_model(x_val[t]))
+
+            val_clip_logits = torch.stack(val_step_logits).mean(dim=0)
+
+            val_ce = custom_multi_class_ce_loss(val_clip_logits, y_val)
+            val_bce = focal_loss_with_logits(val_clip_logits, y_val)
+            val_loss = val_ce + (bce_weight * val_bce)
+
+            val_loss_sum += val_loss.item()
+            val_ce_sum += val_ce.item()
+            val_bce_sum += val_bce.item()
+
+            all_preds.append(torch.sigmoid(val_clip_logits).cpu().numpy())
+            all_targets.append(y_val.cpu().numpy())
+
+    num_batches = len(val_loader)
+    avg_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
+    avg_ce = val_ce_sum / num_batches if num_batches > 0 else 0.0
+    avg_bce = val_bce_sum / num_batches if num_batches > 0 else 0.0
+    roc = compute_macro_roc_auc(np.concatenate(all_preds), np.concatenate(all_targets)) if num_batches > 0 else 0.0
+
+    return avg_loss, avg_ce, avg_bce, roc
+
+
 # =====================================================================
 # 3. DATASET
 # =====================================================================
 class CleanAudioDataset(Dataset):
-    def __init__(self, df, class_to_idx, data_dir='data/birdclef-2026', sr=32000, duration=5.0, use_delta=False,
-                 delta_decay=0.0):
+    def __init__(self, df, class_to_idx, data_dir='data/birdclef-2026', sr=32000, duration=5.0):
         self.df = df
         self.class_to_idx = class_to_idx
         self.audio_dir = os.path.join(data_dir, "train_audio")
         self.sr = sr
         self.target_length = int(duration * sr)
-        self.use_delta = use_delta
-        self.delta_decay = delta_decay
 
+        # Base Spec
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=self.sr, n_fft=2048, hop_length=512, n_mels=256, power=2.0)
         self.db_transform = torchaudio.transforms.AmplitudeToDB(top_db=80)
+
+        # Deltas
+        self.compute_deltas = torchaudio.transforms.ComputeDeltas()
 
         self.class_files_map = self.df.groupby('primary_label')['filename'].apply(list).to_dict()
 
@@ -154,26 +187,23 @@ class CleanAudioDataset(Dataset):
         start = torch.randint(0, max_start + 1, (1,)).item() if max_start > 0 else 0
         waveform = waveform[start:start + self.target_length].unsqueeze(0)
 
+        # Base Log-Mel Extraction
         spec = self.mel_transform(waveform)
-        spec_db = self.db_transform(spec).squeeze(0)
-        X = (spec_db / 80.0).transpose(0, 1)  # Shape: [Time, Freq]
+        spec_db = self.db_transform(spec)
 
-        # -------------------------------------------------------------
-        # EMA DELTA SPECTROGRAM LOGIC
-        # -------------------------------------------------------------
-        if self.use_delta:
-            delta_X = torch.empty_like(X)
-            # Initial EMA context is absolute silence (0.0 vector)
-            ema_context = torch.zeros_like(X[0])
+        # Revert to original normalization
+        spec_norm = spec_db / 80.0
 
-            for t in range(X.size(0)):
-                # Output is current value minus the trailing background average
-                delta_X[t] = X[t] - ema_context
-                # Update the background context
-                ema_context = self.delta_decay * ema_context + (1.0 - self.delta_decay) * X[t]
+        # Delta & Acceleration Computation
+        delta = self.compute_deltas(spec_norm)
+        delta_delta = self.compute_deltas(delta)
 
-            X = delta_X
-        # -------------------------------------------------------------
+        # Concatenate into 3 channels * 256 = 768 Features
+        # spec_norm, delta, delta_delta are[1, 256, Time]
+        combined = torch.cat([spec_norm, delta, delta_delta], dim=1).squeeze(0)
+
+        # Required Shape: [Time, Freq]
+        X = combined.transpose(0, 1)
 
         return X, Y
 
@@ -183,23 +213,10 @@ def collate_clean(batch):
     return torch.stack(X).transpose(0, 1), torch.stack(Y)
 
 
-def find_free_port(start_port=6006):
-    port = start_port
-    while True:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(('localhost', port)) != 0: return port
-        port += 1
-
-
 # =====================================================================
 # 4. MAIN SCRIPT
 # =====================================================================
 if __name__ == '__main__':
-
-    # --- DELTA TOGGLES ---
-    USE_DELTA = True
-    DELTA_DECAY = 0.0
-    # ---------------------
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f'tensorboard/birdclef_train_{timestamp}'
@@ -230,10 +247,8 @@ if __name__ == '__main__':
     train_df = df_full.sample(frac=0.9, random_state=42)
     val_df = df_full.drop(train_df.index)
 
-    train_ds = CleanAudioDataset(train_df, class_to_idx, data_dir=data_dir, duration=5.0, use_delta=USE_DELTA,
-                                 delta_decay=DELTA_DECAY)
-    val_ds = CleanAudioDataset(val_df, class_to_idx, data_dir=data_dir, duration=5.0, use_delta=USE_DELTA,
-                               delta_decay=DELTA_DECAY)
+    train_ds = CleanAudioDataset(train_df, class_to_idx, data_dir=data_dir, duration=5.0)
+    val_ds = CleanAudioDataset(val_df, class_to_idx, data_dir=data_dir, duration=5.0)
 
     print(f"Training on {len(train_ds)} 5s crops (Train_Audio).")
     print(f"Validating on {len(val_ds)} 5s crops (Train_Audio).")
@@ -241,25 +256,12 @@ if __name__ == '__main__':
     batch_size = 50
     grad_accum_steps = 1
 
-    train_dataloader = DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=collate_clean,
-        num_workers=4,
-    )
-    val_dataloader = DataLoader(
-        val_ds,
-        batch_size=batch_size,
-        shuffle=False,
-        collate_fn=collate_clean,
-        num_workers=4,
-    )
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_clean,
+                                  num_workers=4)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_clean, num_workers=4)
 
-    from birdclef_architecture import BirdClassifierSNN
-
+    # Note: Default architecture params modified inside the imported class to handle 768 In-Features
     model = BirdClassifierSNN(num_classes=num_classes).to(device)
-    # model.load_state_dict(load_file("checkpoints/_model_step_4000_ema.safetensors"))
 
     ema_model = copy.deepcopy(model)
     ema_model.eval()
@@ -270,22 +272,57 @@ if __name__ == '__main__':
     print(f"\nTotal Params: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
     print(f"Num Train Batches: {len(train_dataloader):,}\n")
 
+    # -------------------------------------------------------------
+    # RGB SANITY VISUALIZATION
+    # -------------------------------------------------------------
     x_sanity, y_sanity = next(iter(train_dataloader))
-    print(f"Sanity Check - X shape (Time, Batch, Freq): {x_sanity.shape} | Y shape: {y_sanity.shape}")
-    print(f"Sanity Check - X Mean: {x_sanity.mean():.4f} | Min: {x_sanity.min():.4f} | Max: {x_sanity.max():.4f}")
+    print(f"\nSanity Check - X shape (Time, Batch, Freq): {x_sanity.shape} | Y shape: {y_sanity.shape}")
 
-    x_vis = x_sanity.permute(1, 2, 0).unsqueeze(1)
-    tt.plot.render_image(x_vis)
-    print("Rendered Sanity Check Image.\n")
+    # Permute to[Batch, Freq, Time]
+    x_batch = x_sanity.permute(1, 2, 0)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    # Split into Spec, Delta, and Accel (each is[Batch, 256, Time])
+    spec_batch, delta_batch, accel_batch = torch.chunk(x_batch, 3, dim=1)
 
-    # -----------------------------------------------------------------
-    # BALANCED DUAL-LOSS SETUP
-    # -----------------------------------------------------------------
+    components = [
+        ("Spectrogram", spec_batch),
+        ("Delta", delta_batch),
+        ("Acceleration", accel_batch)
+    ]
+
+    for name, comp in components:
+        # Calculate stats
+        c_mean = comp.mean().item()
+        c_min = comp.min().item()
+        c_max = comp.max().item()
+
+        stat_str = f"{name} - Mean: {c_mean:.4f} | Min: {c_min:.4f} | Max: {c_max:.4f}"
+        print(stat_str)
+
+        # Clamp between -1 and 1 so max red = +1.0 and max blue = -1.0
+        val = torch.clamp(comp, min=-1.0, max=1.0)
+
+        pos = torch.clamp(val, min=0)
+        neg = torch.clamp(-val, min=0)
+
+        # Mapping: 0 -> White (1,1,1) | Pos -> Red (1,0,0) | Neg -> Blue (0,0,1)
+        r_channel = 1.0 - neg
+        g_channel = 1.0 - pos - neg
+        b_channel = 1.0 - pos
+
+        # Stack into[Batch, Channels, Height, Width] for tt.plot.render_image
+        rgb_batch = torch.stack([r_channel, g_channel, b_channel], dim=1)
+
+        # Render the batch for this specific component
+        tt.plot.render_image(rgb_batch, title=stat_str)
+
+    print("Rendered 3 separate batch images (White Bg, Red=Pos, Blue=Neg).\n")
+    # -------------------------------------------------------------
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
+
     bce_weight = float(np.log(num_classes) / np.log(2.0))
     print(f"BCE Scale Weight calculated as: {bce_weight:.4f}")
-    # -----------------------------------------------------------------
 
     optimizer_steps, accum_steps, num_epochs = 0, 0, 15
     total_steps = num_epochs * max(1, len(train_dataloader)) // grad_accum_steps
@@ -294,49 +331,6 @@ if __name__ == '__main__':
         LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_steps),
         CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=1e-6)
     ], milestones=[warmup_steps])
-
-
-    # Moving evaluate_model to the top-level to keep the code clean
-    def evaluate_model(eval_model, name):
-        eval_model.eval()
-        all_preds, all_targets = [], []
-        val_loss_sum = 0.0
-        val_ce_sum = 0.0
-        val_bce_sum = 0.0
-
-        with torch.no_grad():
-            for x_val, y_val in tqdm(val_dataloader, desc=f"VAL ({name})", leave=False):
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                eval_model.zero_states()
-
-                val_step_logits = []
-                for t in range(x_val.size(0)):
-                    val_step_logits.append(eval_model(x_val[t]))
-
-                val_step_logits = torch.stack(val_step_logits)
-                val_clip_logits = torch.mean(val_step_logits, dim=0)
-
-                val_ce = custom_multi_class_ce_loss(val_clip_logits, y_val)
-                val_bce = focal_loss_with_logits(val_clip_logits, y_val)
-                val_loss = val_ce + (bce_weight * val_bce)
-
-                val_loss_sum += val_loss.item()
-                val_ce_sum += val_ce.item()
-                val_bce_sum += val_bce.item()
-
-                probs = torch.sigmoid(val_clip_logits)
-                all_preds.append(probs.cpu().numpy())
-                all_targets.append(y_val.cpu().numpy())
-
-        num_batches = len(val_dataloader)
-        avg_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
-        avg_ce = val_ce_sum / num_batches if num_batches > 0 else 0.0
-        avg_bce = val_bce_sum / num_batches if num_batches > 0 else 0.0
-
-        roc = compute_macro_roc_auc(np.concatenate(all_preds),
-                                    np.concatenate(all_targets)) if num_batches > 0 else 0.0
-        return avg_loss, avg_ce, avg_bce, roc
-
 
     for e in range(num_epochs):
         model.train()
@@ -348,7 +342,6 @@ if __name__ == '__main__':
 
         for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
             x, y = x.to(device), y.to(device)
-            x = add_spec_noise(x, p=0.1)
 
             model.zero_states()
             all_step_logits = []
@@ -357,26 +350,17 @@ if __name__ == '__main__':
                 logits = model(x[t])
                 all_step_logits.append(logits)
 
-            all_step_logits = torch.stack(all_step_logits)
-            clip_logits = torch.mean(all_step_logits, dim=0)
+            clip_logits = torch.stack(all_step_logits).mean(dim=0)
 
-            # Compute combined balanced loss
             ce_loss = custom_multi_class_ce_loss(clip_logits, y)
             bce_loss = focal_loss_with_logits(clip_logits, y)
+            loss_unscaled = ce_loss + (bce_weight * bce_loss)
 
-            loss = ce_loss + (bce_weight * bce_loss)
-
-            # ---------------------------------------------
-            # GRADIENT SHOCK ABSORBER (CRITICAL FIX)
-            # ---------------------------------------------
-            loss = loss / grad_accum_steps
+            loss = loss_unscaled / grad_accum_steps
             loss.backward()
-            if accum_steps % grad_accum_steps == grad_accum_steps - 1 or grad_accum_steps == 1:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            # ---------------------------------------------
 
             accum_steps += 1
-            train_loss_accum += loss.item() * grad_accum_steps  # scale back up for logging
+            train_loss_accum += loss_unscaled.item()
             train_ce_accum += ce_loss.item()
             train_bce_accum += bce_loss.item()
 
@@ -392,6 +376,7 @@ if __name__ == '__main__':
                 update_ema_model(model, ema_model)
                 optimizer.zero_grad()
 
+                # Calculate ROC AUC on the recent accumulation batch safely
                 batch_roc = compute_macro_roc_auc(np.concatenate(train_preds_accum),
                                                   np.concatenate(train_targets_accum))
 
@@ -400,59 +385,16 @@ if __name__ == '__main__':
                 writer.add_scalars("BCE_Loss", {"Train": train_bce_accum / grad_accum_steps}, optimizer_steps)
                 writer.add_scalars("ROC_AUC", {"Train": batch_roc}, optimizer_steps)
 
-                train_loss_accum = 0.0
-                train_ce_accum = 0.0
-                train_bce_accum = 0.0
-                train_preds_accum = []
-                train_targets_accum = []
+                # Reset batch accumulators
+                train_loss_accum, train_ce_accum, train_bce_accum = 0.0, 0.0, 0.0
+                train_preds_accum, train_targets_accum = [], []
 
                 if optimizer_steps % 250 == 0:
-                    def evaluate_model(eval_model, name):
-                        eval_model.eval()
-                        all_preds, all_targets = [], []
-                        val_loss_sum = 0.0
-                        val_ce_sum = 0.0
-                        val_bce_sum = 0.0
-
-                        with torch.no_grad():
-                            for x_val, y_val in tqdm(val_dataloader, desc=f"VAL ({name})", leave=False):
-                                x_val, y_val = x_val.to(device), y_val.to(device)
-                                eval_model.zero_states()
-
-                                val_step_logits = []
-                                for t in range(x_val.size(0)):
-                                    val_step_logits.append(eval_model(x_val[t]))
-
-                                val_step_logits = torch.stack(val_step_logits)
-                                val_clip_logits = torch.mean(val_step_logits, dim=0)
-
-                                val_ce = custom_multi_class_ce_loss(val_clip_logits, y_val)
-                                # val_bce = bce_loss_fn(val_clip_logits, y_val)
-                                val_bce = focal_loss_with_logits(val_clip_logits, y_val)
-                                val_loss = val_ce + (bce_weight * val_bce)
-
-                                val_loss_sum += val_loss.item()
-                                val_ce_sum += val_ce.item()
-                                val_bce_sum += val_bce.item()
-
-                                probs = torch.sigmoid(val_clip_logits)
-                                all_preds.append(probs.cpu().numpy())
-                                all_targets.append(y_val.cpu().numpy())
-
-                        num_batches = len(val_dataloader)
-                        avg_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
-                        avg_ce = val_ce_sum / num_batches if num_batches > 0 else 0.0
-                        avg_bce = val_bce_sum / num_batches if num_batches > 0 else 0.0
-
-                        roc = compute_macro_roc_auc(np.concatenate(all_preds),
-                                                    np.concatenate(all_targets)) if num_batches > 0 else 0.0
-                        return avg_loss, avg_ce, avg_bce, roc
-
-
                     print("\nEvaluating Base Model...")
-                    base_loss, base_ce, base_bce, base_roc_auc = evaluate_model(model, "Base")
+                    base_loss, base_ce, base_bce, base_roc_auc = evaluate_model(model, val_dataloader, bce_weight)
+
                     print("Evaluating EMA Model...")
-                    ema_loss, ema_ce, ema_bce, ema_roc_auc = evaluate_model(ema_model, "EMA")
+                    ema_loss, ema_ce, ema_bce, ema_roc_auc = evaluate_model(ema_model, val_dataloader, bce_weight)
 
                     writer.add_scalars("Loss", {"Val_Base": base_loss, "Val_EMA": ema_loss}, optimizer_steps)
                     writer.add_scalars("CE_Loss", {"Val_Base": base_ce, "Val_EMA": ema_ce}, optimizer_steps)
@@ -468,5 +410,8 @@ if __name__ == '__main__':
 
                     model.train()
 
+    # Final save after all epochs complete
+    os.makedirs("checkpoints", exist_ok=True)
     save_file(ema_model.state_dict(), os.path.join("checkpoints", "model_final_ema.safetensors"))
     save_file(model.state_dict(), os.path.join("checkpoints", "model_final_base.safetensors"))
+    print("\nTraining Complete!")
