@@ -190,16 +190,19 @@ class CleanAudioDataset(Dataset):
         # Base Log-Mel Extraction
         spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec)
-
-        # Revert to original normalization
         spec_norm = spec_db / 80.0
 
         # Delta & Acceleration Computation
         delta = self.compute_deltas(spec_norm)
         delta_delta = self.compute_deltas(delta)
 
+        # VARIANCE MATCHING: Scale delta and acceleration to have the same
+        # energy/magnitude as the base spectrogram, without blowing up the SNN.
+        spec_std = spec_norm.std() + 1e-8
+        delta = (delta / (delta.std() + 1e-8)) * spec_std
+        delta_delta = (delta_delta / (delta_delta.std() + 1e-8)) * spec_std
+
         # Concatenate into 3 channels * 256 = 768 Features
-        # spec_norm, delta, delta_delta are[1, 256, Time]
         combined = torch.cat([spec_norm, delta, delta_delta], dim=1).squeeze(0)
 
         # Required Shape: [Time, Freq]
