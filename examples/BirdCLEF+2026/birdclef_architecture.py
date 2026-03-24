@@ -21,8 +21,8 @@ class ResidualSpike(snn.TTModel):
             neg_gamma=torch.rand(hidden_dim) * timescale_diff + min_timescale,
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
-            pos_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
-            neg_scale=torch.randn(hidden_dim) * 0.5 + 1.0,
+            pos_scale=torch.rand(hidden_dim),
+            neg_scale=torch.rand(hidden_dim),
             pos_rec_weight=torch.randn(hidden_dim) * 0.1,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
         )
@@ -30,7 +30,7 @@ class ResidualSpike(snn.TTModel):
         nn.init.zeros_(self.lin.bias)
 
     def forward(self, x):
-        return x + self.lin(self.lif(x))
+        return torch.tanh(x + self.lin(self.lif(x)))
 
 
 class BirdClassifierSNN(snn.TTModel):
