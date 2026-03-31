@@ -77,9 +77,37 @@ def find_free_port(start_port=6006):
 
 
 # =====================================================================
-# 2. EVALUATION FUNCTION
+# 2. FEATURE EXTRACTION & EVALUATION
 # =====================================================================
-def evaluate_model(eval_model, val_loader, bce_weight):
+def extract_features(x_spec, delta_fn, training=False, noise_std=0.01):
+    """
+    Takes a raw spectrogram batch[Time, Batch, Freq], applies optional noise,
+    and returns the concatenated [Spec, Delta, Accel] tensor.
+    """
+    if training and noise_std > 0.0:
+        x_spec = x_spec + torch.randn_like(x_spec) * noise_std
+
+    # ComputeDeltas expects[..., Freq, Time], so we permute
+    x_perm = x_spec.permute(1, 2, 0)
+
+    delta = delta_fn(x_perm)
+    delta_delta = delta_fn(delta)
+
+    # Variance Matching
+    delta_scalar = 1.0 / (0.1 ** 0.5)
+    accel_scalar = 1.0 / 0.1
+
+    delta = delta * delta_scalar
+    delta_delta = delta_delta * accel_scalar
+
+    # Concatenate into 3 channels * 256 = 768 Features
+    combined = torch.cat([x_perm, delta, delta_delta], dim=1)
+
+    # Return to [Time, Batch, Freq]
+    return combined.permute(2, 0, 1)
+
+
+def evaluate_model(eval_model, val_loader, bce_weight, delta_fn):
     eval_model.eval()
     all_preds, all_targets = [], []
     val_loss_sum, val_ce_sum, val_bce_sum = 0.0, 0.0, 0.0
@@ -87,11 +115,15 @@ def evaluate_model(eval_model, val_loader, bce_weight):
     with torch.no_grad():
         for x_val, y_val in tqdm(val_loader, desc="Evaluating", leave=False):
             x_val, y_val = x_val.to(device), y_val.to(device)
+
+            # Extract features WITHOUT noise for validation
+            x_feat = extract_features(x_val, delta_fn, training=False)
+
             eval_model.zero_states()
 
             val_step_logits = []
-            for t in range(x_val.size(0)):
-                val_step_logits.append(eval_model(x_val[t]))
+            for t in range(x_feat.size(0)):
+                val_step_logits.append(eval_model(x_feat[t]))
 
             val_clip_logits = torch.stack(val_step_logits).mean(dim=0)
 
@@ -126,13 +158,10 @@ class CleanAudioDataset(Dataset):
         self.sr = sr
         self.target_length = int(duration * sr)
 
-        # Base Spec
+        # Base Spec Only
         self.mel_transform = torchaudio.transforms.MelSpectrogram(
             sample_rate=self.sr, n_fft=2048, hop_length=512, n_mels=256, power=2.0)
         self.db_transform = torchaudio.transforms.AmplitudeToDB(top_db=80)
-
-        # Deltas
-        self.compute_deltas = torchaudio.transforms.ComputeDeltas()
 
         self.class_files_map = self.df.groupby('primary_label')['filename'].apply(list).to_dict()
 
@@ -187,29 +216,13 @@ class CleanAudioDataset(Dataset):
         start = torch.randint(0, max_start + 1, (1,)).item() if max_start > 0 else 0
         waveform = waveform[start:start + self.target_length].unsqueeze(0)
 
-        # Base Log-Mel Extraction
+        # Base Log-Mel Extraction ONLY
         spec = self.mel_transform(waveform)
         spec_db = self.db_transform(spec)
         spec_norm = spec_db / 80.0
 
-        # Delta & Acceleration Computation
-        delta = self.compute_deltas(spec_norm)
-        delta_delta = self.compute_deltas(delta)
-
-        # Mathematical Variance Matching for Torchaudio Deltas (win_length=5)
-        # Filter sum of squares is exactly 0.1. Thus, std dev scales by sqrt(0.1).
-        # We multiply by the inverse to restore the magnitude to match spec_norm.
-        delta_scalar = 1.0 / (0.1 ** 0.5)  # ~3.1622
-        accel_scalar = 1.0 / 0.1  # 10.0
-
-        delta = delta * delta_scalar
-        delta_delta = delta_delta * accel_scalar
-
-        # Concatenate into 3 channels * 256 = 768 Features
-        combined = torch.cat([spec_norm, delta, delta_delta], dim=1).squeeze(0)
-
-        # Required Shape: [Time, Freq]
-        X = combined.transpose(0, 1)
+        # Required Shape:[Time, Freq]
+        X = spec_norm.squeeze(0).transpose(0, 1)
 
         return X, Y
 
@@ -278,14 +291,22 @@ if __name__ == '__main__':
     print(f"\nTotal Params: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
     print(f"Num Train Batches: {len(train_dataloader):,}\n")
 
+    # Instantiate Delta Function on GPU
+    delta_fn = torchaudio.transforms.ComputeDeltas().to(device)
+
     # -------------------------------------------------------------
     # RGB SANITY VISUALIZATION
     # -------------------------------------------------------------
-    x_sanity, y_sanity = next(iter(train_dataloader))
-    print(f"\nSanity Check - X shape (Time, Batch, Freq): {x_sanity.shape} | Y shape: {y_sanity.shape}")
+    x_sanity_raw, y_sanity = next(iter(train_dataloader))
+    x_sanity_raw = x_sanity_raw.to(device)
+
+    # Extract features WITH NOISE so the sanity check shows exactly what the model sees
+    x_feat_sanity = extract_features(x_sanity_raw, delta_fn, training=True)
+
+    print(f"\nSanity Check - X_feat shape (Time, Batch, Freq): {x_feat_sanity.shape} | Y shape: {y_sanity.shape}")
 
     # Permute to[Batch, Freq, Time]
-    x_batch = x_sanity.permute(1, 2, 0)
+    x_batch = x_feat_sanity.permute(1, 2, 0)
 
     # Split into Spec, Delta, and Accel (each is[Batch, 256, Time])
     spec_batch, delta_batch, accel_batch = torch.chunk(x_batch, 3, dim=1)
@@ -297,7 +318,6 @@ if __name__ == '__main__':
     ]
 
     for name, comp in components:
-        # Calculate stats
         c_mean = comp.mean().item()
         c_min = comp.min().item()
         c_max = comp.max().item()
@@ -305,21 +325,15 @@ if __name__ == '__main__':
         stat_str = f"{name} - Mean: {c_mean:.4f} | Min: {c_min:.4f} | Max: {c_max:.4f}"
         print(stat_str)
 
-        # Clamp between -1 and 1 so max red = +1.0 and max blue = -1.0
         val = torch.clamp(comp, min=-1.0, max=1.0)
-
         pos = torch.clamp(val, min=0)
         neg = torch.clamp(-val, min=0)
 
-        # Mapping: 0 -> White (1,1,1) | Pos -> Red (1,0,0) | Neg -> Blue (0,0,1)
         r_channel = 1.0 - neg
         g_channel = 1.0 - pos - neg
         b_channel = 1.0 - pos
 
-        # Stack into[Batch, Channels, Height, Width] for tt.plot.render_image
         rgb_batch = torch.stack([r_channel, g_channel, b_channel], dim=1)
-
-        # Render the batch for this specific component
         tt.plot.render_image(rgb_batch, title=stat_str)
 
     print("Rendered 3 separate batch images (White Bg, Red=Pos, Blue=Neg).\n")
@@ -348,12 +362,13 @@ if __name__ == '__main__':
 
         for i, (x, y) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc=f"TRAIN - E{e}"):
             x, y = x.to(device), y.to(device)
+            x_feat = extract_features(x, delta_fn, training=True)
 
             model.zero_states()
             all_step_logits = []
 
             for t in range(x.size(0)):
-                logits = model(x[t])
+                logits = model(x_feat[t])
                 all_step_logits.append(logits)
 
             clip_logits = torch.stack(all_step_logits).mean(dim=0)
@@ -397,10 +412,12 @@ if __name__ == '__main__':
 
                 if optimizer_steps % 250 == 0:
                     print("\nEvaluating Base Model...")
-                    base_loss, base_ce, base_bce, base_roc_auc = evaluate_model(model, val_dataloader, bce_weight)
+                    base_loss, base_ce, base_bce, base_roc_auc = evaluate_model(model, val_dataloader, bce_weight,
+                                                                                delta_fn)
 
                     print("Evaluating EMA Model...")
-                    ema_loss, ema_ce, ema_bce, ema_roc_auc = evaluate_model(ema_model, val_dataloader, bce_weight)
+                    ema_loss, ema_ce, ema_bce, ema_roc_auc = evaluate_model(ema_model, val_dataloader, bce_weight,
+                                                                            delta_fn)
 
                     writer.add_scalars("Loss", {"Val_Base": base_loss, "Val_EMA": ema_loss}, optimizer_steps)
                     writer.add_scalars("CE_Loss", {"Val_Base": base_ce, "Val_EMA": ema_ce}, optimizer_steps)
