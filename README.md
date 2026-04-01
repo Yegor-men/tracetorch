@@ -1,44 +1,66 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.14.3-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.15.0-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.14.3-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.15.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
 A strict, ergonomic, and powerful Spiking Neural Network (SNN) library for PyTorch.
 
-traceTorch employs a two-tier architecture that balances computational efficiency with maximum flexibility. As with any
-other library, traceTorch presents a wide and powerful variety of distinct, commonly used neuron types utilizing
-sensible defaults. The naming schema is consistent (albeit a bit unconventional) and self-explanatory. Together, these
-layers provide control over a vast amount of neuron mechanics:
+## Introduction
 
-- `LI` base name stands for `Leaky Integrator`, the simplest of layer types with just one trace: the membrane potential
-  which is the direct output, no firing; commonly known as `Readout`, although it's not recommended to literally make
-  it the last layer.
-- `~B` suffix stands for `Binary`, the presence of a threshold, meaning that the layer has 2 possible outputs: a 0 or 1.
-- `~T` suffix stands for `Ternary`, meaning that the layer has 2 thresholds: a positive and negative one, and thus 3
-  possible outputs: -1, 0 or 1.
-- `~S` suffix stands for `Scaled`, meaning that the outputs are multiplicatively scaled separately based on their
-  polarity, used to make ternary outputs truly independent of each other.
-- `D~` prefix stads for `Dual`, meaning that all hidden states and parameters are split into a separate positive and
-  negative version for greater expressivity and making polarity as a separate, alternate signal.
-- `S~` prefix stands for `Synaptic`, meaning that before the membrane there is a separate synaptic trace smoothing out
-  the inputs over time before they get integrated into the membrane.
-- `R~` prefix stands for `Recurrent`, meaning that the layer records its own outputs into a separate trace and
-  re-integrates it back into the membrane.
+traceTorch is an SNN library written from the ground up with power, flexibility and extensibility in mind. As with any
+other library, traceTorch presents a wide and powerful variety of distinct, commonly used neuron types that utilize
+sensible defaults. The naming schema and API, albeit a bit unconventional, are consistent and self-explanatory, and
+allow to control a massive variety of options. When necessary, parameters are bound by activation functions so that the
+gradients flow smoothly and are never clamped. A single dimension argument during initialization determines which of the
+tensor's dimensions the layer is looking at, so that the same layer can work with various tensor shapes.
+
+traceTorch also helps with management of hidden states, no matter how deeply they are buried in the model. They are
+lazily initialized, and inheriting from the model superclass unlocks helper methods to find and manage them en-masse:
+saving and loading, zeroing and detaching. The model superclass also allows you to "compile" and "uncompile" the model
+so that for inference, the necessary parameters don't need to be passed through their activation function each time.
+
+If the existing layers aren't enough, traceTorch also helps with creating your own SNN layers that comply with the rest
+of the traceTorch API. Inheriting from the layer superclass unlocks helper methods to initialize parameters:
+learnability, rank, inverse functions (if applicable).
+
+All in all, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with SNNs in
+PyTorch to feel significantly more natural and less frustrating than in existing alternatives, while preserving (and in
+many cases enhancing) the expressive power needed for real models and research. traceTorch ultimately rewards users who
+value minimalism, composition, and long-term extensibility.
+
+## Features
+
+traceTorch follows a slightly unconventional, but consistent and self-explanatory naming schema. The names are modular
+and explain their role and function.
+
+- `LI` base name stands for `Leaky Integrator`: the simplest of layer types with just one trace and decay: the membrane
+  potential and the beta decay. No firing and no reset mechanics, this layer type is commonly known as `Readout` (
+  although it's not recommended to literally have it as the final layer).
+- `~B` suffix stands for `Binary`, the presence of a strictly positive threshold, meaning that the layer has 2 possible
+  outputs: a 1 or a 0. `LIB` is hence the official name for the `LIF`.
+- `~T` suffix stands for `Ternary`, meaning that the layer has 2 thresholds: a strictly positive and a strictly negative
+  one, meaning that the layer has 3 possible outputs: 1, 0 or -1.
+- `~S` suffix is only used with the `~T` suffix to create `~TS`, which stands for `Ternary Scaled`, meaning that the
+  ternary outputs are multiplicatively separately scaled based on their polarity. This is done so that the three
+  possible outputs are truly independent when we consider the downstream layer.
+- `D~` prefix stads for `Dual`, meaning that all traces (hidden states) and their decay parameters are split into a
+  separate positive and negative version for greater expressivity and unlocking more complex dynamics.
+- `S~` prefix stands for `Synaptic`, meaning that before the membrane there is a separate synaptic trace with its
+  respective alpha decay that smooth out the inputs over time via an exponential moving average (EMA) before they get
+  integrated into the membrane.
+- `R~` prefix stands for `Recurrent`, meaning that the layer records its own outputs into a separate trace with its own
+  gamma decay and re-integrates it back into the membrane in the next timestep. The computation graph is made to work
+  even with online learning.
 
 In total, this results in 28 specially made, performant layers which easily integrate and work with other PyTorch
 layers: `LI`, `DLI`, `SLI`, `DSLI`, `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`,
 `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`, `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`,
 `DSRLITS`.
 
-traceTorch also handles hidden state management in an easy-to-use way. They are set to `None`, and then the size is
-lazily assigned based on the forward pass. Simply inherit from the `TTModel` class to gain access to powerful recursive
-methods `.zero_states()` and `.detach_states()` to recursively respectively set the states to `None` or to detach; and
-`.save_states()` and `.load_states()` to save and load hidden states, working both with `.pt` and `.safetensors`, no
-matter how deeply hidden they are: PyTorch modules such as `nn.Sequential` or python classes and data structures; it
-doesn't matter. Additionally, traceTorch takes care of:
+However, layers also have a plethora of extra features:
 
 - Rank-based parameter scoping for per-layer (scalar) or per-neuron (vector) parameters, defaulting to per-neuron.
 - Initialize parameters via a float value or your own desired tensor.
@@ -47,24 +69,34 @@ doesn't matter. Additionally, traceTorch takes care of:
 - Smooth parameter constraints for those that require it (sigmoid on decays and softplus on thresholds), meaning that
   gradients always flow cleanly and accurately. The respective inverse function is applied if necessary during
   initialization.
+- All the layers with reset mechanics (`~LIB`, `~LIT`, `~LITS`) also have a `spike_fn` and `quant_fn`. The former is
+  used to turn the membrane into a "probability" to fire, and the latter actually turns that probability into the
+  output. `spike_fn` defaults to sigmoid(4x) because of the nice constraints and gradients, and `quant_fn` presents 3
+  options: `round`, `bernoulli`, `probabilistic`; which round, take a differentiable bernoulli sample, and take a
+  differentiable bernoulli sample multiplied by the probability respectively, but defaults to `bernoulli` for stability.
 
-Subsequently, traceTorch also presents the `TTLayer`, a powerful class that handles all the boilerplate of
-creating SNN layers. Instead of wrestling with parameter registration, state management, and dimension handling, you can
-just inherit from `TTLayer` to create your own SNN layers that comply with the traceTorch ethos. It handles:
+traceTorch also presents the `TTModel` superclass, which is used for model managing. Inheriting from the `TTModel` class
+to grants access to recursive methods `.zero_states()` and `.detach_states()` to recursively respectively set the states
+to `None` or to detach; and `.save_states()` and `.load_states()` to save and load hidden states, working both with
+`.pt` and `.safetensors`, no matter how deeply hidden they are: PyTorch modules such as `nn.Sequential` or python
+classes and data structures; it doesn't matter. There is also `.TTcompile()` and `TTuncompile()` to compile and
+uncompile a tracetorch model: so that the decays and thresholds are saved as-is and don't get passed through the
+activation function in each timestep.
 
-- **Automatic parameter registration**: handles ranks, learnability, value / tensor initialization and inverse functions
+The `TTLayer` superclass handles all the boilerplate of creating SNN layers. Instead of wrestling with parameter
+registration, state management, and dimension handling, you can just inherit from `TTLayer` to create your own SNN
+layers that comply with the traceTorch ethos. It handles:
+
+- Automatic parameter registration: rank, learnability, value / tensor initialization and inverse functions
   for decays and thresholds.
-- **State management for hidden states**: methods to bulk zero / detach / initialize hidden states for the layer (
+- State management for hidden states: methods to bulk zero / detach / initialize hidden states for the layer (
   `TTModel` is for working with the layers in a model, `TTLayer` is for managing the states in the layer itself).
-- **Dimension helpers**: methods to move a tensor's dimension (the `dim=` used during initialization) to the last
+- Dimension helpers: methods to move a tensor's dimension (the `dim=` used during initialization) to the last
   dimension so that the layer is tensor shape agnostic.
-- **Property generation**: parameters are saved in `raw_*` form to account for inverse and activation functions, but
+- Property generation: parameters are saved in `raw_*` form to account for inverse and activation functions, but
   work intuitively such that `layer.beta` returns the sigmoid activated value, et cetera.
-
-In short, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with SNNs in
-PyTorch to feel significantly more natural and less frustrating than in existing alternatives, while preserving (and in
-many cases enhancing) the expressive power needed for real models and research. traceTorch ultimately rewards users who
-value minimalism, composition, and long-term extensibility.
+- Compiling and uncompiling a model: `TTcompile` and `TTuncompile` to get rid and respectively re-add the `raw_*`
+  parameters and activation functions and just use the values directly.
 
 ## Documentation
 
@@ -87,7 +119,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.14.3 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.15.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
