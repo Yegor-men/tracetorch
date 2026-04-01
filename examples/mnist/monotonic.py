@@ -58,18 +58,15 @@ def spike_fn(x):
     return nn.functional.sigmoid(2 * x)
 
 
-deterministic = True
-
-
 class SNN(snn.TTModel):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 16, 3, padding=1),  # 28+2-2=28
-            snn.LIB(16, dim=-3, spike_fn=spike_fn, deterministic=deterministic),
+            snn.LIB(16, dim=-3, spike_fn=spike_fn),
             nn.MaxPool2d(2, 2),  # 28/2=14
             nn.Conv2d(16, 32, 3, padding=1),  # 14+2-2=14
-            snn.LIB(32, dim=-3, spike_fn=spike_fn, deterministic=deterministic),
+            snn.LIB(32, dim=-3, spike_fn=spike_fn),
             nn.MaxPool2d(2, 2),  # 14/2=7
             nn.Flatten(),
             nn.Linear(7 * 7 * 32, 128),

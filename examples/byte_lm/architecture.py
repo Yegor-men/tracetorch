@@ -31,7 +31,6 @@ class ResidualSpike(snn.TTModel):
             pos_rec_weight=torch.randn(hidden_dim) * 0.1,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
             spike_fn=Foobar(4),
-            deterministic=False,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)

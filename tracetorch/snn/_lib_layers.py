@@ -17,7 +17,7 @@ class LIB(TTLayer):
             learn_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -25,7 +25,12 @@ class LIB(TTLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     def forward(self, x):
@@ -61,7 +66,7 @@ class DLIB(TTLayer):
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -71,7 +76,12 @@ class DLIB(TTLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -114,7 +124,7 @@ class SLIB(TTLayer):
             learn_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -125,7 +135,12 @@ class SLIB(TTLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -168,7 +183,7 @@ class RLIB(TTLayer):
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -180,7 +195,12 @@ class RLIB(TTLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -233,7 +253,7 @@ class DSLIB(TTLayer):
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -248,7 +268,12 @@ class DSLIB(TTLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -313,7 +338,7 @@ class DRLIB(TTLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -329,7 +354,12 @@ class DRLIB(TTLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -397,7 +427,7 @@ class SRLIB(TTLayer):
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -412,7 +442,12 @@ class SRLIB(TTLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -480,7 +515,7 @@ class DSRLIB(TTLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            deterministic: bool = False,
+            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
     ):
         super().__init__(num_neurons, dim)
 
@@ -501,7 +536,12 @@ class DSRLIB(TTLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = self.round_ste if deterministic else self.bernoulli_ste
+        quant_fn_map = {
+            "round": self.round_ste,
+            "bernoulli": self.bernoulli_ste,
+            "probabilistic": self.probabilistic_ste
+        }
+        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 

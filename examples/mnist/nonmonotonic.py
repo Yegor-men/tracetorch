@@ -124,7 +124,6 @@ class ResidualLayer(snn.TTModel):
             hidden_dim,
             beta=torch.rand(hidden_dim),
             threshold=torch.rand(hidden_dim),
-            deterministic=True,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
         nn.init.zeros_(self.lin.bias)

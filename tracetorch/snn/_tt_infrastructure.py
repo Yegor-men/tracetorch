@@ -14,6 +14,7 @@ class TTLayer(nn.Module):
         self.dim = dim
         self.round_ste = functional.round_ste()
         self.bernoulli_ste = functional.bernoulli_ste()
+        self.probabilistic_ste = functional.probabilistic_ste()
 
     def _register_parameter(
             self,

@@ -33,3 +33,22 @@ def bernoulli_ste():
         return BernoulliSTE.apply(x)
 
     return inner
+
+
+class ProbabilisticSTE(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        ctx.save_for_backward(x)
+        return x * torch.bernoulli(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        return grad_output * 2 * x
+
+
+def probabilistic_ste():
+    def inner(x: torch.Tensor):
+        return ProbabilisticSTE.apply(x)
+
+    return inner
