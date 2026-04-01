@@ -68,18 +68,10 @@ def focal_loss_with_logits(logits, targets, gamma=2.0):
     return (focal_weight * bce_loss).mean()
 
 
-def find_free_port(start_port=6006):
-    port = start_port
-    while True:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(('localhost', port)) != 0: return port
-        port += 1
-
-
 # =====================================================================
 # 2. FEATURE EXTRACTION & EVALUATION
 # =====================================================================
-def extract_features(x_spec, delta_fn, training=False, noise_std=0.01):
+def extract_features(x_spec, delta_fn, training=False, noise_std=0.05):
     """
     Takes a raw spectrogram batch[Time, Batch, Freq], applies optional noise,
     and returns the concatenated [Spec, Delta, Accel] tensor.
@@ -113,29 +105,36 @@ def evaluate_model(eval_model, val_loader, bce_weight, delta_fn):
     val_loss_sum, val_ce_sum, val_bce_sum = 0.0, 0.0, 0.0
 
     with torch.no_grad():
-        for x_val, y_val in tqdm(val_loader, desc="Evaluating", leave=False):
+        for x_val, y_val in tqdm(val_loader, desc="EVAL"):
             x_val, y_val = x_val.to(device), y_val.to(device)
 
             # Extract features WITHOUT noise for validation
             x_feat = extract_features(x_val, delta_fn, training=False)
 
-            eval_model.zero_states()
+            # Run 4 separate inference cycles and average the results
+            cycle_logits = []
+            for cycle in range(1):
+                eval_model.zero_states()
 
-            val_step_logits = []
-            for t in range(x_feat.size(0)):
-                val_step_logits.append(eval_model(x_feat[t]))
+                val_step_logits = []
+                for t in range(x_feat.size(0)):
+                    val_step_logits.append(eval_model(x_feat[t]))
 
-            val_clip_logits = torch.stack(val_step_logits).mean(dim=0)
+                val_clip_logits = torch.stack(val_step_logits).mean(dim=0)
+                cycle_logits.append(val_clip_logits)
 
-            val_ce = custom_multi_class_ce_loss(val_clip_logits, y_val)
-            val_bce = focal_loss_with_logits(val_clip_logits, y_val)
+            # Average across the 4 cycles
+            avg_clip_logits = torch.stack(cycle_logits).mean(dim=0)
+
+            val_ce = custom_multi_class_ce_loss(avg_clip_logits, y_val)
+            val_bce = focal_loss_with_logits(avg_clip_logits, y_val)
             val_loss = val_ce + (bce_weight * val_bce)
 
             val_loss_sum += val_loss.item()
             val_ce_sum += val_ce.item()
             val_bce_sum += val_bce.item()
 
-            all_preds.append(torch.sigmoid(val_clip_logits).cpu().numpy())
+            all_preds.append(torch.sigmoid(avg_clip_logits).cpu().numpy())
             all_targets.append(y_val.cpu().numpy())
 
     num_batches = len(val_loader)
@@ -241,7 +240,7 @@ if __name__ == '__main__':
     log_dir = f'tensorboard/birdclef_train_{timestamp}'
     writer = SummaryWriter(log_dir=log_dir)
 
-    tb_port = find_free_port(6006)
+    tb_port = 6006
     subprocess.Popen(['tensorboard', '--logdir', "tensorboard", '--port', str(tb_port)], stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL)
     time.sleep(2)

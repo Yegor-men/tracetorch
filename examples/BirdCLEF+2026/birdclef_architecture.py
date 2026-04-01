@@ -27,17 +27,20 @@ class ResidualSpike(snn.TTModel):
             neg_rec_weight=torch.randn(hidden_dim) * 0.1,
         )
         self.lin = nn.Linear(hidden_dim, hidden_dim)
+        nn.init.normal_(self.lin.weight, 0.0, 0.01)
         nn.init.zeros_(self.lin.bias)
 
     def forward(self, x):
-        return torch.tanh(x + self.lin(self.lif(x)))
+        return x + self.lin(self.lif(torch.tanh(x)))
 
 
 class BirdClassifierSNN(snn.TTModel):
     # Updated default in_features to 768 (256 Base + 256 Delta + 256 Delta-Delta)
     def __init__(self, in_features=768, hidden_features=1024, num_layers=10, num_classes=234):
         super().__init__()
-        self.enc = nn.Sequential(nn.Linear(in_features, hidden_features))
+        self.enc = nn.Linear(in_features, hidden_features)
+        nn.init.zeros_(self.enc.weight)
+        nn.init.zeros_(self.enc.bias)
 
         self.net = nn.Sequential(*[ResidualSpike(hidden_features) for _ in range(num_layers)])
 
