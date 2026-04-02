@@ -41,8 +41,8 @@ torch.cuda.manual_seed_all(0)
 
 min_prob, max_prob, noise_offset = 0.0, 1.0, 0.0
 batch_size = 100
-kernel_size = 4
-stride = 4
+kernel_size = 2
+stride = 2
 pad = False
 num_workers = 0
 pin_memory = True
@@ -120,22 +120,26 @@ from tracetorch import snn
 class ResidualLayer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
-        self.lif = snn.LIB(
+        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
+
+        self.lif = snn.RLITS(
             hidden_dim,
             beta=torch.rand(hidden_dim),
-            threshold=torch.rand(hidden_dim),
+            gamma=torch.rand(hidden_dim),
+            pos_threshold=torch.rand(hidden_dim),
+            neg_threshold=torch.rand(hidden_dim),
+            rec_weight=torch.randn(hidden_dim) * 0.1,
+            quant_fn="probabilistic",
         )
-        self.lin = nn.Linear(hidden_dim, hidden_dim)
-        nn.init.zeros_(self.lin.bias)
+        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
 
     def forward(self, x):
-        spk = self.lif(x)
-        delta = self.lin(spk)
+        delta = self.lin2(self.lif(self.lin1(x)))
         return x + delta
 
 
 class SNN(snn.TTModel):
-    def __init__(self, hidden_dim: int = 128, num_layers: int = 3):
+    def __init__(self, hidden_dim: int = 128, num_layers: int = 5):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
@@ -164,7 +168,7 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 1
+num_epochs = 5
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
@@ -245,7 +249,7 @@ with torch.no_grad():
         tt.plot.render_image(img.unsqueeze(0), title=f"Loss: {running_loss:.3f}")
         # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
         input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
-        tt.plot.spike_train([input_spike_tensor[j] for j in range(input_spike_tensor.size(0))], title="Input")
+        tt.plot.spike_train([input_spike_tensor.T[t] for t in range(input_spike_tensor.T.size(0))], title="Input")
         tt.plot.spike_train(model_outputs, title="Model Output")
         plt.title("Loss over time")
         plt.plot(losses)
