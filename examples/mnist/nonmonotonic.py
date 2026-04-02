@@ -41,8 +41,8 @@ torch.cuda.manual_seed_all(0)
 
 min_prob, max_prob, noise_offset = 0.0, 1.0, 0.0
 batch_size = 100
-kernel_size = 2
-stride = 2
+kernel_size = 4
+stride = 4
 pad = False
 num_workers = 0
 pin_memory = True
@@ -120,22 +120,30 @@ from tracetorch import snn
 class ResidualLayer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
-        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
-
-        self.lif = snn.RLITS(
+        self.lif = snn.LITS(
             hidden_dim,
             beta=torch.rand(hidden_dim),
-            gamma=torch.rand(hidden_dim),
+            # gamma=torch.rand(hidden_dim) * 0.5,
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
-            rec_weight=torch.randn(hidden_dim) * 0.1,
             quant_fn="probabilistic",
+            # rec_weight=torch.randn(hidden_dim) * 0.01,
         )
-        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
+
+        self.proj = nn.Linear(hidden_dim, hidden_dim)
+
+        self.candidate = nn.Linear(hidden_dim, hidden_dim)
+        self.gate = nn.Linear(hidden_dim, hidden_dim)
 
     def forward(self, x):
-        delta = self.lin2(self.lif(self.lin1(x)))
-        return x + delta
+        spk = self.lif(self.proj(x))
+
+        candidate = self.candidate(spk)
+        gate = nn.functional.sigmoid(self.gate(spk))
+
+        out = x * gate + candidate * (1 - gate)
+
+        return out
 
 
 class SNN(snn.TTModel):
@@ -147,8 +155,9 @@ class SNN(snn.TTModel):
         self.dec = nn.Sequential(
             snn.LI(
                 hidden_dim,
-                beta=torch.rand(hidden_dim),
+                beta=torch.rand(hidden_dim) * 0.1 + 0.9,
             ),
+            nn.Tanh(),
             nn.Linear(hidden_dim, 10),
         )
         nn.init.zeros_(self.dec[-1].weight)
@@ -158,7 +167,56 @@ class SNN(snn.TTModel):
         return self.dec(self.net(self.enc(x)))
 
 
-model = SNN(128, 10).to(device)
+class GRU(snn.TTLayer):
+    def __init__(self, num_neurons: int, dim=-1):
+        super().__init__(num_neurons, dim)
+
+        self._initialize_state("h")
+
+        self.lin1 = nn.Linear(num_neurons * 2, num_neurons)
+        self.lin2 = nn.Linear(num_neurons * 2, num_neurons)
+        self.lin3 = nn.Linear(num_neurons * 2, num_neurons)
+
+    def forward(self, x):
+        self._ensure_states(x)
+        H = self._to_working_dim(self.h)
+
+        h_x = torch.cat([H, x], dim=-1)
+
+        sigma1 = nn.functional.sigmoid(self.lin1(h_x))
+        sigma2 = nn.functional.sigmoid(self.lin2(h_x))
+
+        foobar = sigma1 * H
+
+        candidate = torch.tanh(self.lin3(torch.cat([foobar, x], dim=-1)))
+
+        bleh = (1 - sigma2) * candidate
+
+        baz = sigma2 * H
+
+        new_h = baz + bleh
+
+        self.h = self._from_working_dim(new_h)
+
+        return self.h
+
+
+class Garbage(snn.TTModel):
+    def __init__(self, hidden_dim: int = 128, num_layers: int = 5):
+        super().__init__()
+
+        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
+        self.net = nn.Sequential(*[GRU(hidden_dim) for _ in range(num_layers)])
+        self.dec = nn.Linear(hidden_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
+
+    def forward(self, x):
+        return self.dec(self.net(self.enc(x)))
+
+
+# model = SNN(128, 10).to(device)
+model = Garbage(128, 10).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
