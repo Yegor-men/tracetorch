@@ -120,48 +120,40 @@ from tracetorch import snn
 class ResidualLayer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
-        self.lif = snn.LITS(
+        self.lif = snn.DSRLITS(
             hidden_dim,
-            beta=torch.rand(hidden_dim),
-            # gamma=torch.rand(hidden_dim) * 0.5,
+            pos_alpha=torch.rand(hidden_dim),
+            neg_alpha=torch.rand(hidden_dim),
+            pos_beta=torch.rand(hidden_dim),
+            neg_beta=torch.rand(hidden_dim),
+            pos_gamma=torch.rand(hidden_dim),
+            neg_gamma=torch.rand(hidden_dim),
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
+            pos_scale=torch.rand(hidden_dim),
+            neg_scale=torch.rand(hidden_dim),
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
             quant_fn="probabilistic",
-            # rec_weight=torch.randn(hidden_dim) * 0.01,
         )
+        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
+        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
 
-        self.proj = nn.Linear(hidden_dim, hidden_dim)
-
-        self.candidate = nn.Linear(hidden_dim, hidden_dim)
-        self.gate = nn.Linear(hidden_dim, hidden_dim)
+        self.norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, x):
-        spk = self.lif(self.proj(x))
-
-        candidate = self.candidate(spk)
-        gate = nn.functional.sigmoid(self.gate(spk))
-
-        out = x * gate + candidate * (1 - gate)
-
-        return out
+        return self.norm(x + self.lin2(self.lif(self.lin1(x))))
 
 
 class SNN(snn.TTModel):
-    def __init__(self, hidden_dim: int = 128, num_layers: int = 5):
+    def __init__(self, hidden_dim: int = 128, num_layers: int = 10):
         super().__init__()
 
-        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
+        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
         self.net = nn.Sequential(*[ResidualLayer(hidden_dim) for _ in range(num_layers)])
-        self.dec = nn.Sequential(
-            snn.LI(
-                hidden_dim,
-                beta=torch.rand(hidden_dim) * 0.1 + 0.9,
-            ),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, 10),
-        )
-        nn.init.zeros_(self.dec[-1].weight)
-        nn.init.zeros_(self.dec[-1].bias)
+        self.dec = nn.Linear(hidden_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
 
     def forward(self, x):
         return self.dec(self.net(self.enc(x)))
@@ -177,24 +169,51 @@ class GRU(snn.TTLayer):
         self.lin2 = nn.Linear(num_neurons * 2, num_neurons)
         self.lin3 = nn.Linear(num_neurons * 2, num_neurons)
 
+        self.decaylif = snn.DSRLIB(
+            num_neurons,
+            pos_alpha=torch.rand(num_neurons),
+            neg_alpha=torch.rand(num_neurons),
+            pos_beta=torch.rand(num_neurons),
+            neg_beta=torch.rand(num_neurons),
+            pos_gamma=torch.rand(num_neurons),
+            neg_gamma=torch.rand(num_neurons),
+            threshold=torch.rand(num_neurons),
+            pos_rec_weight=torch.randn(num_neurons) * 0.1,
+            neg_rec_weight=torch.randn(num_neurons) * 0.1,
+            quant_fn="probabilistic",
+        )
+
+        self.gatelif = snn.DSRLIB(
+            num_neurons,
+            pos_alpha=torch.rand(num_neurons),
+            neg_alpha=torch.rand(num_neurons),
+            pos_beta=torch.rand(num_neurons),
+            neg_beta=torch.rand(num_neurons),
+            pos_gamma=torch.rand(num_neurons),
+            neg_gamma=torch.rand(num_neurons),
+            threshold=torch.rand(num_neurons),
+            pos_rec_weight=torch.randn(num_neurons) * 0.1,
+            neg_rec_weight=torch.randn(num_neurons) * 0.1,
+            quant_fn="probabilistic",
+        )
+
     def forward(self, x):
         self._ensure_states(x)
         H = self._to_working_dim(self.h)
 
         h_x = torch.cat([H, x], dim=-1)
 
-        sigma1 = nn.functional.sigmoid(self.lin1(h_x))
-        sigma2 = nn.functional.sigmoid(self.lin2(h_x))
+        # decay = nn.functional.sigmoid(self.lin1(h_x))
+        # gate = nn.functional.sigmoid(self.lin2(h_x))
 
-        foobar = sigma1 * H
+        decay = self.decaylif(self.lin1(h_x))
+        gate = self.gatelif(self.lin2(h_x))
 
-        candidate = torch.tanh(self.lin3(torch.cat([foobar, x], dim=-1)))
+        decayed_h = decay * H
 
-        bleh = (1 - sigma2) * candidate
+        candidate = torch.tanh(self.lin3(torch.cat([decayed_h, x], dim=-1)))
 
-        baz = sigma2 * H
-
-        new_h = baz + bleh
+        new_h = H * gate + candidate * (1 - gate)
 
         self.h = self._from_working_dim(new_h)
 
@@ -202,7 +221,7 @@ class GRU(snn.TTLayer):
 
 
 class Garbage(snn.TTModel):
-    def __init__(self, hidden_dim: int = 128, num_layers: int = 5):
+    def __init__(self, hidden_dim: int = 128, num_layers: int = 10):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
@@ -215,8 +234,8 @@ class Garbage(snn.TTModel):
         return self.dec(self.net(self.enc(x)))
 
 
-# model = SNN(128, 10).to(device)
-model = Garbage(128, 10).to(device)
+model = SNN().to(device)
+# model = Garbage().to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
