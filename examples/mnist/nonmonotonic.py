@@ -238,7 +238,7 @@ class SNN(snn.TTModel):
         return output
 
 
-model = SNN(hidden_dim=128, num_layers=5, num_decoder_blocks=2).to(device)
+model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=10).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
