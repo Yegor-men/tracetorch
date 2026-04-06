@@ -185,7 +185,9 @@ class SNN(snn.TTModel):
         ])
 
         # Token embeddings for the 11 intermediate states
-        self.token_embeddings = nn.Embedding(self.num_tokens, hidden_dim)
+        self.dec_proj = nn.ModuleList([
+            nn.Linear(hidden_dim, hidden_dim) for _ in range(self.num_tokens)
+        ])
 
         # Decoder transformer blocks
         self.decoder_blocks = nn.ModuleList([
@@ -215,29 +217,22 @@ class SNN(snn.TTModel):
         intermediate_states = []
 
         # Store initial state before any blocks (token 0)
-        intermediate_states.append(x.clone())
+        intermediate_states.append(self.dec_proj[-1](x.clone()))
 
         # Process through blocks and store intermediate states
         for i, block in enumerate(self.blocks):
             x = block(x)
-            intermediate_states.append(x.clone())  # Store after each block (tokens 1-10)
+            intermediate_states.append(self.dec_proj[i](x.clone()))
 
         # Stack all intermediate states: [B, 11, H]
         token_sequence = torch.stack(intermediate_states, dim=1)  # [B, 11, H]
 
-        # Add token embeddings
-        token_ids = torch.arange(self.num_tokens, device=x.device).unsqueeze(0).expand(x.size(0), -1)
-        token_emb = self.token_embeddings(token_ids)  # [B, 11, H]
-
-        # Combine token embeddings with states
-        attended_sequence = token_sequence + token_emb  # [B, 11, H]
-
         # Pass through decoder transformer blocks
         for decoder_block in self.decoder_blocks:
-            attended_sequence = decoder_block(attended_sequence)  # [B, 11, H]
+            token_sequence = decoder_block(token_sequence)  # [B, 11, H]
 
         # Use the final token (most processed) for classification
-        final_token = attended_sequence[:, -1, :]  # [B, H]
+        final_token = token_sequence[:, -1, :]  # [B, H]
         output = self.dec(final_token)  # [B, 10]
 
         return output
@@ -262,11 +257,21 @@ for e in range(num_epochs):
         model.zero_grad()
         model.zero_states()
 
+        # Collect outputs from all timesteps
+        timestep_outputs = []
         for t in range(seq.size(0)):
             model_output = model(seq[t])
+            timestep_outputs.append(model_output)
 
-        loss = loss_fn(model_output, label)
-        pred_classes = model_output.argmax(dim=-1)
+        # Calculate loss for each timestep
+        T = len(timestep_outputs)
+        weights = torch.arange(1, T + 1, dtype=torch.float32, device=device) / T
+
+        losses = torch.stack([loss_fn(output, label) for output in timestep_outputs])
+        loss = (losses * weights).sum() / weights.sum()  # Divide by sum of weights
+
+        # Use final timestep for accuracy
+        pred_classes = timestep_outputs[-1].argmax(dim=-1)
         frac_correct = (pred_classes == label).sum().item() / batch_size
 
         train_losses.append(loss.item())
