@@ -145,97 +145,105 @@ class ResidualLayer(snn.TTModel):
         return self.norm(x + self.lin2(self.lif(self.lin1(x))))
 
 
+class DecoderTransformer(nn.Module):
+    def __init__(self, emb_dim: int = 128, num_tokens: int = 11):
+        super().__init__()
+        self.num_tokens = num_tokens
+        self.mha = nn.MultiheadAttention(emb_dim, 1, 0.0, batch_first=True)
+        self.norm1 = nn.LayerNorm(emb_dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(emb_dim, 4 * emb_dim),
+            nn.SiLU(),
+            nn.Dropout(0.1),
+            nn.Linear(4 * emb_dim, emb_dim),
+        )
+        self.norm2 = nn.LayerNorm(emb_dim)
+
+    def forward(self, x):
+        # Create causal mask for masked attention (lower levels can attend to higher levels)
+        seq_len = x.size(1)
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool().to(x.device)
+
+        # Apply masked self-attention
+        attn_out, _ = self.mha(x, x, x, attn_mask=causal_mask)
+        x = self.norm1(x + attn_out)
+        x = self.norm2(x + self.ffn(x))
+        return x
+
+
 class SNN(snn.TTModel):
-    def __init__(self, hidden_dim: int = 128, num_layers: int = 10):
+    def __init__(self, hidden_dim: int = 128, num_layers: int = 10, num_decoder_blocks: int = 2):
         super().__init__()
 
-        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
-        self.net = nn.Sequential(*[ResidualLayer(hidden_dim) for _ in range(num_layers)])
-        self.dec = nn.Linear(hidden_dim, 10)
-        nn.init.zeros_(self.dec.weight)
-        nn.init.zeros_(self.dec.bias)
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.num_tokens = num_layers + 1  # 10 layers + initial state = 11 tokens
 
-    def forward(self, x):
-        return self.dec(self.net(self.enc(x)))
+        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.LayerNorm(hidden_dim))
+        self.blocks = nn.ModuleList([
+            ResidualLayer(hidden_dim=hidden_dim) for _ in range(num_layers)
+        ])
 
+        # Token embeddings for the 11 intermediate states
+        self.token_embeddings = nn.Embedding(self.num_tokens, hidden_dim)
 
-class GRU(snn.TTLayer):
-    def __init__(self, num_neurons: int, dim=-1):
-        super().__init__(num_neurons, dim)
+        # Decoder transformer blocks
+        self.decoder_blocks = nn.ModuleList([
+            DecoderTransformer(emb_dim=hidden_dim, num_tokens=self.num_tokens)
+            for _ in range(num_decoder_blocks)
+        ])
 
-        self._initialize_state("h")
-
-        self.lin1 = nn.Linear(num_neurons * 2, num_neurons)
-        self.lin2 = nn.Linear(num_neurons * 2, num_neurons)
-        self.lin3 = nn.Linear(num_neurons * 2, num_neurons)
-
-        self.decaylif = snn.DSRLIB(
-            num_neurons,
-            pos_alpha=torch.rand(num_neurons),
-            neg_alpha=torch.rand(num_neurons),
-            pos_beta=torch.rand(num_neurons),
-            neg_beta=torch.rand(num_neurons),
-            pos_gamma=torch.rand(num_neurons),
-            neg_gamma=torch.rand(num_neurons),
-            threshold=torch.rand(num_neurons),
-            pos_rec_weight=torch.randn(num_neurons) * 0.1,
-            neg_rec_weight=torch.randn(num_neurons) * 0.1,
-            quant_fn="probabilistic",
+        self.dec = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            snn.DSLI(
+                hidden_dim,
+                pos_beta=torch.rand(hidden_dim),
+                neg_beta=torch.rand(hidden_dim),
+                pos_alpha=torch.rand(hidden_dim),
+                neg_alpha=torch.rand(hidden_dim),
+            ),
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, 10)
         )
-
-        self.gatelif = snn.DSRLIB(
-            num_neurons,
-            pos_alpha=torch.rand(num_neurons),
-            neg_alpha=torch.rand(num_neurons),
-            pos_beta=torch.rand(num_neurons),
-            neg_beta=torch.rand(num_neurons),
-            pos_gamma=torch.rand(num_neurons),
-            neg_gamma=torch.rand(num_neurons),
-            threshold=torch.rand(num_neurons),
-            pos_rec_weight=torch.randn(num_neurons) * 0.1,
-            neg_rec_weight=torch.randn(num_neurons) * 0.1,
-            quant_fn="probabilistic",
-        )
+        nn.init.zeros_(self.dec[-1].weight)
+        nn.init.zeros_(self.dec[-1].bias)
 
     def forward(self, x):
-        self._ensure_states(x)
-        H = self._to_working_dim(self.h)
+        x = self.enc(x)
 
-        h_x = torch.cat([H, x], dim=-1)
+        # Accumulate intermediate states: [B, 11, H]
+        intermediate_states = []
 
-        # decay = nn.functional.sigmoid(self.lin1(h_x))
-        # gate = nn.functional.sigmoid(self.lin2(h_x))
+        # Store initial state before any blocks (token 0)
+        intermediate_states.append(x.clone())
 
-        decay = self.decaylif(self.lin1(h_x))
-        gate = self.gatelif(self.lin2(h_x))
+        # Process through blocks and store intermediate states
+        for i, block in enumerate(self.blocks):
+            x = block(x)
+            intermediate_states.append(x.clone())  # Store after each block (tokens 1-10)
 
-        decayed_h = decay * H
+        # Stack all intermediate states: [B, 11, H]
+        token_sequence = torch.stack(intermediate_states, dim=1)  # [B, 11, H]
 
-        candidate = torch.tanh(self.lin3(torch.cat([decayed_h, x], dim=-1)))
+        # Add token embeddings
+        token_ids = torch.arange(self.num_tokens, device=x.device).unsqueeze(0).expand(x.size(0), -1)
+        token_emb = self.token_embeddings(token_ids)  # [B, 11, H]
 
-        new_h = H * gate + candidate * (1 - gate)
+        # Combine token embeddings with states
+        attended_sequence = token_sequence + token_emb  # [B, 11, H]
 
-        self.h = self._from_working_dim(new_h)
+        # Pass through decoder transformer blocks
+        for decoder_block in self.decoder_blocks:
+            attended_sequence = decoder_block(attended_sequence)  # [B, 11, H]
 
-        return self.h
+        # Use the final token (most processed) for classification
+        final_token = attended_sequence[:, -1, :]  # [B, H]
+        output = self.dec(final_token)  # [B, 10]
 
-
-class Garbage(snn.TTModel):
-    def __init__(self, hidden_dim: int = 128, num_layers: int = 10):
-        super().__init__()
-
-        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
-        self.net = nn.Sequential(*[GRU(hidden_dim) for _ in range(num_layers)])
-        self.dec = nn.Linear(hidden_dim, 10)
-        nn.init.zeros_(self.dec.weight)
-        nn.init.zeros_(self.dec.bias)
-
-    def forward(self, x):
-        return self.dec(self.net(self.enc(x)))
+        return output
 
 
-model = SNN().to(device)
-# model = Garbage().to(device)
+model = SNN(hidden_dim=128, num_layers=5, num_decoder_blocks=2).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
