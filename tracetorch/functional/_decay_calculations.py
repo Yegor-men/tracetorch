@@ -31,3 +31,7 @@ def hippo_decays(N: int, scale: float = 0.01, device=None, dtype=torch.float32, 
         idx = torch.randperm(N, device=device)
         decays = decays[idx]
     return decays
+
+
+def max_halflife_to_hippo_scale(half_life: float):
+    return math.log(2) / half_life
