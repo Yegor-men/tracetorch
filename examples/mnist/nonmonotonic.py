@@ -234,7 +234,53 @@ class SNN(snn.TTModel):
         return output
 
 
-model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
+class DynamicLayer(snn.TTLayer):
+    def __init__(self, num_neurons: int, dim: int = -1):
+        super().__init__(num_neurons, dim)
+
+        self._initialize_state("h")
+
+        self.decay = nn.Linear(num_neurons, num_neurons)
+        self.proj_in = nn.Linear(num_neurons, num_neurons)
+        self.proj_out = nn.Linear(num_neurons, num_neurons)
+
+    def forward(self, x):
+        self._ensure_states(x)
+
+        x_moved = self._to_working_dim(x)
+        hidden = self._to_working_dim(self.h)
+
+        decay = nn.functional.sigmoid(self.decay(x_moved))
+        hidden = hidden * decay + self.proj_in(x_moved) * (1 - decay)
+
+        out = self.proj_out(hidden)
+
+        self.h = self._from_working_dim(hidden)
+        out = torch.tanh(self._from_working_dim(out) + x)
+
+        return out
+
+
+class Test(snn.TTModel):
+    def __init__(self, hidden_dim, num_layers):
+        super().__init__()
+
+        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
+        self.layers = nn.ModuleList([DynamicLayer(hidden_dim) for _ in range(num_layers)])
+        self.dec = nn.Linear(hidden_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
+
+    def forward(self, x):
+        x = self.enc(x)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.dec(x)
+        return x
+
+
+model = Test(hidden_dim=128, num_layers=10).to(device)
+# model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
@@ -244,7 +290,7 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 5
+num_epochs = 15
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
