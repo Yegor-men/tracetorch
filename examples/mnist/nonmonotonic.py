@@ -116,30 +116,36 @@ test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
 import tracetorch as tt
 from tracetorch import snn
 
+min_scale = tt.functional.halflife_to_decay(16 / (kernel_size ** 2))  # for 4x4 kernel, decay must be over 1 step
+max_scale = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))  # for 1x1 kernel, halflife must be all steps
+scale_diff = max_scale - min_scale
+
+weight_scale = (kernel_size ** 2) / 16  # must be 1 when 4x4, and 1/16 when 1x1 since it's 16x less per step
+
 
 class ResidualLayer(snn.TTModel):
     def __init__(self, hidden_dim: int):
         super().__init__()
         self.lif = snn.DSRLITS(
             hidden_dim,
-            pos_alpha=torch.rand(hidden_dim),
-            neg_alpha=torch.rand(hidden_dim),
-            pos_beta=torch.rand(hidden_dim),
-            neg_beta=torch.rand(hidden_dim),
-            pos_gamma=torch.rand(hidden_dim),
-            neg_gamma=torch.rand(hidden_dim),
+            pos_alpha=torch.rand(hidden_dim) * scale_diff + min_scale,
+            neg_alpha=torch.rand(hidden_dim) * scale_diff + min_scale,
+            pos_beta=torch.rand(hidden_dim) * scale_diff + min_scale,
+            neg_beta=torch.rand(hidden_dim) * scale_diff + min_scale,
+            pos_gamma=torch.rand(hidden_dim) * scale_diff + min_scale,
+            neg_gamma=torch.rand(hidden_dim) * scale_diff + min_scale,
             pos_threshold=torch.rand(hidden_dim),
             neg_threshold=torch.rand(hidden_dim),
             pos_scale=torch.rand(hidden_dim),
             neg_scale=torch.rand(hidden_dim),
-            pos_rec_weight=torch.randn(hidden_dim) * 0.1,
-            neg_rec_weight=torch.randn(hidden_dim) * 0.1,
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
             quant_fn="probabilistic",
         )
         self.lin1 = nn.Linear(hidden_dim, hidden_dim)
         self.lin2 = nn.Linear(hidden_dim, hidden_dim)
 
-        self.norm = nn.LayerNorm(hidden_dim)
+        self.norm = nn.Tanh()
 
     def forward(self, x):
         return self.norm(x + self.lin2(self.lif(self.lin1(x))))
@@ -149,25 +155,16 @@ class DecoderTransformer(nn.Module):
     def __init__(self, emb_dim: int = 128, num_tokens: int = 11):
         super().__init__()
         self.num_tokens = num_tokens
-        self.mha = nn.MultiheadAttention(emb_dim, 1, 0.0, batch_first=True)
-        self.norm1 = nn.LayerNorm(emb_dim)
-        self.ffn = nn.Sequential(
-            nn.Linear(emb_dim, 4 * emb_dim),
-            nn.SiLU(),
-            nn.Dropout(0.1),
-            nn.Linear(4 * emb_dim, emb_dim),
-        )
-        self.norm2 = nn.LayerNorm(emb_dim)
+        self.mha = nn.MultiheadAttention(emb_dim, 4, 0.0, batch_first=True)
+        self.mha_scalar = nn.Parameter(torch.ones(emb_dim) * 0.1)
+        self.norm = nn.LayerNorm(emb_dim)
 
     def forward(self, x):
-        # Create causal mask for masked attention (lower levels can attend to higher levels)
-        seq_len = x.size(1)
+        seq_len = self.num_tokens
         causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool().to(x.device)
 
-        # Apply masked self-attention
         attn_out, _ = self.mha(x, x, x, attn_mask=causal_mask)
-        x = self.norm1(x + attn_out)
-        x = self.norm2(x + self.ffn(x))
+        x = self.norm(x + attn_out * self.mha_scalar)
         return x
 
 
@@ -179,17 +176,16 @@ class SNN(snn.TTModel):
         self.num_layers = num_layers
         self.num_tokens = num_layers + 1  # 10 layers + initial state = 11 tokens
 
-        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.LayerNorm(hidden_dim))
-        self.blocks = nn.ModuleList([
+        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
+        self.layers = nn.ModuleList([
             ResidualLayer(hidden_dim=hidden_dim) for _ in range(num_layers)
         ])
 
-        # Token embeddings for the 11 intermediate states
-        self.dec_proj = nn.ModuleList([
+        self.token_proj = nn.ModuleList([
             nn.Linear(hidden_dim, hidden_dim) for _ in range(self.num_tokens)
         ])
 
-        # Decoder transformer blocks
+        self.token_norm = nn.LayerNorm(hidden_dim)
         self.decoder_blocks = nn.ModuleList([
             DecoderTransformer(emb_dim=hidden_dim, num_tokens=self.num_tokens)
             for _ in range(num_decoder_blocks)
@@ -217,16 +213,16 @@ class SNN(snn.TTModel):
         intermediate_states = []
 
         # Store initial state before any blocks (token 0)
-        intermediate_states.append(self.dec_proj[-1](x.clone()))
+        intermediate_states.append(self.token_proj[-1](x.clone()))
 
         # Process through blocks and store intermediate states
-        for i, block in enumerate(self.blocks):
+        for i, block in enumerate(self.layers):
             x = block(x)
-            intermediate_states.append(self.dec_proj[i](x.clone()))
+            intermediate_states.append(self.token_proj[i](x.clone()))
 
         # Stack all intermediate states: [B, 11, H]
         token_sequence = torch.stack(intermediate_states, dim=1)  # [B, 11, H]
-
+        token_sequence = self.token_norm(token_sequence)
         # Pass through decoder transformer blocks
         for decoder_block in self.decoder_blocks:
             token_sequence = decoder_block(token_sequence)  # [B, 11, H]
@@ -238,7 +234,7 @@ class SNN(snn.TTModel):
         return output
 
 
-model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=10).to(device)
+model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
 print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
