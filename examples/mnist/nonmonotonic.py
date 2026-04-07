@@ -234,43 +234,44 @@ class SNN(snn.TTModel):
         return output
 
 
-class DynamicLayer(snn.TTLayer):
-    def __init__(self, num_neurons: int, dim: int = -1):
-        super().__init__(num_neurons, dim)
+class DynamicLayer(snn.TTModel):
+    def __init__(self, num_features: int, expansion: int = 1):
+        super().__init__()
 
-        self._initialize_state("mem")
+        self.gate = nn.Linear(int(expansion * num_features), int(expansion * num_features))
 
-        self.beta = nn.Sequential(nn.Linear(num_neurons, num_neurons), nn.Sigmoid())
-        self.threshold = nn.Sequential(nn.Linear(num_neurons, num_neurons), nn.Softplus())
+        alpha_scale = tt.functional.max_halflife_to_hippo_scale(2)
+        beta_scale = tt.functional.max_halflife_to_hippo_scale(49)
 
-        self.spike_fn = tt.functional.sigmoid4x
-        self.quant_fn = tt.functional.probabilistic_ste()
-
-        self.proj3 = nn.Linear(num_neurons, num_neurons)
+        self.in_proj = nn.Linear(num_features, int(expansion * num_features))
+        self.lif = snn.DSLIEMA(
+            int(expansion * num_features),
+            # pos_alpha=tt.functional.hippo_decays(int(expansion * num_features), alpha_scale, shuffle=True),
+            # neg_alpha=tt.functional.hippo_decays(int(expansion * num_features), alpha_scale, shuffle=True),
+            # pos_beta=tt.functional.hippo_decays(int(expansion * num_features), beta_scale, shuffle=True),
+            # neg_beta=tt.functional.hippo_decays(int(expansion * num_features), beta_scale, shuffle=True),
+            pos_alpha=torch.rand(int(expansion * num_features)) * scale_diff + min_scale,
+            neg_alpha=torch.rand(int(expansion * num_features)) * scale_diff + min_scale,
+            pos_beta=torch.rand(int(expansion * num_features)) * scale_diff + min_scale,
+            neg_beta=torch.rand(int(expansion * num_features)) * scale_diff + min_scale,
+        )
+        self.out_proj = nn.Linear(int(expansion * num_features), num_features)
 
     def forward(self, x):
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
-        mem = self._to_working_dim(self.mem)
+        proj = self.in_proj(x)
+        gate = nn.functional.silu(self.gate(proj))
+        state = self.lif(proj)
+        out = x + self.out_proj(gate * state)
 
-        beta = self.beta(x)
-        mem = mem * beta + x
-        threshold = self.threshold(x)
-        spike_prob = self.spike_fn(mem - threshold)
-        spikes = self.quant_fn(spike_prob)
-        mem = mem - spikes * threshold
-
-        self.mem = self._from_working_dim(mem)
-        out = self._from_working_dim(x) + self._from_working_dim(self.proj3(spikes))
         return out
 
 
 class Test(snn.TTModel):
-    def __init__(self, hidden_dim, num_layers):
+    def __init__(self, hidden_dim, num_layers, expansion):
         super().__init__()
 
         self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
-        self.layers = nn.ModuleList([DynamicLayer(hidden_dim) for _ in range(num_layers)])
+        self.layers = nn.ModuleList([DynamicLayer(hidden_dim, expansion) for _ in range(num_layers)])
         self.dec = nn.Linear(hidden_dim, 10)
         nn.init.zeros_(self.dec.weight)
         nn.init.zeros_(self.dec.bias)
@@ -283,7 +284,7 @@ class Test(snn.TTModel):
         return x
 
 
-model = Test(hidden_dim=128, num_layers=10).to(device)
+model = Test(hidden_dim=128, num_layers=10, expansion=1).to(device)
 # model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
@@ -294,7 +295,7 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 15
+num_epochs = 5
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
