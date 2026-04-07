@@ -238,26 +238,30 @@ class DynamicLayer(snn.TTLayer):
     def __init__(self, num_neurons: int, dim: int = -1):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("h")
+        self._initialize_state("mem")
 
-        self.decay = nn.Linear(num_neurons, num_neurons)
-        self.proj_in = nn.Linear(num_neurons, num_neurons)
-        self.proj_out = nn.Linear(num_neurons, num_neurons)
+        self.beta = nn.Sequential(nn.Linear(num_neurons, num_neurons), nn.Sigmoid())
+        self.threshold = nn.Sequential(nn.Linear(num_neurons, num_neurons), nn.Softplus())
+
+        self.spike_fn = tt.functional.sigmoid4x
+        self.quant_fn = tt.functional.probabilistic_ste()
+
+        self.proj3 = nn.Linear(num_neurons, num_neurons)
 
     def forward(self, x):
         self._ensure_states(x)
+        x = self._to_working_dim(x)
+        mem = self._to_working_dim(self.mem)
 
-        x_moved = self._to_working_dim(x)
-        hidden = self._to_working_dim(self.h)
+        beta = self.beta(x)
+        mem = mem * beta + x
+        threshold = self.threshold(x)
+        spike_prob = self.spike_fn(mem - threshold)
+        spikes = self.quant_fn(spike_prob)
+        mem = mem - spikes * threshold
 
-        decay = nn.functional.sigmoid(self.decay(x_moved))
-        hidden = hidden * decay + self.proj_in(x_moved) * (1 - decay)
-
-        out = self.proj_out(hidden)
-
-        self.h = self._from_working_dim(hidden)
-        out = torch.tanh(self._from_working_dim(out) + x)
-
+        self.mem = self._from_working_dim(mem)
+        out = self._from_working_dim(x) + self._from_working_dim(self.proj3(spikes))
         return out
 
 
