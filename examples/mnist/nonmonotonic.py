@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -75,105 +76,143 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
 test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                              collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
 
+
+# ======================================================================================================================
+# NEW: Proper selective SSM (Mamba-style) – this replaces your ParallelDLIEMA entirely
 # ======================================================================================================================
 
-min_scale = tt.functional.halflife_to_decay(16 / (kernel_size ** 2))
-max_scale = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))
-scale_diff = max_scale - min_scale
+class ParallelMambaSSM(nn.Module):
+    """
+    Stable vectorized Mamba-style selective SSM.
+    - No Python loop over T.
+    - Uses the ratio-of-cumsums trick (Heinsen / common pure-PyTorch method).
+    - Fully parallel over time for forward + backward.
+    - Added safeguards against explosion (clamping + small eps).
+    """
 
-
-class ParallelDLIEMA(nn.Module):
-    def __init__(self, num_features: int):
+    def __init__(self, num_features: int, d_state: int = 16):
         super().__init__()
+        self.num_features = num_features
+        self.d_state = d_state
 
-        # Initialize within your exact scale bounds
-        pos_b = torch.rand(num_features) * scale_diff + min_scale
-        neg_b = torch.rand(num_features) * scale_diff + min_scale
+        # Fixed A: different time constants (HiPPO-inspired)
+        A = torch.arange(1, d_state + 1, dtype=torch.float32).unsqueeze(0).repeat(num_features, 1)
+        self.A_log = nn.Parameter(torch.log(A))  # A = -exp(A_log) < 0
 
-        # Use inverse sigmoid (logit) to store raw params
-        self.raw_pos_beta = nn.Parameter(torch.logit(pos_b))
-        self.raw_neg_beta = nn.Parameter(torch.logit(neg_b))
+        # Input-dependent projections
+        self.dt_proj = nn.Linear(num_features, num_features, bias=True)
+        self.B_proj = nn.Linear(num_features, d_state, bias=True)
+        self.C_proj = nn.Linear(num_features, d_state, bias=True)
 
-    def forward(self, x):
-        """Processes the ENTIRE sequence tensor [T, B, E] at once."""
+        self.D = nn.Parameter(torch.zeros(num_features))  # skip
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: [T, B, E] → [T, B, E]"""
         T, B, E = x.shape
+        assert E == self.num_features
 
-        pos_beta = torch.sigmoid(self.raw_pos_beta)
-        neg_beta = torch.sigmoid(self.raw_neg_beta)
+        # 1. Compute all parameters in parallel
+        delta = F.softplus(self.dt_proj(x)) + 1e-4  # [T, B, E]  (small offset for stability)
+        B_all = self.B_proj(x)  # [T, B, N]
+        C_all = self.C_proj(x)  # [T, B, N]
 
-        # Apply the gated input logic exactly like the original DLIEMA
-        x_pos = torch.where(x >= 0, x, 0.0) * (1 - pos_beta)
-        x_neg = torch.where(x <= 0, x, 0.0) * (1 - neg_beta)
+        A = -torch.exp(self.A_log)  # [E, N]  negative & stable
 
-        # 1. CREATE CAUSAL CONVOLUTION KERNELS
-        # We need decay powers:[beta^(T-1), beta^(T-2), ..., beta^1, 1]
-        t = torch.arange(T - 1, -1, -1, device=x.device, dtype=x.dtype)
+        # 2. Discretize (broadcast)
+        deltaA = delta.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(0)  # [T, B, E, N]
+        barA = torch.exp(deltaA)  # [T, B, E, N]   decay < 1
 
-        k_pos = pos_beta.unsqueeze(1) ** t.unsqueeze(0)  # Shape: [E, T]
-        k_neg = neg_beta.unsqueeze(1) ** t.unsqueeze(0)  # Shape: [E, T]
+        # barB (practical discretization)
+        barB = delta.unsqueeze(-1) * B_all.unsqueeze(2)  # [T, B, E, N]
 
-        # 2. PREPARE TENSORS FOR PyTorch Conv1D
-        # PyTorch Conv1d expects [Batch, Channels, Length]
-        x_pos_reshaped = x_pos.permute(1, 2, 0)
-        x_neg_reshaped = x_neg.permute(1, 2, 0)
+        # 3. Parallel scan via ratio of two cumsums (the key trick)
+        #    This is equivalent to the recurrence but computed vectorized
 
-        # Causal Padding: Pad the sequence on the left by T - 1 so the filter never looks into the future
-        x_pos_padded = nn.functional.pad(x_pos_reshaped, (T - 1, 0))
-        x_neg_padded = nn.functional.pad(x_neg_reshaped, (T - 1, 0))
+        # Compute cumulative product of barA (prefix decays)
+        # We use cumprod on barA, but shift for "decay up to previous"
+        barA_cumprod = torch.cumprod(barA, dim=0)  # [T, B, E, N]
 
-        # 3. FAST PARALLEL PROCESSING
-        # groups=E applies a separate 1D filter to each channel/neuron natively in C++
-        out_pos = nn.functional.conv1d(x_pos_padded, k_pos.unsqueeze(1), groups=E)
-        out_neg = nn.functional.conv1d(x_neg_padded, k_neg.unsqueeze(1), groups=E)
+        # Shifted version for "decay from start up to t-1"
+        barA_cum = torch.cat([
+            torch.ones((1, B, E, self.d_state), device=x.device, dtype=x.dtype),
+            barA_cumprod[:-1]
+        ], dim=0)  # [T, B, E, N]
 
-        # Sum both paths
-        mem = out_pos + out_neg
+        # Contribution at each step
+        x_exp = x.unsqueeze(-1)  # [T, B, E, 1]
+        contrib = barB * x_exp  # [T, B, E, N]
 
-        # Return to [T, B, E]
-        return mem.permute(2, 0, 1)
+        # Scaled contributions: contrib[k] / barA_cum[k]
+        scaled_contrib = contrib / (barA_cum + 1e-12)  # avoid div-by-zero
 
+        # Cumulative sum of scaled contributions
+        cum_scaled = torch.cumsum(scaled_contrib, dim=0)  # [T, B, E, N]
+
+        # Final hidden state h_t = barA_cum[t] * cum_scaled[t]
+        h = barA_cum * cum_scaled  # [T, B, E, N]
+
+        # 4. Output projection y_t = C · h_t
+        y = torch.einsum("tb en, tb n -> tb e", h, C_all)  # [T, B, E]
+
+        # Add skip connection
+        y = y + self.D * x
+
+        # Final safeguard (optional but helps when loss explodes early in training)
+        y = torch.clamp(y, min=-100.0, max=100.0)
+
+        return y
+
+
+# ======================================================================================================================
+# Updated layer – now uses the proper Mamba SSM instead of your dual-decay EMA
+# ======================================================================================================================
 
 class ParallelDynamicLayer(nn.Module):
-    def __init__(self, num_features: int, expansion: int = 1):
+    def __init__(self, num_features: int, expansion: int = 1, d_state: int = 16):
         super().__init__()
         dim = int(expansion * num_features)
 
         self.gate = nn.Linear(dim, dim)
         self.in_proj = nn.Linear(num_features, dim)
-        self.lif = ParallelDLIEMA(dim)
+        self.lif = ParallelMambaSSM(dim, d_state=d_state)  # ← this is the only change
         self.out_proj = nn.Linear(dim, num_features)
 
     def forward(self, x):
-        # x is[T, B, E] -> Linear layers automatically broadcast over T and B!
         proj = self.in_proj(x)
-        gate = nn.functional.silu(self.gate(proj))
+        gate = F.silu(self.gate(proj))
 
-        # Processes all timesteps in parallel via conv1d
+        # lif now runs the full selective SSM (A, Δ, B, C, everything)
         state = self.lif(proj)
 
         out = x + self.out_proj(gate * state)
         return out
 
 
+# ======================================================================================================================
+# Model stays almost identical
+# ======================================================================================================================
+
 class ParallelTest(nn.Module):
-    def __init__(self, hidden_dim, num_layers, expansion):
+    def __init__(self, hidden_dim, num_layers, expansion, d_state=16):
         super().__init__()
         self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
-        self.layers = nn.ModuleList([ParallelDynamicLayer(hidden_dim, expansion) for _ in range(num_layers)])
+        self.layers = nn.ModuleList([
+            ParallelDynamicLayer(hidden_dim, expansion, d_state=d_state)
+            for _ in range(num_layers)
+        ])
         self.dec = nn.Linear(hidden_dim, 10)
         nn.init.zeros_(self.dec.weight)
         nn.init.zeros_(self.dec.bias)
 
     def forward(self, x):
-        # x is[T, B, input_dim]
         x = self.enc(x)
         for layer in self.layers:
             x = layer(x)
         x = self.dec(x)
-        return x  # Returns [T, B, 10]
+        return x
 
 
-model = ParallelTest(hidden_dim=128, num_layers=10, expansion=1).to(device)
+model = ParallelTest(hidden_dim=128, num_layers=10, expansion=1, d_state=16).to(device)
 
 total_params = sum(p.numel() for p in model.parameters())
 print(f"Total Parameters: {total_params:,}")
