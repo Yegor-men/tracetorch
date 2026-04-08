@@ -210,17 +210,14 @@ class SNN(snn.TTModel):
 
 
 class DynamicLayer(snn.TTLayer):
-    def __init__(self, in_features: int, hidden_features: int, dim: int = -1):
-        super().__init__(hidden_features, dim)
+    def __init__(self, hidden_features: int, d_state: int, dim: int = -1):
+        super().__init__(d_state, dim)
 
-        self.A = nn.Linear(in_features, hidden_features)
-        self.scales = nn.Parameter(torch.randn(hidden_features))  # Will be used to create decays
-
-        self.B = nn.Linear(in_features, hidden_features)
-
-        self.C = nn.Linear(hidden_features, in_features)
-
-        self.D = nn.Linear(in_features, in_features)
+        self.A = nn.Linear(hidden_features, d_state)
+        self.scales = nn.Parameter(torch.randn(d_state))
+        self.B = nn.Linear(hidden_features, d_state)
+        self.C = nn.Linear(d_state, hidden_features)
+        self.D = nn.Linear(hidden_features, hidden_features)
         nn.init.eye_(self.D.weight)
         nn.init.zeros_(self.D.bias)
 
@@ -234,7 +231,7 @@ class DynamicLayer(snn.TTLayer):
 
         self.mem = self.mem * decay + self.B(x) * (1 - decay)
 
-        out = self.D(x) + self.C(nn.functional.tanh(self.mem))
+        out = self.D(x) + self.C(self.mem)
 
         out = self._from_working_dim(out)
 
@@ -242,12 +239,12 @@ class DynamicLayer(snn.TTLayer):
 
 
 class Test(snn.TTModel):
-    def __init__(self, working_dim, hidden_dim, num_layers):
+    def __init__(self, hidden_dim, d_state, num_layers):
         super().__init__()
 
-        self.enc = nn.Linear(kernel_size ** 2, working_dim)
-        self.layers = nn.ModuleList([DynamicLayer(working_dim, hidden_dim) for _ in range(num_layers)])
-        self.dec = nn.Linear(working_dim, 10)
+        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
+        self.layers = nn.ModuleList([DynamicLayer(hidden_dim, d_state) for _ in range(num_layers)])
+        self.dec = nn.Linear(hidden_dim, 10)
         nn.init.zeros_(self.dec.weight)
         nn.init.zeros_(self.dec.bias)
 
@@ -259,7 +256,7 @@ class Test(snn.TTModel):
         return x
 
 
-model = Test(working_dim=64, hidden_dim=128, num_layers=10).to(device)
+model = Test(hidden_dim=128, d_state=128, num_layers=10).to(device)
 # model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 total_params = sum(p.numel() for p in model.parameters())
 snn_params = model.get_param_count()
