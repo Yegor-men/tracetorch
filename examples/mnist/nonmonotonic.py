@@ -218,7 +218,6 @@ class DynamicLayer(snn.TTLayer):
         self.B = nn.Linear(hidden_features, d_state)
         self.C = nn.Linear(d_state, hidden_features)
         self.D = nn.Linear(hidden_features, hidden_features)
-        nn.init.eye_(self.D.weight)
         nn.init.zeros_(self.D.bias)
 
         self._initialize_state("mem")
@@ -231,7 +230,7 @@ class DynamicLayer(snn.TTLayer):
 
         self.mem = self.mem * decay + self.B(x) * (1 - decay)
 
-        out = self.D(x) + self.C(self.mem)
+        out = x + nn.functional.silu(self.D(x)) * self.C(self.mem)
 
         out = self._from_working_dim(out)
 
