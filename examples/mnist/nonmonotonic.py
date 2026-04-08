@@ -1,13 +1,12 @@
 import torch
 from torch import nn
-import torch.nn.functional as F
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
+import copy
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import tracetorch as tt
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
@@ -31,7 +30,7 @@ class MNIST(torch.utils.data.Dataset):
             train=train,
             download=True,
             transform=transforms.Compose([
-                transforms.ToTensor(),
+                transforms.ToTensor(),  # -> [C, H, W] in [0,1]
                 transforms.Lambda(lambda x: x * (max_val - min_val) + min_val + offset)
             ])
         )
@@ -40,30 +39,41 @@ class MNIST(torch.utils.data.Dataset):
         return len(self.ds)
 
     def __getitem__(self, idx):
-        return self.ds[idx]
+        img, label = self.ds[idx]  # img: [C, H, W], label: int
+        return img, label
 
 
 def patch_collate(batch):
+    """
+    returns:
+      imgs_orig:  [B, C, H, W]
+      seq:        [T, B, area]  (area = C * k * k)
+      labels_onehot: [B, 10]
+    """
     imgs, labels = zip(*batch)
-    imgs_b = torch.stack(imgs, dim=0)
+    imgs_b = torch.stack(imgs, dim=0)  # [B, C, H, W]
     B, C, H, W = imgs_b.shape
 
+    # optional pad so patches tile exactly
     if pad:
         rem_h = (H - kernel_size) % stride
         rem_w = (W - kernel_size) % stride
         pad_h = (stride - rem_h) % stride
         pad_w = (stride - rem_w) % stride
         if pad_h != 0 or pad_w != 0:
-            imgs_b = nn.functional.pad(imgs_b, (0, pad_w, 0, pad_h), value=0.0)
+            imgs_b = nn.functional.pad(imgs_b, (0, pad_w, 0, pad_h), value=0.0)  # pad (left,right,top,bottom) order
             _, _, H, W = imgs_b.shape
 
+    # unfold to patches: [B, C, n_h, n_w, k, k]
     patches = imgs_b.unfold(2, kernel_size, stride).unfold(3, kernel_size, stride)
+    # permute and reshape to [B, n_patches, area]
     patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
     n_h = patches.size(1)
     n_w = patches.size(2)
     n_patches = n_h * n_w
-    patches = patches.view(B, n_patches, C * kernel_size * kernel_size)
-    seq = patches.permute(1, 0, 2).contiguous()
+    patches = patches.view(B, n_patches, C * kernel_size * kernel_size)  # [B, T, area]
+    # transpose to [T, B, area]
+    seq = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
 
     return imgs_b, seq, torch.tensor(labels, dtype=torch.long)
 
@@ -77,181 +87,167 @@ test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                              collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
 
 # ======================================================================================================================
-# NEW: Proper selective SSM (Mamba-style) – this replaces your ParallelDLIEMA entirely
-# ======================================================================================================================
 
-import torch
-from torch import nn
-import torch.nn.functional as F
+import tracetorch as tt
+from tracetorch import snn
+
+min_scale = tt.functional.halflife_to_decay(16 / (kernel_size ** 2))  # for 4x4 kernel, decay must be over 1 step
+max_scale = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))  # for 1x1 kernel, halflife must be all steps
+scale_diff = max_scale - min_scale
+
+weight_scale = (kernel_size ** 2) / 16  # must be 1 when 4x4, and 1/16 when 1x1 since it's 16x less per step
 
 
-class ParallelMambaSSM(nn.Module):
-    """
-    Stable vectorized Mamba-style selective SSM.
-    - No Python loop.
-    - Log-space discretization + logcumsumexp-style stable accumulation.
-    - Much more resistant to explosion (especially after the model is already strong).
-    """
-
-    def __init__(self, num_features: int, d_state: int = 16):
+class ResidualLayer(snn.TTModel):
+    def __init__(self, hidden_dim: int):
         super().__init__()
-        self.num_features = num_features
-        self.d_state = d_state
+        self.lif = snn.DSRLITS(
+            hidden_dim,
+            pos_alpha=torch.rand(hidden_dim) * scale_diff + min_scale,
+            neg_alpha=torch.rand(hidden_dim) * scale_diff + min_scale,
+            pos_beta=torch.rand(hidden_dim) * scale_diff + min_scale,
+            neg_beta=torch.rand(hidden_dim) * scale_diff + min_scale,
+            pos_gamma=torch.rand(hidden_dim) * scale_diff + min_scale,
+            neg_gamma=torch.rand(hidden_dim) * scale_diff + min_scale,
+            pos_threshold=torch.rand(hidden_dim),
+            neg_threshold=torch.rand(hidden_dim),
+            pos_scale=torch.rand(hidden_dim),
+            neg_scale=torch.rand(hidden_dim),
+            pos_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
+            neg_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
+            quant_fn="probabilistic",
+        )
+        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
+        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
 
-        # A: fixed negative eigenvalues (different time constants)
-        A = torch.arange(1, d_state + 1, dtype=torch.float32).unsqueeze(0).repeat(num_features, 1)
-        self.A_log = nn.Parameter(torch.log(A))  # A = -exp(A_log)
-
-        # Input-dependent params
-        self.dt_proj = nn.Linear(num_features, num_features, bias=True)
-        self.B_proj = nn.Linear(num_features, d_state, bias=True)
-        self.C_proj = nn.Linear(num_features, d_state, bias=True)
-
-        self.D = nn.Parameter(torch.zeros(num_features))
-
-        # Small constants for stability
-        self.eps = 1e-8
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: [T, B, E] → [T, B, E]"""
-        T, B, E = x.shape
-        assert E == self.num_features
-
-        # 1. Input-dependent parameters (parallel)
-        delta = F.softplus(self.dt_proj(x)) + 1e-4  # [T, B, E]
-        B_all = self.B_proj(x)  # [T, B, N]
-        C_all = self.C_proj(x)  # [T, B, N]
-
-        A = -torch.exp(self.A_log)  # [E, N]
-
-        # 2. Discretization
-        deltaA = delta.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(0)  # [T, B, E, N]
-        log_barA = deltaA  # since barA = exp(deltaA) and A is negative, this is negative
-
-        barB = delta.unsqueeze(-1) * B_all.unsqueeze(2)  # [T, B, E, N]
-
-        # 3. Stable parallel scan in log space (the key improvement)
-        #    We compute h_t = sum_{k<=t} (prod_{j=k+1 to t} barA_j) * barB_k * x_k
-        #    In log space this becomes a stable cumsum of logs.
-
-        # Log of the contribution at each step
-        log_contrib = torch.log(barB.abs().clamp(min=self.eps)) + torch.log(x.unsqueeze(-1).abs().clamp(min=self.eps))
-        sign_contrib = torch.sign(barB * x.unsqueeze(-1))  # preserve sign if needed (usually positive)
-
-        # Cumulative log decay from the *end* of each segment (but we do forward causal)
-        # More stable: use cumsum on log_barA (which is negative)
-        log_decay_cum = torch.cumsum(log_barA, dim=0)  # [T, B, E, N]
-
-        # For each t, the decay multiplier from k to t is exp( log_decay_cum[t] - log_decay_cum[k] )
-        # So h_t ~ sum_k exp( log_decay_cum[t] - log_decay_cum[k] + log_contrib[k] )
-
-        # To compute this stably we use the "logsumexp" style but vectorized with differences:
-        # A practical stable rewrite:
-        log_decay_prefix = torch.cat([
-            torch.zeros((1, B, E, self.d_state), device=x.device, dtype=x.dtype),
-            torch.cumsum(log_barA[:-1], dim=0)
-        ], dim=0)
-
-        # Scaled log contrib
-        log_scaled_contrib = log_contrib - log_decay_prefix
-
-        # Now cumsum the exp(log_scaled) would be bad, so we use a running max trick or direct for small d_state
-        # For d_state=16 and T~49 this is fine, but to make it robust:
-
-        # Simple stable version used in many pure-PyTorch impls (works great here):
-        # We compute the cumulative in a normalized way.
-        # Better: use the fact that we can do cumsum after normalizing per-channel.
-
-        # Final reliable implementation (tested pattern from mamba-minimal forks):
-        # Reset every time barA is very small, but here's the clean one:
-
-        # Use logcumsumexp on the contributions with decay
-        # For practicality on your short T=49, we can do:
-        h_log = torch.zeros_like(log_scaled_contrib)
-
-        # But to keep it fully vectorized and stable:
-        # The following is a proven stable formulation:
-
-        # 1. Compute cumulative decay in log space (already have log_decay_prefix)
-        # 2. Compute max for numerical stability per "group"
-        max_log = torch.max(log_scaled_contrib, dim=0, keepdim=True)[0]
-        stable_scaled = torch.exp(log_scaled_contrib - max_log)
-
-        cum_stable = torch.cumsum(stable_scaled, dim=0)
-
-        h = cum_stable * torch.exp(log_decay_prefix + max_log)  # bring back scale
-
-        # This is still a bit tricky with signs. A simpler, very stable version that works extremely well in practice for this task:
-
-        # Let's use the following widely-used stable selective scan in pure PyTorch (Heinsen + fixes):
-
-        # Reset to a clean version that many people use successfully:
-
-        # Compute barA safely
-        barA = torch.exp(log_barA.clamp(max=0.0))  # ensure <=1
-
-        # Use cumprod in a normalized way or fall back to a safe ratio with better eps
-        barA_cum = torch.cumprod(barA, dim=0)
-        barA_cum_shifted = torch.cat(
-            [torch.ones((1, B, E, self.d_state), device=x.device, dtype=x.dtype), barA_cum[:-1]], dim=0)
-
-        contrib = barB * x.unsqueeze(-1)
-
-        # Stable ratio
-        scaled = contrib / (barA_cum_shifted + self.eps)
-        cum_scaled = torch.cumsum(scaled, dim=0)
-
-        h = barA_cum_shifted * cum_scaled
-
-        # 4. Output
-        y = torch.einsum("tben,tbn->tbe", h, C_all)
-
-        y = y + self.D * x
-
-        # Strong clamping + layer norm like behavior to prevent explosion after high accuracy
-        y = torch.clamp(y, min=-50.0, max=50.0)
-
-        return y
-
-
-# ======================================================================================================================
-# Updated layer – now uses the proper Mamba SSM instead of your dual-decay EMA
-# ======================================================================================================================
-
-class ParallelDynamicLayer(nn.Module):
-    def __init__(self, num_features: int, expansion: int = 1, d_state: int = 16):
-        super().__init__()
-        dim = int(expansion * num_features)
-
-        self.gate = nn.Linear(dim, dim)
-        self.in_proj = nn.Linear(num_features, dim)
-        self.lif = ParallelMambaSSM(dim, d_state=d_state)  # ← this is the only change
-        self.out_proj = nn.Linear(dim, num_features)
+        self.norm = nn.Tanh()
 
     def forward(self, x):
-        proj = self.in_proj(x)
-        gate = F.silu(self.gate(proj))
+        return self.norm(x + self.lin2(self.lif(self.lin1(x))))
 
-        # lif now runs the full selective SSM (A, Δ, B, C, everything)
-        state = self.lif(proj)
 
-        out = x + self.out_proj(gate * state)
+class DecoderTransformer(nn.Module):
+    def __init__(self, emb_dim: int = 128, num_tokens: int = 11):
+        super().__init__()
+        self.num_tokens = num_tokens
+        self.mha = nn.MultiheadAttention(emb_dim, 4, 0.0, batch_first=True)
+        self.mha_scalar = nn.Parameter(torch.ones(emb_dim) * 0.1)
+        self.norm = nn.LayerNorm(emb_dim)
+
+    def forward(self, x):
+        seq_len = self.num_tokens
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool().to(x.device)
+
+        attn_out, _ = self.mha(x, x, x, attn_mask=causal_mask)
+        x = self.norm(x + attn_out * self.mha_scalar)
+        return x
+
+
+class SNN(snn.TTModel):
+    def __init__(self, hidden_dim: int = 128, num_layers: int = 10, num_decoder_blocks: int = 2):
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.num_tokens = num_layers + 1  # 10 layers + initial state = 11 tokens
+
+        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
+        self.layers = nn.ModuleList([
+            ResidualLayer(hidden_dim=hidden_dim) for _ in range(num_layers)
+        ])
+
+        self.token_proj = nn.ModuleList([
+            nn.Linear(hidden_dim, hidden_dim) for _ in range(self.num_tokens)
+        ])
+
+        self.token_norm = nn.LayerNorm(hidden_dim)
+        self.decoder_blocks = nn.ModuleList([
+            DecoderTransformer(emb_dim=hidden_dim, num_tokens=self.num_tokens)
+            for _ in range(num_decoder_blocks)
+        ])
+
+        self.dec = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            snn.DSLI(
+                hidden_dim,
+                pos_beta=torch.rand(hidden_dim),
+                neg_beta=torch.rand(hidden_dim),
+                pos_alpha=torch.rand(hidden_dim),
+                neg_alpha=torch.rand(hidden_dim),
+            ),
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, 10)
+        )
+        nn.init.zeros_(self.dec[-1].weight)
+        nn.init.zeros_(self.dec[-1].bias)
+
+    def forward(self, x):
+        x = self.enc(x)
+
+        # Accumulate intermediate states: [B, 11, H]
+        intermediate_states = []
+
+        # Store initial state before any blocks (token 0)
+        intermediate_states.append(self.token_proj[-1](x.clone()))
+
+        # Process through blocks and store intermediate states
+        for i, block in enumerate(self.layers):
+            x = block(x)
+            intermediate_states.append(self.token_proj[i](x.clone()))
+
+        # Stack all intermediate states: [B, 11, H]
+        token_sequence = torch.stack(intermediate_states, dim=1)  # [B, 11, H]
+        token_sequence = self.token_norm(token_sequence)
+        # Pass through decoder transformer blocks
+        for decoder_block in self.decoder_blocks:
+            token_sequence = decoder_block(token_sequence)  # [B, 11, H]
+
+        # Use the final token (most processed) for classification
+        final_token = token_sequence[:, -1, :]  # [B, H]
+        output = self.dec(final_token)  # [B, 10]
+
+        return output
+
+
+class DynamicLayer(snn.TTLayer):
+    def __init__(self, in_features: int, hidden_features: int, dim: int = -1):
+        super().__init__(hidden_features, dim)
+
+        self.A = nn.Linear(in_features, hidden_features)
+        self.scales = nn.Parameter(torch.randn(hidden_features))  # Will be used to create decays
+
+        self.B = nn.Linear(in_features, hidden_features)
+
+        self.C = nn.Linear(hidden_features, in_features)
+
+        self.D = nn.Linear(in_features, in_features)
+        nn.init.eye_(self.D.weight)
+        nn.init.zeros_(self.D.bias)
+
+        self._initialize_state("mem")
+
+    def forward(self, x):
+        x = self._to_working_dim(x)
+
+        decay = torch.exp(nn.functional.softplus(self.A(x)) * -torch.exp(self.scales))
+        self._ensure_states(decay)
+
+        self.mem = self.mem * decay + self.B(x) * (1 - decay)
+
+        out = self.D(x) + self.C(nn.functional.tanh(self.mem))
+
+        out = self._from_working_dim(out)
+
         return out
 
 
-# ======================================================================================================================
-# Model stays almost identical
-# ======================================================================================================================
-
-class ParallelTest(nn.Module):
-    def __init__(self, hidden_dim, num_layers, expansion, d_state=16):
+class Test(snn.TTModel):
+    def __init__(self, working_dim, hidden_dim, num_layers):
         super().__init__()
-        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
-        self.layers = nn.ModuleList([
-            ParallelDynamicLayer(hidden_dim, expansion, d_state=d_state)
-            for _ in range(num_layers)
-        ])
-        self.dec = nn.Linear(hidden_dim, 10)
+
+        self.enc = nn.Linear(kernel_size ** 2, working_dim)
+        self.layers = nn.ModuleList([DynamicLayer(working_dim, hidden_dim) for _ in range(num_layers)])
+        self.dec = nn.Linear(working_dim, 10)
         nn.init.zeros_(self.dec.weight)
         nn.init.zeros_(self.dec.bias)
 
@@ -263,37 +259,40 @@ class ParallelTest(nn.Module):
         return x
 
 
-model = ParallelTest(hidden_dim=128, num_layers=10, expansion=1, d_state=16).to(device)
-
+model = Test(working_dim=64, hidden_dim=128, num_layers=10).to(device)
+# model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 total_params = sum(p.numel() for p in model.parameters())
-print(f"Total Parameters: {total_params:,}")
-
+snn_params = model.get_param_count()
+print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
+
 loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
-num_epochs = 15
 
+num_epochs = 5
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
-        seq, label = torch.bernoulli(seq).to(device), label.to(device)
+        img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
 
         model.zero_grad()
+        model.zero_states()
 
-        # =======================================================
-        # MAGIC HAPPENS HERE: No sequential loop.
-        # ENTIRE TENSOR is processed in one pass!
-        # =======================================================
-        timestep_outputs = model(seq)  # Shape: [T, B, 10]
+        # Collect outputs from all timesteps
+        timestep_outputs = []
+        for t in range(seq.size(0)):
+            model_output = model(seq[t])
+            timestep_outputs.append(model_output)
 
-        T_steps = timestep_outputs.size(0)
-        weights = torch.arange(1, T_steps + 1, dtype=torch.float32, device=device) / T_steps
+        # Calculate loss for each timestep
+        T = len(timestep_outputs)
+        weights = torch.arange(1, T + 1, dtype=torch.float32, device=device) / T
 
-        # Calculate loss over the sequence (vectorized via stacked list)
-        losses = torch.stack([loss_fn(timestep_outputs[t], label) for t in range(T_steps)])
-        loss = (losses * weights).sum() / weights.sum()
+        losses = torch.stack([loss_fn(output, label) for output in timestep_outputs])
+        loss = (losses * weights).sum() / weights.sum()  # Divide by sum of weights
 
+        # Use final timestep for accuracy
         pred_classes = timestep_outputs[-1].argmax(dim=-1)
         frac_correct = (pred_classes == label).sum().item() / batch_size
 
@@ -314,15 +313,16 @@ for e in range(num_epochs):
     plt.show()
 
     model.eval()
-    test_loss, test_acc = 0.0, 0.0
+    test_loss = 0.0
+    test_acc = 0.0
     with torch.no_grad():
         for (img, seq, label) in tqdm(test_dataloader, total=len(test_dataloader), desc=f"TEST - E{e}"):
-            seq, label = torch.bernoulli(seq).to(device), label.to(device)
+            img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
 
-            timestep_outputs = model(seq)
+            model.zero_states()
 
-            # Use only the last timestep for test evaluation
-            model_output = timestep_outputs[-1]
+            for t in range(seq.size(0)):
+                model_output = model(seq[t])
 
             loss = loss_fn(model_output, label)
             test_loss += loss.item()
@@ -330,39 +330,37 @@ for e in range(num_epochs):
             frac_correct = (pred_classes == label).sum().item() / batch_size
             test_acc += frac_correct
 
-        print(f"TEST - Loss: {test_loss / len(test_dataloader):.4f} | Acc: {test_acc / len(test_dataloader):.4f}")
+        test_loss /= len(test_dataloader)
+        test_acc /= len(test_dataloader)
+
+        print(f"TEST - Loss: {test_loss} | Acc: {test_acc}")
 
 with torch.no_grad():
     img_batch, seq_batch, label_batch = next(iter(test_dataloader))
     img_batch, seq_batch, label_batch = img_batch.to(device), seq_batch.to(device), label_batch.to(device)
 
     for i in range(10):
-        # We slice i:i+1 to maintain the Batch dimension (B=1)
-        img, seq, label = img_batch[i], seq_batch[:, i:i + 1], label_batch[i:i + 1]
-        seq_bernoulli = torch.bernoulli(seq)
-
-        # ONE pass gets the whole trace
-        model_outputs_full = model(seq_bernoulli)
+        img, seq, label = img_batch[i], seq_batch[:, i], label_batch[i]  # Extract i-th sample
+        model.zero_states()
 
         input_spike_train = []
         model_outputs = []
         losses = []
         running_loss = 0.0
-        T_steps = seq_bernoulli.size(0)
 
-        for t in range(T_steps):
-            spk_input = seq_bernoulli[t]  # [1, area]
-            input_spike_train.append(spk_input.squeeze(0))
+        for t in range(seq.size(0)):  # Iterate over timesteps
+            spk_input = torch.bernoulli(seq[t]).unsqueeze(0)  # [1, area]
+            input_spike_train.append(spk_input.squeeze(0))  # [area]
 
-            model_output = model_outputs_full[t].squeeze(0)  # [10]
+            model_output = model(spk_input).squeeze(0)  # [10]
             model_outputs.append(nn.functional.softmax(model_output, dim=-1))
-
-            loss = loss_fn(model_outputs_full[t], label)
-            running_loss += loss.item() / T_steps
+            loss = loss_fn(model_output, label.unsqueeze(0))
+            running_loss += loss.item() / seq.size(0)
             losses.append(loss.item())
 
         tt.plot.render_image(img.unsqueeze(0), title=f"Loss: {running_loss:.3f}")
-        input_spike_tensor = torch.stack(input_spike_train).T
+        # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
+        input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
         tt.plot.spike_train([input_spike_tensor.T[t] for t in range(input_spike_tensor.T.size(0))], title="Input")
         tt.plot.spike_train(model_outputs, title="Model Output")
         plt.title("Loss over time")
