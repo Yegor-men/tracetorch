@@ -13,7 +13,7 @@ class Foobar(nn.Module):
         return nn.functional.sigmoid(nn.functional.softplus(self.slope) * x)
 
 
-class ResidualSpike(snn.TTModel):
+class ResidualSpike(tt.Model):
     def __init__(self, hidden_dim):
         super().__init__()
         self.lif = snn.DSRLITS(
@@ -49,7 +49,7 @@ class ResidualSpike(snn.TTModel):
         return x + self.ffn(x + delta)
 
 
-class SNNLM(snn.TTModel):
+class SNNLM(tt.Model):
     def __init__(
             self,
             hidden_dim: int,

@@ -8,7 +8,7 @@ max_timescale = tt.functional.halflife_to_decay(62.5)
 timescale_diff = max_timescale - min_timescale
 
 
-class ResidualSpike(snn.TTModel):
+class ResidualSpike(tt.Model):
     def __init__(self, hidden_dim):
         super().__init__()
         self.lif = snn.DSRLITS(
@@ -34,7 +34,7 @@ class ResidualSpike(snn.TTModel):
         return x + self.lin(self.lif(torch.tanh(x)))
 
 
-class BirdClassifierSNN(snn.TTModel):
+class BirdClassifierSNN(tt.Model):
     # Updated default in_features to 768 (256 Base + 256 Delta + 256 Delta-Delta)
     def __init__(self, in_features=768, hidden_features=1024, num_layers=10, num_classes=234):
         super().__init__()

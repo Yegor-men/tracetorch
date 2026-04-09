@@ -7,7 +7,9 @@ The reference documentation covers in detail all the features present in ``trace
    :maxdepth: 2
    :caption: Contents:
 
+   core/index
    functional/index
    loss/index
-   snn/index
    plot/index
+   rnn/index
+   snn/index

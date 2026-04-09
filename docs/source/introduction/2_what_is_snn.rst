@@ -1,21 +1,7 @@
 1. What is an SNN?
 ==================
 
-It is a well known fact that neural networks are conceptually inspired by the structure and function of biological brains.
-After all, that's where the very name comes from. Conceptually, the idea is that each neuron functions as a small computation
-unit, and together, chaining and parallelizing many of these computational units results in a meaningful network that can
-generalize and perform some task, just like our brains. Thus arises the name: Artificial Neural Network (ANN).
-
-But how accurate is this with respect to real biology and neuroscience? Well, not really. Most notably would be the fact
-that ANNs are typically stateless, while brains are obviously in some way stateful. Recurrent Neural Networks (RNNs)
-have been around for a while, namely LSTMs and GRUs. Modern innovative architectures have their own ways of achieving
-stateful mechanics, but still, it's not quite it. The main distinction comes from the fact that biology prizes efficiency
-and thrives on simplicity. Following Gall's law, complexity is an emergent property of functioning simple systems rather
-than something that is successfully engineered all at once. If we want to be inspired by biology, it would make sense
-that our neural nets are simple on the atomic scale, and that complex behavior is just an emergent property, not because
-of careful engineering.
-
-Spiking Neural Networks (SNNs) are a subtype of neural nets that aim to recreate, or at least more closely follow the
+Spiking Neural Networks (SNNs) are a subtype of RNNs that aim to recreate, or at least more closely follow the
 neuron dynamics that we observe in biology, where neurons typically function on discrete signals: all or nothing "spike"
 events. SNNs are unfathomably simple in architecture and to understand: each neuron literally collects "energy" over time
 and "fires" when it accumulates a certain amount, resetting the amount of energy it has stored up. We call this charge

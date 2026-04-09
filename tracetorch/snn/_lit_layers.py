@@ -1,11 +1,11 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ._tt_infrastructure import TTLayer
+from ._snnlayer import Layer as SNNLayer
 from .. import functional
 
 
-class LIT(TTLayer):
+class LIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -61,7 +61,7 @@ class LIT(TTLayer):
         return spikes
 
 
-class DLIT(TTLayer):
+class DLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -130,7 +130,7 @@ class DLIT(TTLayer):
         return spikes
 
 
-class SLIT(TTLayer):
+class SLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -195,7 +195,7 @@ class SLIT(TTLayer):
         return spikes
 
 
-class RLIT(TTLayer):
+class RLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -271,7 +271,7 @@ class RLIT(TTLayer):
         return spikes
 
 
-class DSLIT(TTLayer):
+class DSLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -360,7 +360,7 @@ class DSLIT(TTLayer):
         return spikes
 
 
-class DRLIT(TTLayer):
+class DRLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -465,7 +465,7 @@ class DRLIT(TTLayer):
         return spikes
 
 
-class SRLIT(TTLayer):
+class SRLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -551,7 +551,7 @@ class SRLIT(TTLayer):
         return spikes
 
 
-class DSRLIT(TTLayer):
+class DSRLIT(SNNLayer):
     def __init__(
             self,
             num_neurons: int,

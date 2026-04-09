@@ -11,7 +11,7 @@ torch.manual_seed(0)
 torch.cuda.manual_seed_all(0)
 
 
-class SNN(snn.TTModel):
+class SNN(tt.Model):
     def __init__(self, c, n_labels):
         super().__init__()
 
@@ -89,11 +89,11 @@ with torch.no_grad():
 
 
 # ============================================================================
-# COMPILE/UNCOMPILE TESTING
+# COMPILE/decompile TESTING
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("COMPILE/UNCOMPILE FUNCTIONALITY TESTING")
+print("COMPILE/decompile FUNCTIONALITY TESTING")
 print("=" * 80)
 
 
@@ -171,22 +171,22 @@ print(f"Loaded compiled model consistency: {'PASS' if match else 'FAIL'} - {msg}
 print("\n3. Testing uncompilation and continued training...")
 print("-" * 50)
 
-# Uncompile the model
+# decompile the model
 print("Uncompiling model...")
-model.TTuncompile()
-print("Model uncompiled successfully!")
+model.TTdecompile()
+print("Model decompiled successfully!")
 
 # Check that raw parameters are restored
-uncompiled_layers = []
+decompiled_layers = []
 
 for name, module in model.named_modules():
     if not hasattr(module, '_compiled'):
-        uncompiled_layers.append(type(module).__name__)
-print(f"Uncompiled layers: {len(uncompiled_layers)} layers restored")
+        decompiled_layers.append(type(module).__name__)
+print(f"decompiled layers: {len(decompiled_layers)} layers restored")
 
-# Get uncompiled output
-uncompiled_outputs = get_model_output(model, random_feature, num_timesteps=50)
-match, msg = compare_outputs(baseline_outputs, uncompiled_outputs)
+# Get decompiled output
+decompiled_outputs = get_model_output(model, random_feature, num_timesteps=50)
+match, msg = compare_outputs(baseline_outputs, decompiled_outputs)
 print(f"Output consistency after uncompilation: {'PASS' if match else 'FAIL'} - {msg}")
 
 # Test continued training after uncompilation
@@ -233,7 +233,7 @@ output_with_loaded_states = model2(random_feature)
 print("Model with loaded states executed successfully")
 
 # Test 5: Full workflow test
-print("\n5. Testing complete workflow: Train -> Compile -> Save -> Load -> Inference -> Uncompile -> Train")
+print("\n5. Testing complete workflow: Train -> Compile -> Save -> Load -> Inference -> decompile -> Train")
 print("-" * 70)
 
 # Start fresh
@@ -269,9 +269,9 @@ loaded_workflow_model.load_state_dict(workflow_state)
 inference_outputs = get_model_output(loaded_workflow_model, random_feature, num_timesteps=20)
 print(f"Inference completed: {len(inference_outputs)} timesteps generated")
 
-# Uncompile and continue training
+# decompile and continue training
 print("Uncompiling and continuing training...")
-loaded_workflow_model.TTuncompile()
+loaded_workflow_model.TTdecompile()
 optimizer = torch.optim.AdamW(loaded_workflow_model.parameters(), 1e-2)
 
 for epoch in range(5):
@@ -288,18 +288,18 @@ print(f"Continued training loss: {continued_loss.item():.4f}")
 print(f"Full workflow test: {'PASS' if continued_loss.item() < training_loss * 1.1 else 'FAIL'}")
 
 # Test 6: Performance comparison
-print("\n6. Testing performance comparison between compiled and uncompiled...")
+print("\n6. Testing performance comparison between compiled and decompiled...")
 print("-" * 60)
 
 import time
 
-# Time uncompiled inference
+# Time decompiled inference
 model.eval()
 model.zero_states()
 start_time = time.time()
 for step in range(num_timesteps):
     _ = model(random_feature)
-uncompiled_time = time.time() - start_time
+decompiled_time = time.time() - start_time
 
 # Compile and time compiled inference
 model.TTcompile()
@@ -310,9 +310,9 @@ for step in range(num_timesteps):
     _ = model(random_feature)
 compiled_time = time.time() - start_time
 
-print(f"Uncompiled inference time: {uncompiled_time:.4f}s")
+print(f"decompiled inference time: {decompiled_time:.4f}s")
 print(f"Compiled inference time: {compiled_time:.4f}s")
-speedup = uncompiled_time / compiled_time if compiled_time > 0 else float('inf')
+speedup = decompiled_time / compiled_time if compiled_time > 0 else float('inf')
 print(f"Speedup factor: {speedup:.2f}x")
 
 # Cleanup
@@ -324,5 +324,5 @@ if os.path.exists("workflow_test_model.pt"):
     os.remove("workflow_test_model.pt")
 
 print("\n" + "=" * 80)
-print("ALL COMPILE/UNCOMPILE TESTS COMPLETED")
+print("ALL COMPILE/decompile TESTS COMPLETED")
 print("=" * 80)

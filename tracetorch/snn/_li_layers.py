@@ -1,10 +1,10 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ._tt_infrastructure import TTLayer
+from ._snnlayer import Layer as SNNLayer
 
 
-class LI(TTLayer):
+class LI(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -30,7 +30,7 @@ class LI(TTLayer):
         return self.mem
 
 
-class DLI(TTLayer):
+class DLI(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -66,7 +66,7 @@ class DLI(TTLayer):
         return mem
 
 
-class SLI(TTLayer):
+class SLI(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -102,7 +102,7 @@ class SLI(TTLayer):
         return self.mem
 
 
-class DSLI(TTLayer):
+class DSLI(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -160,7 +160,7 @@ class DSLI(TTLayer):
         return mem
 
 
-class LIEMA(TTLayer):
+class LIEMA(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -186,7 +186,7 @@ class LIEMA(TTLayer):
         return self.mem
 
 
-class DLIEMA(TTLayer):
+class DLIEMA(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -222,7 +222,7 @@ class DLIEMA(TTLayer):
         return mem
 
 
-class SLIEMA(TTLayer):
+class SLIEMA(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -258,7 +258,7 @@ class SLIEMA(TTLayer):
         return self.mem
 
 
-class DSLIEMA(TTLayer):
+class DSLIEMA(SNNLayer):
     def __init__(
             self,
             num_neurons: int,

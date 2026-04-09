@@ -98,7 +98,7 @@ scale_diff = max_scale - min_scale
 weight_scale = (kernel_size ** 2) / 16  # must be 1 when 4x4, and 1/16 when 1x1 since it's 16x less per step
 
 
-class ResidualLayer(snn.TTModel):
+class ResidualLayer(tt.Model):
     def __init__(self, hidden_dim: int):
         super().__init__()
         self.lif = snn.DSRLITS(
@@ -143,7 +143,7 @@ class DecoderTransformer(nn.Module):
         return x
 
 
-class SNN(snn.TTModel):
+class SNN(tt.Model):
     def __init__(self, hidden_dim: int = 128, num_layers: int = 10, num_decoder_blocks: int = 2):
         super().__init__()
 
@@ -209,40 +209,19 @@ class SNN(snn.TTModel):
         return output
 
 
-class DynamicLayer(snn.TTLayer):
-    def __init__(self, hidden_features: int, d_state: int, dim: int = -1):
-        super().__init__(d_state, dim)
-        import math
-        self.A = nn.Linear(hidden_features, d_state)
-        self.scales = nn.Parameter(torch.log(-torch.log(torch.rand(d_state)) / math.log(2.0)))
-        self.B = nn.Linear(hidden_features, d_state)
-        self.C = nn.Linear(d_state, hidden_features)
-        self.D = nn.Linear(hidden_features, hidden_features)
-        nn.init.zeros_(self.D.bias)
-
-        self._initialize_state("mem")
-
-    def forward(self, x):
-        x = self._to_working_dim(x)
-
-        decay = torch.exp(nn.functional.softplus(self.A(x)) * -torch.exp(self.scales))
-        self._ensure_states(decay)
-
-        self.mem = self.mem * decay + self.B(x) * (1 - decay)
-
-        out = x + nn.functional.silu(self.D(x)) * self.C(self.mem)
-
-        out = self._from_working_dim(out)
-
-        return out
-
-
-class Test(snn.TTModel):
-    def __init__(self, hidden_dim, d_state, num_layers):
+class SimpleRNNModel(tt.Model):
+    def __init__(self, hidden_dim, num_layers):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
-        self.layers = nn.ModuleList([DynamicLayer(hidden_dim, d_state) for _ in range(num_layers)])
+
+        self.layers = nn.ModuleList([
+            tt.rnn.SimpleRNN(
+                in_features=hidden_dim,
+                out_features=hidden_dim,
+            ) for _ in range(num_layers)
+        ])
+
         self.dec = nn.Linear(hidden_dim, 10)
         nn.init.zeros_(self.dec.weight)
         nn.init.zeros_(self.dec.bias)
@@ -255,11 +234,90 @@ class Test(snn.TTModel):
         return x
 
 
-model = Test(hidden_dim=128, d_state=128, num_layers=10).to(device)
+class LSTMModel(tt.Model):
+    def __init__(self, hidden_dim, num_layers):
+        super().__init__()
+
+        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
+
+        self.layers = nn.ModuleList([
+            tt.rnn.LSTM(
+                in_features=hidden_dim,
+                out_features=hidden_dim,
+            ) for _ in range(num_layers)
+        ])
+
+        self.dec = nn.Linear(hidden_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
+
+    def forward(self, x):
+        x = self.enc(x)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.dec(x)
+        return x
+
+
+class GRUModel(tt.Model):
+    def __init__(self, hidden_dim, num_layers):
+        super().__init__()
+
+        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
+
+        self.layers = nn.ModuleList([
+            tt.rnn.GRU(
+                in_features=hidden_dim,
+                out_features=hidden_dim,
+            ) for _ in range(num_layers)
+        ])
+
+        self.dec = nn.Linear(hidden_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
+
+    def forward(self, x):
+        x = self.enc(x)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.dec(x)
+        return x
+
+
+class MambaModel(tt.Model):
+    def __init__(self, working_dim, hidden_dim, num_layers):
+        super().__init__()
+
+        self.enc = nn.Linear(kernel_size ** 2, working_dim)
+
+        self.layers = nn.ModuleList([
+            tt.rnn.Mamba(
+                in_features=working_dim,
+                out_features=working_dim,
+                hidden_features=hidden_dim,
+                decay=torch.rand(hidden_dim),
+            ) for _ in range(num_layers)
+        ])
+
+        self.dec = nn.Linear(working_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
+
+    def forward(self, x):
+        x = self.enc(x)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.dec(x)
+        return x
+
+
+# model = SimpleRNNModel(hidden_dim=128, num_layers=10).to(device)
+# model = LSTMModel(hidden_dim=128, num_layers=10).to(device)
+# model = GRUModel(hidden_dim=128, num_layers=10).to(device)
+model = MambaModel(working_dim=128, hidden_dim=32, num_layers=10).to(device)
 # model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
-total_params = sum(p.numel() for p in model.parameters())
-snn_params = model.get_param_count()
-print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
+
+print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
 
 loss_fn = nn.functional.cross_entropy

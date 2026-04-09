@@ -1,4 +1,4 @@
-4. The Distributed Hidden State
+5. The Distributed Hidden State
 ===============================
 
 As with any recurrent architecture, the biggest challenge is for the model to figure out what to keep and what to discard.
@@ -16,7 +16,7 @@ isn't.
 SNNs on the other hand are simultaneously significantly simpler in structure and more complex in interpretation, working
 on a much higher, abstract level than literal gates controlling the portion of information to keep.
 
-In the simplest configuration, the ``LIB`` neuron works like any MLP, except with the option of dipping into time. ``mem``
+In the simplest configuration, the `LIB` neuron works like any MLP, except with the option of dipping into time. ``mem``
 stores the amount of information the neuron has accumulated, which gradually decays because of ``beta``. Firing means that
 the neuron has accumulated enough information to flip the gate and signal to the downstream layer. A high ``beta`` (close to 1)
 means that information is retained over a long period of time. The formula for approximating the number of timesteps
@@ -37,9 +37,14 @@ received over time. Now, even if the neuron fires and ``mem`` resets, it's not a
 it in the next timestep given the proper circumstances. Even now, this isn't enough. We still can't reach a theoretically
 infinite attention window.
 
+For applications where stable membrane magnitudes are important (rather than the large magnitudes typically desired in classification),
+we can use the EMA variants (`LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`). These layers modify how inputs are integrated:
+instead of ``mem = mem * beta + x``, they use ``mem = mem * beta + x * (1 - beta)``, making the membrane itself an EMA
+of the inputs over time.
+
 We can add bipolar spiking, which means having a negative threshold in conjunction with the positive threshold. This now
 means that negative and positive signals are separate in nature, it's not as simple as "positive = excitatory, negative =
-inhibitory". Negative and positive spikes are scaled by ``pos_scale`` and ``neg_scale``, which means that the neuron can
+inhibitory". Negative and positive spikes are scaled by ``pos_scale`` and ``neg_scale`` in the LITS variants, meaning that the neuron can
 learn to output 3 independent signals. It can learn to never output positive or negative spikes by tuning the according
 ``*_scale`` down to 0. It can learn to have a static output by having both ``*_scale`` down at 0; it can even learn to
 ignore polarity make positive and negative spikes be of one polarity by making one of the ``*_scale`` the negative of the
@@ -77,6 +82,16 @@ Use residual connections, pairing each SNN layer with an ``nn.Linear`` or equiva
 point vector (electrical current for the neurons), and as output return the sum of the input and the output spikes passed
 through the ``nn.Linear``, and you've solved the issue of vanishing gradients, and each layer is effectively functioning
 as a high level, recurrent tensor editor.
+
+Modern SNN Implementation Details
+---------------------------------
+
+The current implementation uses sophisticated spike functions and quantization methods. Each spiking layer supports:
+
+- **Spike Functions**: Custom activation functions like ``sigmoid4x`` that determine spike probability
+- **Quantization Methods**: Multiple approaches including ``round``, ``bernoulli``, and ``probabilistic`` for converting probabilities to discrete spikes
+- **Dual Reset**: In dual layers, membrane reset is distributed evenly between positive and negative components (0.5x threshold each)
+- **Scaled Outputs**: LITS variants apply learnable scaling factors to make ternary outputs truly independent
 
 Very quickly, interpretability becomes something very difficult to do. ``mem``, ``syn``, ``rec`` are simple enough to understand
 in principle, but combine the three together, and consider the presence of downstream and upstream layers taking play, and

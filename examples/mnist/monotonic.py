@@ -58,7 +58,7 @@ def spike_fn(x):
     return nn.functional.sigmoid(2 * x)
 
 
-class SNN(snn.TTModel):
+class SNN(tt.Model):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(

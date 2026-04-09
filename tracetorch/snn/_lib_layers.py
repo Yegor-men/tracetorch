@@ -1,11 +1,11 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ._tt_infrastructure import TTLayer
+from ._snnlayer import Layer as SNNLayer
 from .. import functional
 
 
-class LIB(TTLayer):
+class LIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -51,7 +51,7 @@ class LIB(TTLayer):
         return spikes
 
 
-class DLIB(TTLayer):
+class DLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -109,7 +109,7 @@ class DLIB(TTLayer):
         return spikes
 
 
-class SLIB(TTLayer):
+class SLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -165,7 +165,7 @@ class SLIB(TTLayer):
         return spikes
 
 
-class RLIB(TTLayer):
+class RLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -232,7 +232,7 @@ class RLIB(TTLayer):
         return spikes
 
 
-class DSLIB(TTLayer):
+class DSLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -311,7 +311,7 @@ class DSLIB(TTLayer):
         return spikes
 
 
-class DRLIB(TTLayer):
+class DRLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -406,7 +406,7 @@ class DRLIB(TTLayer):
         return spikes
 
 
-class SRLIB(TTLayer):
+class SRLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -482,7 +482,7 @@ class SRLIB(TTLayer):
         return spikes
 
 
-class DSRLIB(TTLayer):
+class DSRLIB(SNNLayer):
     def __init__(
             self,
             num_neurons: int,

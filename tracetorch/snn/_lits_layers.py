@@ -1,11 +1,11 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from torch import nn
-from ._tt_infrastructure import TTLayer
+from ._snnlayer import Layer as SNNLayer
 from .. import functional
 
 
-class LITS(TTLayer):
+class LITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -73,7 +73,7 @@ class LITS(TTLayer):
         return spikes
 
 
-class DLITS(TTLayer):
+class DLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -155,7 +155,7 @@ class DLITS(TTLayer):
         return spikes
 
 
-class SLITS(TTLayer):
+class SLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -234,7 +234,7 @@ class SLITS(TTLayer):
         return spikes
 
 
-class RLITS(TTLayer):
+class RLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -323,7 +323,7 @@ class RLITS(TTLayer):
         return spikes
 
 
-class DSLITS(TTLayer):
+class DSLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -425,7 +425,7 @@ class DSLITS(TTLayer):
         return spikes
 
 
-class DRLITS(TTLayer):
+class DRLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -543,7 +543,7 @@ class DRLITS(TTLayer):
         return spikes
 
 
-class SRLITS(TTLayer):
+class SRLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,
@@ -642,7 +642,7 @@ class SRLITS(TTLayer):
         return spikes
 
 
-class DSRLITS(TTLayer):
+class DSRLITS(SNNLayer):
     def __init__(
             self,
             num_neurons: int,

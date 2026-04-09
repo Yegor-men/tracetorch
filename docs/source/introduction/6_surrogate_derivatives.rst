@@ -1,3 +1,0 @@
-6. Surrogate Derivatives
-========================
-
