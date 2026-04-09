@@ -212,9 +212,9 @@ class SNN(snn.TTModel):
 class DynamicLayer(snn.TTLayer):
     def __init__(self, hidden_features: int, d_state: int, dim: int = -1):
         super().__init__(d_state, dim)
-
+        import math
         self.A = nn.Linear(hidden_features, d_state)
-        self.scales = nn.Parameter(torch.randn(d_state))
+        self.scales = nn.Parameter(torch.log(-torch.log(torch.rand(d_state)) / math.log(2.0)))
         self.B = nn.Linear(hidden_features, d_state)
         self.C = nn.Linear(d_state, hidden_features)
         self.D = nn.Linear(hidden_features, hidden_features)
