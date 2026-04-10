@@ -40,7 +40,7 @@ all. The resulting 32 layers encapsulate a whopping range of possible dynamics: 
 
 But thinking a bit outside the box, and it becomes obvious that State Space Models (SSMs) such as Mamba, are incredibly
 similar to the Leaky Integrator that all the SNN layers were built around, albeit a bit more complex. Subsequently, the
-philosophy was then extended to non-SNN recurrent layers: `SimpleRNN`, `LSTM`, `GRU`, `Mamba`, and more to come (
+philosophy was then extended to non-SNN recurrent layers: `SimpleRNN`, `LSTM`, `GRU`, `SelectiveSSM`, and more to come (
 probably). The result is an opinionated but extremely ergonomic extension to PyTorch that rethinks the way that RNNs are
 made: no matter the architecture, it's all just another PyTorch-esque layer that can be placed anywhere.
 
@@ -81,7 +81,8 @@ direct values instead: to be used when a model is trained and you don't want to 
 effective values each time.
 
 Speaking of layers, at the time of writing, traceTorch has a total of 36. `tt.rnn` is a fair bit smaller and more
-self-explanatory. It includes: `SimpleRNN`, `LSTM`, `GRU`, `Mamba`, with more to come (probably). The implementations
+self-explanatory. It includes: `SimpleRNN`, `LSTM`, `GRU`, `SelectiveSSM`, with more to come (probably). The
+implementations
 are standard considering the "one timestep at a time" and "as a layer" rules. However, `tt.snn` layers are a lot more
 extensive, and follow a slightly unconventional, but consistent and self-explanatory naming schema. The names are
 modular and explain their role and function.
@@ -185,7 +186,7 @@ class SNN(tt.Model):
             nn.MaxPool2d(2, 2),
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 128),
-            rnn.Mamba(128, 128, 32),
+            rnn.SelectiveSSM(128, 128, 32),
             nn.Linear(128, 10)
         )
 
@@ -237,7 +238,7 @@ traceTorch still has a long way to go. Namely:
 - Clean up `spike_fn` and `quant_fn` for
 - Fix `tt.functional` to be cleaner
 - Clean up `tt.plot` plotting functions
-- Fix `TTcompile` and `TTdecompile` to work with `tt.rnn.Mamba` and other layers: this means that parameter
+- Fix `TTcompile` and `TTdecompile` to work with `tt.rnn.SelectiveSSM` and other layers: this means that parameter
   initialization must ask for an initialization function aside from just the inverse and activation functions.
 - Clean up and make sure that the `save_states` and `load_states` work as intended without fault
 - Create tests for compilation and decompilation, saving and loading

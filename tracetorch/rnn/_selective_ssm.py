@@ -5,7 +5,7 @@ from ._rnnlayer import Layer as RNNLayer
 from typing import Union, Literal
 
 
-class Mamba(RNNLayer):
+class SelectiveSSM(RNNLayer):
     def __init__(
             self,
             in_features: int,
@@ -17,30 +17,29 @@ class Mamba(RNNLayer):
             learn_decay: bool = True,
     ):
         super().__init__(hidden_features, dim)
+        self.hidden_features = hidden_features
+        self.out_features = out_features
 
-        self.A = nn.Linear(in_features, hidden_features)
-        nn.init.zeros_(self.A.bias)
+        self.ABD = nn.Linear(in_features, hidden_features * 2 + out_features)
+        nn.init.zeros_(self.ABD.bias)
+        self.C = nn.Linear(hidden_features, out_features)
 
         self._register_scale("scale", decay, decay_rank, learn_decay)
-
-        self.B = nn.Linear(in_features, hidden_features)
-        self.C = nn.Linear(hidden_features, out_features)
-        self.D = nn.Linear(in_features, out_features)
-        nn.init.zeros_(self.D.bias)
-
         self._initialize_state("mem")
 
     def forward(self, x):
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
-        delta = nn.functional.softplus(self.A(x))
+        A, B, D = torch.split(self.ABD(x), [self.hidden_features, self.hidden_features, self.out_features], dim=-1)
+
+        delta = nn.functional.softplus(A)
         decay = torch.exp(delta * -self.scale)
 
         mem = self._to_working_dim(self.mem)
-        mem = mem * decay + self.B(x) * (1 - decay)
+        mem = mem * decay + B * (1 - decay)
 
-        out = x + nn.functional.silu(self.D(x)) * self.C(mem)
+        out = x + nn.functional.silu(D) * self.C(mem)
 
         out = self._from_working_dim(out)
         self.mem = self._from_working_dim(mem)
