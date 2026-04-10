@@ -209,89 +209,14 @@ class SNN(tt.Model):
         return output
 
 
-class SimpleRNNModel(tt.Model):
-    def __init__(self, hidden_dim, num_layers):
-        super().__init__()
-
-        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
-
-        self.layers = nn.ModuleList([
-            tt.rnn.SimpleRNN(
-                in_features=hidden_dim,
-                out_features=hidden_dim,
-            ) for _ in range(num_layers)
-        ])
-
-        self.dec = nn.Linear(hidden_dim, 10)
-        nn.init.zeros_(self.dec.weight)
-        nn.init.zeros_(self.dec.bias)
-
-    def forward(self, x):
-        x = self.enc(x)
-        for layer in self.layers:
-            x = layer(x)
-        x = self.dec(x)
-        return x
-
-
-class LSTMModel(tt.Model):
-    def __init__(self, hidden_dim, num_layers):
-        super().__init__()
-
-        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
-
-        self.layers = nn.ModuleList([
-            tt.rnn.LSTM(
-                in_features=hidden_dim,
-                out_features=hidden_dim,
-            ) for _ in range(num_layers)
-        ])
-
-        self.dec = nn.Linear(hidden_dim, 10)
-        nn.init.zeros_(self.dec.weight)
-        nn.init.zeros_(self.dec.bias)
-
-    def forward(self, x):
-        x = self.enc(x)
-        for layer in self.layers:
-            x = layer(x)
-        x = self.dec(x)
-        return x
-
-
-class GRUModel(tt.Model):
-    def __init__(self, hidden_dim, num_layers):
-        super().__init__()
-
-        self.enc = nn.Linear(kernel_size ** 2, hidden_dim)
-
-        self.layers = nn.ModuleList([
-            tt.rnn.GRU(
-                in_features=hidden_dim,
-                out_features=hidden_dim,
-            ) for _ in range(num_layers)
-        ])
-
-        self.dec = nn.Linear(hidden_dim, 10)
-        nn.init.zeros_(self.dec.weight)
-        nn.init.zeros_(self.dec.bias)
-
-    def forward(self, x):
-        x = self.enc(x)
-        for layer in self.layers:
-            x = layer(x)
-        x = self.dec(x)
-        return x
-
-
-class MambaModel(tt.Model):
+class SSMModel(tt.Model):
     def __init__(self, working_dim, hidden_dim, num_layers):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, working_dim)
 
         self.layers = nn.ModuleList([
-            tt.rnn.Mamba(
+            tt.rnn.SelectiveSSM(
                 in_features=working_dim,
                 out_features=working_dim,
                 hidden_features=hidden_dim,
@@ -311,10 +236,7 @@ class MambaModel(tt.Model):
         return x
 
 
-# model = SimpleRNNModel(hidden_dim=128, num_layers=10).to(device)
-# model = LSTMModel(hidden_dim=128, num_layers=10).to(device)
-# model = GRUModel(hidden_dim=128, num_layers=10).to(device)
-model = MambaModel(working_dim=128, hidden_dim=32, num_layers=10).to(device)
+model = SSMModel(working_dim=128, hidden_dim=32, num_layers=10).to(device)
 # model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
