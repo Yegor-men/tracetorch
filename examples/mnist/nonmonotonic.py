@@ -209,16 +209,15 @@ class SNN(tt.Model):
         return output
 
 
-class SSMModel(tt.Model):
+class SSM(tt.Model):
     def __init__(self, working_dim, hidden_dim, num_layers):
         super().__init__()
 
         self.enc = nn.Linear(kernel_size ** 2, working_dim)
 
         self.layers = nn.ModuleList([
-            tt.rnn.SelectiveSSM(
-                in_features=working_dim,
-                out_features=working_dim,
+            tt.ssm.SpikeSSM(
+                num_features=working_dim,
                 hidden_features=hidden_dim,
                 decay=torch.rand(hidden_dim),
             ) for _ in range(num_layers)
@@ -236,7 +235,7 @@ class SSMModel(tt.Model):
         return x
 
 
-model = SSMModel(working_dim=128, hidden_dim=32, num_layers=10).to(device)
+model = SSM(working_dim=128, hidden_dim=128, num_layers=10).to(device)
 # model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
@@ -246,7 +245,7 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 5
+num_epochs = 15
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
