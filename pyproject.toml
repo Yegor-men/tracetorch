@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracetorch"
-version = "0.16.3"
+version = "0.16.4"
 authors = [{ name = "Yegor Menovchshikov", email = "yegor.mn@gmail.com" }]
 description = "A strict, ergonomic, and powerful Spiking Neural Network (SNN) library for PyTorch."
 readme = "README.md"
