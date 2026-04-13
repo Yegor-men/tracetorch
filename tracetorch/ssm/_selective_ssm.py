@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from ._ssmlayer import Layer as SSMLayer
 from typing import Union, Literal
-from tracetorch import functional
+from .. import functional
 
 
 class SelectiveSSM(SSMLayer):
@@ -69,31 +69,33 @@ class SpikeSSM(SSMLayer):
         self._register_scale("scale", decay, decay_rank, learn_decay)
         self._initialize_state("state")
 
+        self.proj_in = nn.Linear(num_features, num_features)
         self.lif = snn.DLITS(
-            hidden_features,
-            pos_beta=torch.rand(hidden_features),
-            neg_beta=torch.rand(hidden_features),
-            pos_threshold=torch.rand(hidden_features),
-            neg_threshold=torch.rand(hidden_features),
-            pos_scale=torch.rand(hidden_features),
-            neg_scale=torch.rand(hidden_features),
-            quant_fn="probabilistic"
+            num_features,
+            pos_beta=torch.rand(num_features) * 0.5 + 0.5,
+            neg_beta=torch.rand(num_features) * 0.5 + 0.5,
+            pos_threshold=torch.rand(num_features),
+            neg_threshold=torch.rand(num_features),
+            pos_scale=torch.rand(num_features),
+            neg_scale=torch.rand(num_features),
+            quant_fn=functional.stochastic_round_ste(0.1),
         )
 
     def forward(self, x):
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
-        A, B, D = torch.split(self.ABD(x), [self.hidden_features, self.hidden_features, self.num_features], dim=-1)
+        ssm_input = self.lif(self.proj_in(x))
+
+        A, B, D = torch.split(self.ABD(ssm_input), [self.hidden_features, self.hidden_features, self.num_features],
+                              dim=-1)
         delta = nn.functional.softplus(A)
         decay = torch.exp(delta * -self.scale)
 
         state = self._to_working_dim(self.state)
         state = state * decay + B * (1 - decay)
 
-        spikes = self._to_working_dim(self.lif(self._from_working_dim(state)))
-
-        out = x + nn.functional.silu(D) * self.C(spikes)
+        out = x + nn.functional.silu(D) * self.C(state)
 
         self.state = self._from_working_dim(state)
         out = self._from_working_dim(out)

@@ -24,7 +24,14 @@ pin_memory = True
 
 
 class MNIST(torch.utils.data.Dataset):
-    def __init__(self, train=True, min_val=0.0, max_val=1.0, offset=0.0, root="data"):
+    def __init__(self, train=True, min_val=0.0, max_val=1.0, offset=0.0, root="data",
+                 pixel_permutation=None):
+        # Use shared permutation or create one if this is the first instance
+        if pixel_permutation is None:
+            self.pixel_permutation = torch.randperm(784)
+        else:
+            self.pixel_permutation = pixel_permutation
+
         self.ds = datasets.MNIST(
             root=root,
             train=train,
@@ -40,6 +47,13 @@ class MNIST(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         img, label = self.ds[idx]  # img: [C, H, W], label: int
+
+        # Apply consistent pixel shuffling
+        C, H, W = img.shape
+        img_flat = img.view(-1)  # Flatten to [C*H*W]
+        img_shuffled = img_flat[self.pixel_permutation]
+        img = img_shuffled.view(C, H, W)  # Reshape back
+
         return img, label
 
 
@@ -78,13 +92,39 @@ def patch_collate(batch):
     return imgs_b, seq, torch.tensor(labels, dtype=torch.long)
 
 
-train_dataset = MNIST(train=True, min_val=min_prob, max_val=max_prob, offset=noise_offset)
-test_dataset = MNIST(train=False, min_val=min_prob, max_val=max_prob, offset=noise_offset)
+# Create shared pixel permutation
+shared_permutation = torch.randperm(784)
+train_dataset = MNIST(
+    train=True,
+    min_val=min_prob,
+    max_val=max_prob,
+    offset=noise_offset,
+    pixel_permutation=shared_permutation,
+)
+test_dataset = MNIST(
+    train=False,
+    min_val=min_prob,
+    max_val=max_prob,
+    offset=noise_offset,
+    pixel_permutation=shared_permutation,
+)
 
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                              collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                             collate_fn=patch_collate, num_workers=num_workers, pin_memory=pin_memory)
+train_dataloader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    collate_fn=patch_collate,
+    num_workers=num_workers,
+    pin_memory=pin_memory,
+)
+test_dataloader = DataLoader(
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    collate_fn=patch_collate,
+    num_workers=num_workers,
+    pin_memory=pin_memory,
+)
 
 # ======================================================================================================================
 
@@ -115,7 +155,6 @@ class ResidualLayer(tt.Model):
             neg_scale=torch.rand(hidden_dim),
             pos_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
             neg_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
-            quant_fn="probabilistic",
         )
         self.lin1 = nn.Linear(hidden_dim, hidden_dim)
         self.lin2 = nn.Linear(hidden_dim, hidden_dim)
@@ -245,30 +284,60 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 15
+num_epochs = 10
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
-        img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
+        img, seq, label = img.to(device), seq.to(device), label.to(device)
+
+        # Apply dynamic corruption per image in batch
+        batch_size = img.size(0)
+        corruption_levels = torch.rand(batch_size, device=device)  # [0,1] values
+        sqrt_corruption = torch.sqrt(corruption_levels)  # sqrt values for image weighting
+
+        # Generate noise for each image
+        noise = torch.rand_like(img)  # Same shape as images
+
+        # Apply corruption: image*sqrt(x) + noise*(1-sqrt(x))
+        # Need to expand sqrt_corruption to match image dimensions
+        sqrt_correlation = sqrt_corruption.view(batch_size, 1, 1, 1)  # [B,1,1,1]
+        img_corrupted = img * sqrt_correlation + noise * (1 - sqrt_correlation)
+
+        # Update seq with corrupted images
+        # Need to re-run patch_collate logic here with corrupted images
+        B, C, H, W = img_corrupted.shape
+        patches = img_corrupted.unfold(2, kernel_size, stride).unfold(3, kernel_size, stride)
+        patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+        n_h = patches.size(1)
+        n_w = patches.size(2)
+        n_patches = n_h * n_w
+        patches = patches.view(B, n_patches, C * kernel_size * kernel_size)
+        seq_corrupted = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
 
         model.zero_grad()
         model.zero_states()
 
         # Collect outputs from all timesteps
         timestep_outputs = []
-        for t in range(seq.size(0)):
-            model_output = model(seq[t])
+        for t in range(seq_corrupted.size(0)):
+            model_output = model(seq_corrupted[t])
             timestep_outputs.append(model_output)
 
-        # Calculate loss for each timestep
+        # Calculate weighted loss for each timestep
         T = len(timestep_outputs)
         weights = torch.arange(1, T + 1, dtype=torch.float32, device=device) / T
 
-        losses = torch.stack([loss_fn(output, label) for output in timestep_outputs])
-        loss = (losses * weights).sum() / weights.sum()  # Divide by sum of weights
+        # Calculate per-image losses with corruption scaling
+        final_outputs = timestep_outputs[-1]  # [B, 10]
+        per_image_losses = torch.stack([
+            loss_fn(final_outputs[i:i + 1], label[i:i + 1]) * corruption_levels[i]
+            for i in range(batch_size)
+        ])
 
-        # Use final timestep for accuracy
-        pred_classes = timestep_outputs[-1].argmax(dim=-1)
+        loss = per_image_losses.mean()
+
+        # Use final timestep for accuracy (without corruption weighting)
+        pred_classes = final_outputs.argmax(dim=-1)
         frac_correct = (pred_classes == label).sum().item() / batch_size
 
         train_losses.append(loss.item())
@@ -292,7 +361,7 @@ for e in range(num_epochs):
     test_acc = 0.0
     with torch.no_grad():
         for (img, seq, label) in tqdm(test_dataloader, total=len(test_dataloader), desc=f"TEST - E{e}"):
-            img, seq, label = img.to(device), torch.bernoulli(seq).to(device), label.to(device)
+            img, seq, label = img.to(device), seq.to(device), label.to(device)
 
             model.zero_states()
 
@@ -324,7 +393,7 @@ with torch.no_grad():
         running_loss = 0.0
 
         for t in range(seq.size(0)):  # Iterate over timesteps
-            spk_input = torch.bernoulli(seq[t]).unsqueeze(0)  # [1, area]
+            spk_input = seq[t].unsqueeze(0)  # [1, area]
             input_spike_train.append(spk_input.squeeze(0))  # [area]
 
             model_output = model(spk_input).squeeze(0)  # [10]
@@ -333,11 +402,11 @@ with torch.no_grad():
             running_loss += loss.item() / seq.size(0)
             losses.append(loss.item())
 
-        tt.plot.render_image(img.unsqueeze(0), title=f"Loss: {running_loss:.3f}")
+        tt.plot.render_image(img.unsqueeze(0), title=f"Digit: {label.item()}")
         # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
         input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
         tt.plot.spike_train([input_spike_tensor.T[t] for t in range(input_spike_tensor.T.size(0))], title="Input")
         tt.plot.spike_train(model_outputs, title="Model Output")
-        plt.title("Loss over time")
+        plt.title(f"Loss over time | Loss: {running_loss:.3f}")
         plt.plot(losses)
         plt.show()

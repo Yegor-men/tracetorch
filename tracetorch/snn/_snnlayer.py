@@ -8,9 +8,6 @@ from .. import functional
 class Layer(BaseLayer):
     def __init__(self, num_neurons: int, dim: int = -1):
         super().__init__(num_neurons, dim)
-        self.round_ste = functional.round_ste()
-        self.bernoulli_ste = functional.bernoulli_ste()
-        self.probabilistic_ste = functional.probabilistic_ste()
 
     def _register_decay(
             self,
