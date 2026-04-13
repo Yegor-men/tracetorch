@@ -26,7 +26,7 @@ class LITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -34,12 +34,7 @@ class LITS(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 
@@ -97,7 +92,7 @@ class DLITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -107,12 +102,7 @@ class DLITS(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -179,7 +169,7 @@ class SLITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -190,12 +180,7 @@ class SLITS(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -261,7 +246,7 @@ class RLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -273,12 +258,7 @@ class RLITS(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -353,7 +333,7 @@ class DSLITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -368,12 +348,7 @@ class DSLITS(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -461,7 +436,7 @@ class DRLITS(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -477,12 +452,7 @@ class DRLITS(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -573,7 +543,7 @@ class SRLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -588,12 +558,7 @@ class SRLITS(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
@@ -684,7 +649,7 @@ class DSRLITS(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -705,12 +670,7 @@ class DSRLITS(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
 

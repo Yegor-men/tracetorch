@@ -17,7 +17,7 @@ class LIB(SNNLayer):
             learn_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -66,7 +66,7 @@ class DLIB(SNNLayer):
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -124,7 +124,7 @@ class SLIB(SNNLayer):
             learn_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -183,7 +183,7 @@ class RLIB(SNNLayer):
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -253,7 +253,7 @@ class DSLIB(SNNLayer):
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -338,7 +338,7 @@ class DRLIB(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -427,7 +427,7 @@ class SRLIB(SNNLayer):
             learn_threshold: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
@@ -515,7 +515,7 @@ class DSRLIB(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn: Literal["round", "bernoulli", "probabilistic"] = "bernoulli",
+            quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
         super().__init__(num_neurons, dim)
 
