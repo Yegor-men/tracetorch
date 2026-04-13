@@ -46,6 +46,9 @@ class SelectiveSSM(SSMLayer):
         return out
 
 
+from .. import snn
+
+
 class SpikeSSM(SSMLayer):
     def __init__(
             self,
@@ -63,39 +66,37 @@ class SpikeSSM(SSMLayer):
         self.ABD = nn.Linear(num_features, hidden_features * 2 + num_features)
         nn.init.zeros_(self.ABD.bias)
         self.C = nn.Linear(hidden_features, num_features)
-
         self._register_scale("scale", decay, decay_rank, learn_decay)
-        self._initialize_state("syn")
-        self._initialize_state("mem")
-        self.beta = nn.Parameter(functional.sigmoid_inverse(torch.rand(hidden_features)))
-        self.threshold = nn.Parameter(functional.softplus_inverse(torch.rand(hidden_features)))
-        self.spike_fn = functional.sigmoid4x
-        self.quant_fn = functional.bernoulli_ste()
+        self._initialize_state("state")
+
+        self.lif = snn.DLITS(
+            hidden_features,
+            pos_beta=torch.rand(hidden_features),
+            neg_beta=torch.rand(hidden_features),
+            pos_threshold=torch.rand(hidden_features),
+            neg_threshold=torch.rand(hidden_features),
+            pos_scale=torch.rand(hidden_features),
+            neg_scale=torch.rand(hidden_features),
+            quant_fn="probabilistic"
+        )
 
     def forward(self, x):
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
         A, B, D = torch.split(self.ABD(x), [self.hidden_features, self.hidden_features, self.num_features], dim=-1)
-
         delta = nn.functional.softplus(A)
         decay = torch.exp(delta * -self.scale)
 
-        syn = self._to_working_dim(self.syn)
-        syn = syn * decay + B * (1 - decay)
+        state = self._to_working_dim(self.state)
+        state = state * decay + B * (1 - decay)
 
-        mem = self._to_working_dim(self.mem)
-        mem = mem * nn.functional.sigmoid(self.beta) + syn
+        spikes = self._to_working_dim(self.lif(self._from_working_dim(state)))
 
-        threshold = nn.functional.softplus(self.threshold)
-        spike_prob = self.spike_fn(mem - threshold)
-        spikes = self.quant_fn(spike_prob)
-        mem = mem - spikes * threshold
         out = x + nn.functional.silu(D) * self.C(spikes)
 
+        self.state = self._from_working_dim(state)
         out = self._from_working_dim(out)
-        self.syn = self._from_working_dim(syn)
-        self.mem = self._from_working_dim(mem)
         return out
 
 
