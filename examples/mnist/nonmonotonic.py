@@ -259,6 +259,12 @@ class SSM(tt.Model):
                 num_features=working_dim,
                 hidden_features=hidden_dim,
                 decay=torch.rand(hidden_dim),
+                lif=snn.LIB(
+                    working_dim,
+                    beta=torch.rand(working_dim),
+                    threshold=torch.rand(working_dim),
+                    quant_fn=nn.Identity(),
+                ),
             ) for _ in range(num_layers)
         ])
 

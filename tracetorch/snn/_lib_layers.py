@@ -25,12 +25,7 @@ class LIB(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
     def forward(self, x):
@@ -76,12 +71,7 @@ class DLIB(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -135,12 +125,7 @@ class SLIB(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -195,12 +180,7 @@ class RLIB(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -268,12 +248,7 @@ class DSLIB(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -354,12 +329,7 @@ class DRLIB(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -442,12 +412,7 @@ class SRLIB(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
@@ -536,12 +501,7 @@ class DSRLIB(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        quant_fn_map = {
-            "round": self.round_ste,
-            "bernoulli": self.bernoulli_ste,
-            "probabilistic": self.probabilistic_ste
-        }
-        self.quant_fn = quant_fn_map.get(quant_fn, self.bernoulli_ste)
+        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
 

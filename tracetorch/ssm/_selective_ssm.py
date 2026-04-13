@@ -46,14 +46,12 @@ class SelectiveSSM(SSMLayer):
         return out
 
 
-from .. import snn
-
-
 class SpikeSSM(SSMLayer):
     def __init__(
             self,
             num_features: int,
             hidden_features: int,
+            lif,
             decay: Union[float, torch.Tensor] = 0.9,
             dim: int = -1,
             decay_rank: Literal[0, 1] = 1,
@@ -63,23 +61,14 @@ class SpikeSSM(SSMLayer):
         self.hidden_features = hidden_features
         self.num_features = num_features
 
+        self.proj_in = nn.Linear(num_features, num_features)
+        self.lif = lif
+
         self.ABD = nn.Linear(num_features, hidden_features * 2 + num_features)
         nn.init.zeros_(self.ABD.bias)
         self.C = nn.Linear(hidden_features, num_features)
         self._register_scale("scale", decay, decay_rank, learn_decay)
         self._initialize_state("state")
-
-        self.proj_in = nn.Linear(num_features, num_features)
-        self.lif = snn.DLITS(
-            num_features,
-            pos_beta=torch.rand(num_features) * 0.5 + 0.5,
-            neg_beta=torch.rand(num_features) * 0.5 + 0.5,
-            pos_threshold=torch.rand(num_features),
-            neg_threshold=torch.rand(num_features),
-            pos_scale=torch.rand(num_features),
-            neg_scale=torch.rand(num_features),
-            quant_fn=functional.stochastic_round_ste(0.1),
-        )
 
     def forward(self, x):
         self._ensure_states(x)
