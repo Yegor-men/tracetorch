@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.16.4-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.17.0-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.16.4-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.17.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -33,25 +33,28 @@ Take a look at the [quickstart](#quickstart) section to see how the code looks l
 The library initially started as one focused on SNNs. With a slightly unorthodox, but consistent and self-explanatory
 naming schema, traceTorch presents 32 distinct SNN layer types built around the Leaky Integrator, and encapsulate a wide
 range of dynamics: duality (splitting positive and negative signals); recurrence; synapse (an extra EMA accumulator
-before the membrane); binary, ternary, scaled ternary, or no spiking for the output at all. The resulting 32 layers
-encapsulate a whopping range of possible dynamics: `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`
-`LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`,
-`SRLIT`, `DSRLIT`, `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS`.
+before the membrane); binary, ternary, scaled ternary, or no spiking for the output at all. But thinking a bit outside
+the box, and the layer mixin used for SNNs could also be used for standard RNNs. Thinking even more outside the box, and
+it becomes evident that State Space Models (SSMs) such as Mamba, are incredibly similar in concept to the Leaky
+Integrator, albeit a bit more complex. Subsequently, the philosophy was then extended to RNN and SSM layers. The result
+is an opinionated, but extremely extensive and ergonomic extension to PyTorch for RNN, SNN and SSM models, adding a
+total of 42 layers, with more to come:
 
-But thinking a bit outside the box, and it becomes obvious that State Space Models (SSMs) such as Mamba, are incredibly
-similar to the Leaky Integrator that all the SNN layers were built around, albeit a bit more complex. Subsequently, the
-philosophy was then extended to the classic RNN layers: `SimpleRNN`, `LSTM`, `GRU`; as well as SSMs: `SelectiveSSM`,
-`SpikeSSM`, `SelectiveZOHSSM`, and more to come.The result is an opinionated but extremely ergonomic extension to
-PyTorch that rethinks the way that RNNs are made: no matter the architecture, it's all just another PyTorch-esque layer
-that can be placed anywhere.
+| 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer`                                          |
+|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------|
+| Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                               |
+| Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
+| Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
+| Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
 
-The main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from `tt.Model`
-grants access to powerful recursive methods that handle all the boilerplate of state management: `zero_states()` and
-`detach_states()`, `save_states()` and `load_states()`, no matter how deeply hidden they are. For some networks, some
-parameters aren't used in their raw form, but instead need to be passed through an activation function of sorts, and to
-skip this redundant calculation for a trained model, the module also presents `TTcompile()` and `TTdecompile()`.
+But above all, the main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from
+`tt.Model` grants access to powerful recursive methods that handle all the boilerplate of state management:
+`zero_states()` and `detach_states()`, `save_states()` and `load_states()`, no matter how deeply hidden they are. For
+some networks, some parameters aren't used in their raw form, but instead need to be passed through an activation
+function of sorts, and to skip this redundant calculation for a trained model, the module also presents `TTcompile()`
+and `TTdecompile()`.
 
-But if you're dissatisfied with the range of layers, then making your own ones is also incredibly easy. Inheriting from
+And if you're dissatisfied with the range of layers, then making your own ones is also incredibly easy. Inheriting from
 `tt.Layer` (or the downstream `tt.rnn.Layer` or `tt.snn.Layer` or `tt.ssm.Layer`) allows you to easily create layers
 that integrate with the rest of the traceTorch ecosystem: making so that their hidden states are accessible and are
 created to the proper shape; parameters can be compiled and initialization handles learnability, rank and/or a custom
@@ -64,29 +67,52 @@ minimalism, composition, and long-term extensibility.
 
 ## Features
 
-As mentioned before, traceTorch currently has three main focal points for recurrent networks: SNNs which can be found in
-`tt.snn`, RNNs which can be found in `tt.rnn`, and SSMs which can be found in `tt.ssm`. Regardless of where the layer
-comes from though, it's inevitably a child of `tt.Layer`, which makes it integrate with `tt.Model` and all other PyTorch
-modules in a layer-like way. This means that the layers expect one input, and produce only one output. All hidden states
-stay hidden, internal to the layer. And it's just one layer, not a full multi-layer model. Subsequently, the design
-approach changes a bit: the model processes one timestep at a time, it's expected that the looping is done externally.
+By far, the most important feature of traceTorch is `tt.Model` as it handles all the model level boilerplate. Inheriting
+from `tt.Model` means access to the following recursive methods:
 
-As stated earlier, the main selling point of traceTorch is in that it handles all the state management boilerplate. A
-model inheriting from `tt.Model` means access to predominantly the `zero_states()` and `detach_states()` methods.
-Both of them recursively search everywhere for where the `tt.Layer` layers can be hidden, and either set to `None`
-or detach accordingly. At the time of writing, `save_states()` and `load_states()` methods are experimental, but they
-allow to save and load the hidden states to `.pt` or `.safetensors` in the same way that you could save the entire
-model, but as a separate file. There are also the experimental `TTcompile` and `TTdecompile` methods which optimize
-specific parameters that are always passed through an activation function of sorts so that instead they're stored as the
-direct values instead: to be used when a model is trained and you don't want to waste compute by re-calculating the
-effective values each time.
+- `zero_states` to set all the states in the model to `None`, so that they get initialized correctly on the next
+  forward pass
+- `detach_states` to detach all the current hidden states from the computation graph, thus getting online learning
+- `save_states() -> Dict[str, torch.Tensor]` to save the hidden states in the same way that you would save the model as
+  a `.pt` or `.safetensors`
+- `load_states(states: Dict[str, torch.Tensor])` to load existing states in the same way that you would load a model's
+  parameters from a `.pt` or `.safetensors` file
+- `TTcompile` to turn all parameters that can be optimized into the optimized versions, used for optimizing a model
+  that's already trained as not to do redundant calculations
+- `TTdecompile` to turn all compiled parameters into their uncompiled versions, used for turning a compiled model
+  back into a trainable one
 
-Speaking of layers, at the time of writing, traceTorch has a total of 36. `tt.rnn` is a fair bit smaller and more
-self-explanatory. It includes: `SimpleRNN`, `LSTM`, `GRU`, with more to come (probably). The implementations are
-standard considering the "one timestep at a time" and "as a layer" rules. `tt.ssm` is currently in development and is
-rather experimental, the only real layer that works well is `SelectiveSSM`; in the future, `Mamba`, `S4` and others will
-be added. However, `tt.snn` layers are a lot more extensive, and follow a slightly unconventional, but consistent and
-self-explanatory naming schema. The names are modular and explain their role and function.
+traceTorch also presents `tt.Layer` and its downstream variants: `tt.snn.Layer`, `tt.rnn.Layer`, `tt.ssm.Layer`, which
+are used to handle the layer level boilerplate. For initialization, the layer asks for the `num_neurons` so that it
+knows what size the hidden states and parameters need to be, and `dim` so that it knows what dimension it's meant to be
+looking at. `dim=-3` would hence make the layer focus on the color channel of a [B, C, H, W] tensor. There's extra
+methods for the downstream layer types, but the core one presents the following:
+
+- `_register_parameter` to register a compileable parameter as a scalar/vector, learnable/not, value/tensor
+- `_initialize_state` to initialize a hidden state so that it's logged and recorded and automatically managed
+- `_detach_state` to detach a specific state from the computation graph
+- `detach_states` to detach all initialized states from the computation graph
+- `_zero_state` to set a specific state to `None`
+- `zero_states` to set all initialized states to `None`
+- `_ensure_state` to make a specific state assume the shape of the inputted tensor if it's `None`
+- `_ensure_states` to make all initialized state assume the shape of the inputted tensor if it's `None`
+- `_to_working_dim` to move a tensor's target dimension (from initialization) to the -1st index for comfort
+- `_from_working_dim` to move a tensor's -1st dimension to the target dimension (from initialization)
+- `TTcompile` to compile the layer
+- `TTdecompile` to decompile the layer
+
+Speaking of layers, traceTorch has a total of 42 for SNNs, RNNs, and SSMs; each of which reside in their own
+subdirectory: `tt.snn`, `tt.rnn`, and `tt.ssm`. Regardless of where the layer comes from though, it's inevitably a child
+of `tt.Layer`, which makes it integrate with `tt.Model` and all other PyTorch modules in a layer-like way. This means
+that the layers expect one input, and produce only one output. All hidden states stay hidden, internal to the layer. And
+it's just one layer, not a full multi-layer model. Subsequently, the design approach changes a bit: the model processes
+one timestep at a time, it's expected that the looping is done externally.
+
+RNN and SSM layers are self-explanatory and follow the standard architectures. `tt.rnn` presents 3 layers: `SimpleRNN`
+for the classic Elman RNN, `LSTM` and `GRU` for the LSTM and GRU written in a traceTorch way. `tt.ssm` presents 4
+standard and 3 experimental (work in progress) layers: `S4`, `S5`, `S6`, `Mamba` for the S4, S5, S6 and Mamba
+architectures; and `SelectiveSSM`, `SelectiveZOHSSM`, and `SpikeSSM` for an EMA, ZOH, and spiking alternatives to the S
+series. However, `tt.snn` is the most expansive of all, with 32 layers with a modular naming schema:
 
 - `LI` base name stands for `Leaky Integrator`: the simplest of layer types with just one trace and decay: the membrane
   potential and the beta decay. No firing and no reset mechanics, this layer type is commonly known as `Readout` (
@@ -108,28 +134,6 @@ self-explanatory naming schema. The names are modular and explain their role and
 - `R~` prefix stands for `Recurrent`, meaning that the layer records its own outputs into a separate trace with its own
   gamma decay and re-integrates it back into the membrane in the next timestep. The computation graph is made to work
   even with online learning.
-
-In total, this results in 32 specially made, performant layers which easily integrate and work with other PyTorch
-layers: `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA` `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`,
-`DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`, `LITS`, `DLITS`,
-`SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS`.
-
-Additionally, all the layers handle some extra boilerplate with parameter initialization and hidden state management,
-all thanks to the `tt.Layer` superclass and the downstream SNN, RNN and SSM variants of it (`tt.snn.Layer`,
-`tt.rnn.Layer`, `tt.ssm.Layer`):
-
-- Rank-based parameter scoping for a per-layer (scalar) or per-neuron (vector) parameters, defaulting to per-neuron.
-- Initialize parameters via a float value or your own desired tensor.
-- Make any parameter learnable or static, automatically set to an `nn.Parameter` or registered buffer accordingly. This
-  is _not_ applicable for some parameters, such as the linear layers inside `tt.rnn.GRU` for example.
-- Smooth parameter constraints for those that require it (sigmoid on decays and softplus on thresholds for SNN layers),
-  meaning that gradients always flow cleanly and accurately. The respective inverse function is applied if necessary
-  during initialization.
-- Dimension movement helpers that move the tensor's dimension (the `dim=` argument used during initialization) to the
-  last dimension so that the layer is agnostic to the tensor shape and for example can work with CNNs by setting
-  `dim=-3` on [..., C, H, W] data.
-- Property generation: parameters that require an activation function are saved in `raw_*` form to account for inverse
-  and activation functions, but work intuitively such that `layer.beta` returns the sigmoid activated value, et cetera.
 
 ## Documentation
 
@@ -153,7 +157,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.16.4 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.17.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
@@ -181,14 +185,14 @@ class SNN(tt.Model):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 32, 3, padding=1),
-            snn.LIB(16, dim=-3),  # Works on the color channel dimension
+            rnn.GRU(in_features=16, out_features=16, dim=-3),  # RNN, dim=-3 works on the color channel dimension
             nn.MaxPool2d(2, 2),
             nn.Conv2d(32, 64, 3, padding=1),
-            snn.LIB(64, beta=torch.rand(64), dim=-3),  # Can set parameters to a custom tensor too
+            snn.LIB(num_neurons=64, beta=torch.rand(64), dim=-3),  # SNN, can set parameters to a custom tensor too
             nn.MaxPool2d(2, 2),
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 128),
-            ssm.SelectiveSSM(128, 128, 32),  # Selective state space model
+            ssm.S6(num_neurons=128, d_state=16),  # S6 SSM, you can mix all the different layers into one model
             nn.Linear(128, 10)
         )
 
@@ -239,8 +243,6 @@ traceTorch still has a long way to go. Namely:
 
 - Fix `tt.functional` to be cleaner
 - Clean up `tt.plot` plotting functions
-- Fix `_register_parameter` method for `tt.Layer` to use `init_fn` for initialization instead of the inverse function
-- Fix `TTcompile` and `TTdecompile` to actually use the saved inverse and activation function
 - Clean up and make sure that the `save_states` and `load_states` work as intended without fault
 - Create tests for compilation and decompilation, saving and loading
 - Finish the `examples/` section for example code for various examples
