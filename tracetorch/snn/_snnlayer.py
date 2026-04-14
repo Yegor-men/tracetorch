@@ -21,6 +21,7 @@ class Layer(BaseLayer):
             value,
             rank,
             learnable,
+            init_fn=functional.sigmoid_inverse,
             inverse_function=functional.sigmoid_inverse,
             activation_function=nn.functional.sigmoid,
         )
@@ -37,6 +38,7 @@ class Layer(BaseLayer):
             value,
             rank,
             learnable,
+            init_fn=functional.softplus_inverse,
             inverse_function=functional.softplus_inverse,
             activation_function=nn.functional.softplus,
         )

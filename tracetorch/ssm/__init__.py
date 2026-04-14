@@ -1,2 +1,3 @@
 from ._ssmlayer import Layer
-from ._selective_ssm import SelectiveSSM, SelectiveZOHSSM, SpikeSSM
+from ._custom import SelectiveSSM, SelectiveZOHSSM, SpikeSSM
+from ._s_series import S4, S5, S6, Mamba

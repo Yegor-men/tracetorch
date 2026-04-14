@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
-torch.cuda.manual_seed_all(0)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(0)
 
 # ======================================================================================================================
 
@@ -21,12 +22,12 @@ stride = 4
 pad = False
 num_workers = 0
 pin_memory = True
+shuffle_pixels = True  # Toggle this for sequence complexity
 
 
 class MNIST(torch.utils.data.Dataset):
     def __init__(self, train=True, min_val=0.0, max_val=1.0, offset=0.0, root="data",
                  pixel_permutation=None):
-        # Use shared permutation or create one if this is the first instance
         if pixel_permutation is None:
             self.pixel_permutation = torch.randperm(784)
         else:
@@ -37,7 +38,7 @@ class MNIST(torch.utils.data.Dataset):
             train=train,
             download=True,
             transform=transforms.Compose([
-                transforms.ToTensor(),  # -> [C, H, W] in [0,1]
+                transforms.ToTensor(),
                 transforms.Lambda(lambda x: x * (max_val - min_val) + min_val + offset)
             ])
         )
@@ -46,225 +47,65 @@ class MNIST(torch.utils.data.Dataset):
         return len(self.ds)
 
     def __getitem__(self, idx):
-        img, label = self.ds[idx]  # img: [C, H, W], label: int
+        img, label = self.ds[idx]
 
-        # Apply consistent pixel shuffling
-        C, H, W = img.shape
-        img_flat = img.view(-1)  # Flatten to [C*H*W]
-        img_shuffled = img_flat[self.pixel_permutation]
-        img = img_shuffled.view(C, H, W)  # Reshape back
+        if shuffle_pixels:
+            C, H, W = img.shape
+            img_flat = img.view(-1)
+            img_shuffled = img_flat[self.pixel_permutation]
+            img = img_shuffled.view(C, H, W)
 
         return img, label
 
 
 def patch_collate(batch):
-    """
-    returns:
-      imgs_orig:  [B, C, H, W]
-      seq:        [T, B, area]  (area = C * k * k)
-      labels_onehot: [B, 10]
-    """
     imgs, labels = zip(*batch)
-    imgs_b = torch.stack(imgs, dim=0)  # [B, C, H, W]
+    imgs_b = torch.stack(imgs, dim=0)
     B, C, H, W = imgs_b.shape
 
-    # optional pad so patches tile exactly
     if pad:
         rem_h = (H - kernel_size) % stride
         rem_w = (W - kernel_size) % stride
         pad_h = (stride - rem_h) % stride
         pad_w = (stride - rem_w) % stride
         if pad_h != 0 or pad_w != 0:
-            imgs_b = nn.functional.pad(imgs_b, (0, pad_w, 0, pad_h), value=0.0)  # pad (left,right,top,bottom) order
+            imgs_b = nn.functional.pad(imgs_b, (0, pad_w, 0, pad_h), value=0.0)
             _, _, H, W = imgs_b.shape
 
-    # unfold to patches: [B, C, n_h, n_w, k, k]
     patches = imgs_b.unfold(2, kernel_size, stride).unfold(3, kernel_size, stride)
-    # permute and reshape to [B, n_patches, area]
     patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
     n_h = patches.size(1)
     n_w = patches.size(2)
     n_patches = n_h * n_w
-    patches = patches.view(B, n_patches, C * kernel_size * kernel_size)  # [B, T, area]
-    # transpose to [T, B, area]
-    seq = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
+    patches = patches.view(B, n_patches, C * kernel_size * kernel_size)
+    seq = patches.permute(1, 0, 2).contiguous()
 
     return imgs_b, seq, torch.tensor(labels, dtype=torch.long)
 
 
-# Create shared pixel permutation
 shared_permutation = torch.randperm(784)
-train_dataset = MNIST(
-    train=True,
-    min_val=min_prob,
-    max_val=max_prob,
-    offset=noise_offset,
-    pixel_permutation=shared_permutation,
-)
-test_dataset = MNIST(
-    train=False,
-    min_val=min_prob,
-    max_val=max_prob,
-    offset=noise_offset,
-    pixel_permutation=shared_permutation,
-)
+train_dataset = MNIST(train=True, pixel_permutation=shared_permutation)
+test_dataset = MNIST(train=False, pixel_permutation=shared_permutation)
 
-train_dataloader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    collate_fn=patch_collate,
-    num_workers=num_workers,
-    pin_memory=pin_memory,
-)
-test_dataloader = DataLoader(
-    test_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    collate_fn=patch_collate,
-    num_workers=num_workers,
-    pin_memory=pin_memory,
-)
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=patch_collate,
+                              num_workers=num_workers, pin_memory=pin_memory)
+test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=patch_collate,
+                             num_workers=num_workers, pin_memory=pin_memory)
 
 # ======================================================================================================================
 
 import tracetorch as tt
-from tracetorch import snn
-
-min_scale = tt.functional.halflife_to_decay(16 / (kernel_size ** 2))  # for 4x4 kernel, decay must be over 1 step
-max_scale = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))  # for 1x1 kernel, halflife must be all steps
-scale_diff = max_scale - min_scale
-
-weight_scale = (kernel_size ** 2) / 16  # must be 1 when 4x4, and 1/16 when 1x1 since it's 16x less per step
-
-
-class ResidualLayer(tt.Model):
-    def __init__(self, hidden_dim: int):
-        super().__init__()
-        self.lif = snn.DSRLITS(
-            hidden_dim,
-            pos_alpha=torch.rand(hidden_dim) * scale_diff + min_scale,
-            neg_alpha=torch.rand(hidden_dim) * scale_diff + min_scale,
-            pos_beta=torch.rand(hidden_dim) * scale_diff + min_scale,
-            neg_beta=torch.rand(hidden_dim) * scale_diff + min_scale,
-            pos_gamma=torch.rand(hidden_dim) * scale_diff + min_scale,
-            neg_gamma=torch.rand(hidden_dim) * scale_diff + min_scale,
-            pos_threshold=torch.rand(hidden_dim),
-            neg_threshold=torch.rand(hidden_dim),
-            pos_scale=torch.rand(hidden_dim),
-            neg_scale=torch.rand(hidden_dim),
-            pos_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
-            neg_rec_weight=torch.randn(hidden_dim) * 0.1 * weight_scale,
-        )
-        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
-        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
-
-        self.norm = nn.Tanh()
-
-    def forward(self, x):
-        return self.norm(x + self.lin2(self.lif(self.lin1(x))))
-
-
-class DecoderTransformer(nn.Module):
-    def __init__(self, emb_dim: int = 128, num_tokens: int = 11):
-        super().__init__()
-        self.num_tokens = num_tokens
-        self.mha = nn.MultiheadAttention(emb_dim, 4, 0.0, batch_first=True)
-        self.mha_scalar = nn.Parameter(torch.ones(emb_dim) * 0.1)
-        self.norm = nn.LayerNorm(emb_dim)
-
-    def forward(self, x):
-        seq_len = self.num_tokens
-        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool().to(x.device)
-
-        attn_out, _ = self.mha(x, x, x, attn_mask=causal_mask)
-        x = self.norm(x + attn_out * self.mha_scalar)
-        return x
-
-
-class SNN(tt.Model):
-    def __init__(self, hidden_dim: int = 128, num_layers: int = 10, num_decoder_blocks: int = 2):
-        super().__init__()
-
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.num_tokens = num_layers + 1  # 10 layers + initial state = 11 tokens
-
-        self.enc = nn.Sequential(nn.Linear(kernel_size ** 2, hidden_dim), nn.Tanh())
-        self.layers = nn.ModuleList([
-            ResidualLayer(hidden_dim=hidden_dim) for _ in range(num_layers)
-        ])
-
-        self.token_proj = nn.ModuleList([
-            nn.Linear(hidden_dim, hidden_dim) for _ in range(self.num_tokens)
-        ])
-
-        self.token_norm = nn.LayerNorm(hidden_dim)
-        self.decoder_blocks = nn.ModuleList([
-            DecoderTransformer(emb_dim=hidden_dim, num_tokens=self.num_tokens)
-            for _ in range(num_decoder_blocks)
-        ])
-
-        self.dec = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            snn.DSLI(
-                hidden_dim,
-                pos_beta=torch.rand(hidden_dim),
-                neg_beta=torch.rand(hidden_dim),
-                pos_alpha=torch.rand(hidden_dim),
-                neg_alpha=torch.rand(hidden_dim),
-            ),
-            nn.LayerNorm(hidden_dim),
-            nn.Linear(hidden_dim, 10)
-        )
-        nn.init.zeros_(self.dec[-1].weight)
-        nn.init.zeros_(self.dec[-1].bias)
-
-    def forward(self, x):
-        x = self.enc(x)
-
-        # Accumulate intermediate states: [B, 11, H]
-        intermediate_states = []
-
-        # Store initial state before any blocks (token 0)
-        intermediate_states.append(self.token_proj[-1](x.clone()))
-
-        # Process through blocks and store intermediate states
-        for i, block in enumerate(self.layers):
-            x = block(x)
-            intermediate_states.append(self.token_proj[i](x.clone()))
-
-        # Stack all intermediate states: [B, 11, H]
-        token_sequence = torch.stack(intermediate_states, dim=1)  # [B, 11, H]
-        token_sequence = self.token_norm(token_sequence)
-        # Pass through decoder transformer blocks
-        for decoder_block in self.decoder_blocks:
-            token_sequence = decoder_block(token_sequence)  # [B, 11, H]
-
-        # Use the final token (most processed) for classification
-        final_token = token_sequence[:, -1, :]  # [B, H]
-        output = self.dec(final_token)  # [B, 10]
-
-        return output
 
 
 class SSM(tt.Model):
-    def __init__(self, working_dim, hidden_dim, num_layers):
+    def __init__(self, working_dim, num_layers):
         super().__init__()
-
         self.enc = nn.Linear(kernel_size ** 2, working_dim)
 
         self.layers = nn.ModuleList([
-            tt.ssm.SpikeSSM(
-                num_features=working_dim,
-                hidden_features=hidden_dim,
-                decay=torch.rand(hidden_dim),
-                lif=snn.LIB(
-                    working_dim,
-                    beta=torch.rand(working_dim),
-                    threshold=torch.rand(working_dim),
-                    quant_fn=nn.Identity(),
-                ),
+            tt.ssm.S6(
+                num_neurons=working_dim,
+                d_state=16,
             ) for _ in range(num_layers)
         ])
 
@@ -280,69 +121,31 @@ class SSM(tt.Model):
         return x
 
 
-model = SSM(working_dim=128, hidden_dim=128, num_layers=10).to(device)
-# model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
-
+model = SSM(working_dim=128, num_layers=4).to(device)
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
-optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
-
+optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
 loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
+num_epochs = 5
 
-num_epochs = 10
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
         img, seq, label = img.to(device), seq.to(device), label.to(device)
 
-        # Apply dynamic corruption per image in batch
-        batch_size = img.size(0)
-        corruption_levels = torch.rand(batch_size, device=device)  # [0,1] values
-        sqrt_corruption = torch.sqrt(corruption_levels)  # sqrt values for image weighting
-
-        # Generate noise for each image
-        noise = torch.rand_like(img)  # Same shape as images
-
-        # Apply corruption: image*sqrt(x) + noise*(1-sqrt(x))
-        # Need to expand sqrt_corruption to match image dimensions
-        sqrt_correlation = sqrt_corruption.view(batch_size, 1, 1, 1)  # [B,1,1,1]
-        img_corrupted = img * sqrt_correlation + noise * (1 - sqrt_correlation)
-
-        # Update seq with corrupted images
-        # Need to re-run patch_collate logic here with corrupted images
-        B, C, H, W = img_corrupted.shape
-        patches = img_corrupted.unfold(2, kernel_size, stride).unfold(3, kernel_size, stride)
-        patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
-        n_h = patches.size(1)
-        n_w = patches.size(2)
-        n_patches = n_h * n_w
-        patches = patches.view(B, n_patches, C * kernel_size * kernel_size)
-        seq_corrupted = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
-
+        # Removed dynamic noise to focus on architecture validation
         model.zero_grad()
         model.zero_states()
 
-        # Collect outputs from all timesteps
         timestep_outputs = []
-        for t in range(seq_corrupted.size(0)):
-            model_output = model(seq_corrupted[t])
+        for t in range(seq.size(0)):
+            model_output = model(seq[t])
             timestep_outputs.append(model_output)
 
-        # Calculate weighted loss for each timestep
-        T = len(timestep_outputs)
-        weights = torch.arange(1, T + 1, dtype=torch.float32, device=device) / T
+        final_outputs = timestep_outputs[-1]
+        loss = loss_fn(final_outputs, label)
 
-        # Calculate per-image losses with corruption scaling
-        final_outputs = timestep_outputs[-1]  # [B, 10]
-        per_image_losses = torch.stack([
-            loss_fn(final_outputs[i:i + 1], label[i:i + 1]) * corruption_levels[i]
-            for i in range(batch_size)
-        ])
-
-        loss = per_image_losses.mean()
-
-        # Use final timestep for accuracy (without corruption weighting)
         pred_classes = final_outputs.argmax(dim=-1)
         frac_correct = (pred_classes == label).sum().item() / batch_size
 
@@ -382,7 +185,6 @@ for e in range(num_epochs):
 
         test_loss /= len(test_dataloader)
         test_acc /= len(test_dataloader)
-
         print(f"TEST - Loss: {test_loss} | Acc: {test_acc}")
 
 with torch.no_grad():
@@ -390,7 +192,7 @@ with torch.no_grad():
     img_batch, seq_batch, label_batch = img_batch.to(device), seq_batch.to(device), label_batch.to(device)
 
     for i in range(10):
-        img, seq, label = img_batch[i], seq_batch[:, i], label_batch[i]  # Extract i-th sample
+        img, seq, label = img_batch[i], seq_batch[:, i], label_batch[i]
         model.zero_states()
 
         input_spike_train = []
@@ -398,19 +200,18 @@ with torch.no_grad():
         losses = []
         running_loss = 0.0
 
-        for t in range(seq.size(0)):  # Iterate over timesteps
-            spk_input = seq[t].unsqueeze(0)  # [1, area]
-            input_spike_train.append(spk_input.squeeze(0))  # [area]
+        for t in range(seq.size(0)):
+            spk_input = seq[t].unsqueeze(0)
+            input_spike_train.append(spk_input.squeeze(0))
 
-            model_output = model(spk_input).squeeze(0)  # [10]
+            model_output = model(spk_input).squeeze(0)
             model_outputs.append(nn.functional.softmax(model_output, dim=-1))
             loss = loss_fn(model_output, label.unsqueeze(0))
             running_loss += loss.item() / seq.size(0)
             losses.append(loss.item())
 
         tt.plot.render_image(img.unsqueeze(0), title=f"Digit: {label.item()}")
-        # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
-        input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
+        input_spike_tensor = torch.stack(input_spike_train).T
         tt.plot.spike_train([input_spike_tensor.T[t] for t in range(input_spike_tensor.T.size(0))], title="Input")
         tt.plot.spike_train(model_outputs, title="Model Output")
         plt.title(f"Loss over time | Loss: {running_loss:.3f}")

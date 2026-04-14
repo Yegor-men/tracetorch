@@ -23,9 +23,14 @@ class Layer(nn.Module):
             value: Union[float, torch.Tensor],
             rank: Literal[0, 1],
             learnable: bool,
+            init_fn=lambda x: x,
             inverse_function=lambda x: x,
             activation_function=lambda x: x,
     ):
+        if not hasattr(self, '_dynamic_params'):
+            self._dynamic_params = {}
+            self._inverse_functions = {}
+
         if isinstance(value, torch.Tensor):
             if value.ndim == 0:
                 pass
@@ -33,13 +38,13 @@ class Layer(nn.Module):
                 assert value.numel() == self.num_neurons, f"{name} does not have {self.num_neurons} elements"
             else:
                 raise ValueError(f"rank (.ndim) of provided {name} is not 0 (scalar) or 1 (vector)")
-            param_tensor = inverse_function(value)
+            param_tensor = init_fn(value)
         else:
             value = float(value)
             if rank == 0:
-                param_tensor = inverse_function(torch.tensor(value))
+                param_tensor = init_fn(torch.tensor(value))
             elif rank == 1:
-                param_tensor = inverse_function(torch.full([self.num_neurons], value))
+                param_tensor = init_fn(torch.full([self.num_neurons], value))
             else:
                 raise ValueError(f"{name} rank is not 0 (scalar) or 1 (vector)")
 
@@ -49,15 +54,23 @@ class Layer(nn.Module):
         else:
             self.register_buffer(f"raw_{name}", param_tensor.detach().clone())
 
-        # create a @property of the raw_ parameter that passes it through the respective activation function
-        setattr(self.__class__, name, self._make_property(name, activation_function))
+        # Store the activation and inverse functions directly in the instance
+        self._dynamic_params[name] = activation_function
+        self._inverse_functions[name] = inverse_function
 
-    @staticmethod
-    def _make_property(name, activation_function):
-        def getter(self):
-            return activation_function(getattr(self, f"raw_{name}"))
-
-        return property(getter)
+    def __getattr__(self, name: str):
+        """Intercept attribute access to dynamically compute activations on raw parameters."""
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            if '_dynamic_params' in self.__dict__ and name in self._dynamic_params:
+                raw_name = f"raw_{name}"
+                try:
+                    raw_val = super().__getattr__(raw_name)
+                    return self._dynamic_params[name](raw_val)
+                except AttributeError:
+                    pass
+            raise
 
     def _initialize_state(self, state_name: str):
         """Initialize and register a state name for bulk operations"""
@@ -117,31 +130,32 @@ class Layer(nn.Module):
         if hasattr(self, '_compiled') and self._compiled:
             return
 
-        # Store compilation metadata for decompile
         self._compile_metadata = {}
+        if not hasattr(self, '_dynamic_params'):
+            return
 
-        # Find all raw_* parameters and their corresponding properties
-        for attr_name in list(self.__dict__.keys()):
-            if attr_name.startswith('raw_'):
-                param_name = attr_name[4:]  # Remove 'raw_' prefix
+        for param_name in list(self._dynamic_params.keys()):
+            raw_name = f"raw_{param_name}"
+            try:
+                raw_tensor = super().__getattr__(raw_name)
+            except AttributeError:
+                continue
 
-                # Get current computed value
-                computed_value = getattr(self, param_name)
+            # Get current computed value via our __getattr__ interceptor
+            computed_value = getattr(self, param_name)
+            is_parameter = isinstance(raw_tensor, nn.Parameter)
 
-                # Store metadata for decompile
-                self._compile_metadata[param_name] = {
-                    'raw_value': getattr(self, attr_name).detach().clone(),
-                    'is_parameter': isinstance(getattr(self, param_name), nn.Parameter),
-                    'learnable': hasattr(self, f'learn_{param_name}') and getattr(self, f'learn_{param_name}')
-                }
+            self._compile_metadata[param_name] = {
+                'is_parameter': is_parameter,
+                'learnable': raw_tensor.requires_grad if is_parameter else False
+            }
 
-                # Replace raw parameter with pre-computed buffer
-                delattr(self, attr_name)
-                self.register_buffer(param_name, computed_value.detach().clone())
+            # Delete the raw attribute natively
+            delattr(self, raw_name)
 
-                # Remove the property (will be replaced by direct attribute access)
-                if hasattr(self.__class__, param_name):
-                    delattr(self.__class__, param_name)
+            # By registering a buffer, PyTorch handles its persistence natively.
+            # Our __getattr__ will organically ignore it because super().__getattr__(param_name) will now succeed.
+            self.register_buffer(param_name, computed_value.detach().clone())
 
         self._compiled = True
 
@@ -150,22 +164,26 @@ class Layer(nn.Module):
         if not hasattr(self, '_compiled') or not self._compiled:
             return
 
-        # Restore raw_* parameters from metadata
         for param_name, metadata in self._compile_metadata.items():
-            # Remove the compiled buffer
-            if hasattr(self, param_name):
-                delattr(self, param_name)
+            if not hasattr(self, param_name):
+                continue
 
-            # Restore raw parameter
+            # The currently stored computed buffer
+            compiled_value = getattr(self, param_name)
+
+            # Re-convert to raw via the inverse function
+            inverse_fn = self._inverse_functions[param_name]
+            raw_value = inverse_fn(compiled_value)
+
+            # Eliminate compiled buffer
+            delattr(self, param_name)
+
             raw_name = f"raw_{param_name}"
-            if metadata['learnable']:
-                setattr(self, raw_name, nn.Parameter(metadata['raw_value']))
+            if metadata['is_parameter']:
+                self.register_parameter(raw_name,
+                                        nn.Parameter(raw_value.detach().clone(), requires_grad=metadata['learnable']))
             else:
-                self.register_buffer(raw_name, metadata['raw_value'])
+                self.register_buffer(raw_name, raw_value.detach().clone())
 
-            # Recreate the property (this is tricky - need to recreate the original property)
-            # We'll need to store the activation function type during initial registration
-
-        # Clean up
         delattr(self, '_compiled')
         delattr(self, '_compile_metadata')
