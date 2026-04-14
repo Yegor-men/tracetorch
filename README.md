@@ -6,7 +6,7 @@
 
 # traceTorch
 
-A strict, ergonomic, and powerful recurrent & spiking neural network library for PyTorch.
+A strict, ergonomic, and powerful library for SNNs, RNNs and SSMs in PyTorch.
 
 Table of contents:
 
@@ -22,27 +22,28 @@ Table of contents:
 
 ## Introduction
 
-traceTorch is a unified library for recurrent networks in PyTorch, rethinking how the nets are made from the ground up.
-It enforces one simple rule that should have been the default all along: hidden states stay hidden. But that's not to
-say that they're inaccessible. On the contrary, traceTorch is designed with ergonomics at the forefront, and state
-management is easier than ever. Hidden states are lazily created in the forward pass, work with any target dimension,
-and most importantly are easy to clear, detach, and even save and load. traceTorch makes it easy for you to mix and mash
-recurrent layers with any other PyTorch layer, just how it should have been all this time. Take a look at
-the [quickstart](#quickstart) section to see how the code looks like.
+traceTorch is a unified library for a wide array of recurrent networks in PyTorch: Spiking Neural Networks (SNNs),
+classic Recurrent Neural Networks (RNNs) and the modern State Space Models (SSMs). traceTorch enforces a simple, albeit
+slightly unorthodox rule that should have been the default all along: hidden states stay hidden. But that's not to
+say that they're inaccessible. On the contrary, traceTorch is designed to make state management easier than ever. They
+are lazily created in the forward pass, work with any target dimension, and most importantly are easy to clear, detach,
+and even save and load. traceTorch makes it easy for you to mix and mash recurrent layers with any other PyTorch layer.
+Take a look at the [quickstart](#quickstart) section to see how the code looks like.
 
-The library initially started as one focused on Spiking Neural Networks (SNNs). With a slightly unorthodox, but
-consistent and self-explanatory naming schema, traceTorch presents 32 distinct SNN layer types built around the Leaky
-Integrator, and encapsulate a wide range of dynamics: duality (splitting positive and negative signals); recurrence;
-synapse (an extra EMA accumulator before the membrane); binary, ternary, scaled ternary, or no spiking for the output at
-all. The resulting 32 layers encapsulate a whopping range of possible dynamics: `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`,
-`DLIEMA`, `SLIEMA`, `DSLIEMA` `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`, `SLIT`,
-`RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`, `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS`.
+The library initially started as one focused on SNNs. With a slightly unorthodox, but consistent and self-explanatory
+naming schema, traceTorch presents 32 distinct SNN layer types built around the Leaky Integrator, and encapsulate a wide
+range of dynamics: duality (splitting positive and negative signals); recurrence; synapse (an extra EMA accumulator
+before the membrane); binary, ternary, scaled ternary, or no spiking for the output at all. The resulting 32 layers
+encapsulate a whopping range of possible dynamics: `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`
+`LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`,
+`SRLIT`, `DSRLIT`, `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS`.
 
 But thinking a bit outside the box, and it becomes obvious that State Space Models (SSMs) such as Mamba, are incredibly
 similar to the Leaky Integrator that all the SNN layers were built around, albeit a bit more complex. Subsequently, the
-philosophy was then extended to non-SNN recurrent layers: `SimpleRNN`, `LSTM`, `GRU`, `SelectiveSSM`, and more to come (
-probably). The result is an opinionated but extremely ergonomic extension to PyTorch that rethinks the way that RNNs are
-made: no matter the architecture, it's all just another PyTorch-esque layer that can be placed anywhere.
+philosophy was then extended to the classic RNN layers: `SimpleRNN`, `LSTM`, `GRU`; as well as SSMs: `SelectiveSSM`,
+`SpikeSSM`, `SelectiveZOHSSM`, and more to come.The result is an opinionated but extremely ergonomic extension to
+PyTorch that rethinks the way that RNNs are made: no matter the architecture, it's all just another PyTorch-esque layer
+that can be placed anywhere.
 
 The main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from `tt.Model`
 grants access to powerful recursive methods that handle all the boilerplate of state management: `zero_states()` and
@@ -51,10 +52,10 @@ parameters aren't used in their raw form, but instead need to be passed through 
 skip this redundant calculation for a trained model, the module also presents `TTcompile()` and `TTdecompile()`.
 
 But if you're dissatisfied with the range of layers, then making your own ones is also incredibly easy. Inheriting from
-`tt.Layer` (or the downstream `tt.rnn.Layer` or `tt.snn.Layer`) allows you to easily create layers that integrate
-with the rest of the traceTorch ecosystem: making so that their hidden states are accessible and are created to the
-proper shape; parameters can be compiled and initialization handles learnability, rank and/or a custom tensor; helper
-methods to move a target dimension in and out for accessibility.
+`tt.Layer` (or the downstream `tt.rnn.Layer` or `tt.snn.Layer` or `tt.ssm.Layer`) allows you to easily create layers
+that integrate with the rest of the traceTorch ecosystem: making so that their hidden states are accessible and are
+created to the proper shape; parameters can be compiled and initialization handles learnability, rank and/or a custom
+tensor; helper methods to move a target dimension in and out for accessibility.
 
 All in all, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with recurrent
 networks in PyTorch to feel significantly more natural and less frustrating, while preserving (and in many cases
@@ -63,12 +64,12 @@ minimalism, composition, and long-term extensibility.
 
 ## Features
 
-As mentioned before, traceTorch currently has two main focal points for recurrent networks: RNNs which can be found in
-`tt.rnn` and SNNs which can be found in `tt.snn`. Regardless of where the layer comes from though, it's inevitably a
-child of `tt.Layer`, which makes it integrate with `tt.Model` and all other PyTorch modules in a layer-like
-way. This means that the layers expect one input, and produce only one output. All hidden states stay hidden, internal
-to the layer. And it's just one layer, not a full multi-layer model. Subsequently, the design approach changes a bit:
-the model processes one timestep at a time, it's expected that the looping is done externally.
+As mentioned before, traceTorch currently has three main focal points for recurrent networks: SNNs which can be found in
+`tt.snn`, RNNs which can be found in `tt.rnn`, and SSMs which can be found in `tt.ssm`. Regardless of where the layer
+comes from though, it's inevitably a child of `tt.Layer`, which makes it integrate with `tt.Model` and all other PyTorch
+modules in a layer-like way. This means that the layers expect one input, and produce only one output. All hidden states
+stay hidden, internal to the layer. And it's just one layer, not a full multi-layer model. Subsequently, the design
+approach changes a bit: the model processes one timestep at a time, it's expected that the looping is done externally.
 
 As stated earlier, the main selling point of traceTorch is in that it handles all the state management boilerplate. A
 model inheriting from `tt.Model` means access to predominantly the `zero_states()` and `detach_states()` methods.
@@ -81,11 +82,11 @@ direct values instead: to be used when a model is trained and you don't want to 
 effective values each time.
 
 Speaking of layers, at the time of writing, traceTorch has a total of 36. `tt.rnn` is a fair bit smaller and more
-self-explanatory. It includes: `SimpleRNN`, `LSTM`, `GRU`, `SelectiveSSM`, with more to come (probably). The
-implementations
-are standard considering the "one timestep at a time" and "as a layer" rules. However, `tt.snn` layers are a lot more
-extensive, and follow a slightly unconventional, but consistent and self-explanatory naming schema. The names are
-modular and explain their role and function.
+self-explanatory. It includes: `SimpleRNN`, `LSTM`, `GRU`, with more to come (probably). The implementations are
+standard considering the "one timestep at a time" and "as a layer" rules. `tt.ssm` is currently in development and is
+rather experimental, the only real layer that works well is `SelectiveSSM`; in the future, `Mamba`, `S4` and others will
+be added. However, `tt.snn` layers are a lot more extensive, and follow a slightly unconventional, but consistent and
+self-explanatory naming schema. The names are modular and explain their role and function.
 
 - `LI` base name stands for `Leaky Integrator`: the simplest of layer types with just one trace and decay: the membrane
   potential and the beta decay. No firing and no reset mechanics, this layer type is commonly known as `Readout` (
@@ -113,9 +114,9 @@ layers: `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA` `LIB`
 `DRLIB`, `SRLIB`, `DSRLIB`, `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`, `LITS`, `DLITS`,
 `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS`.
 
-Additionally, both `tt.rnn` and `tt.snn` layers handle some extra boilerplate with parameter initialization and hidden
-state management, all thanks to the `tt.Layer` superclass and the downstream RNN and SNN variants of it (`tt.rnn.Layer`
-and `tt.snn.Layer`):
+Additionally, all the layers handle some extra boilerplate with parameter initialization and hidden state management,
+all thanks to the `tt.Layer` superclass and the downstream SNN, RNN and SSM variants of it (`tt.snn.Layer`,
+`tt.rnn.Layer`, `tt.ssm.Layer`):
 
 - Rank-based parameter scoping for a per-layer (scalar) or per-neuron (vector) parameters, defaulting to per-neuron.
 - Initialize parameters via a float value or your own desired tensor.
@@ -132,10 +133,11 @@ and `tt.snn.Layer`):
 
 ## Documentation
 
-The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It is thoroughly recommended to
-at least read the introduction section before proceeding as it contains some theory behind SNNs, the traceTorch ethos
-and layers available as well as a brief explanation of what it is that each mechanic actually does. It also contains a
-couple tutorials to recreate the code found in `examples/`.
+The online documentation can be found [here](https://yegor-men.github.io/tracetorch/), and it is nowhere close to being
+finished at the time of writing. However, once it will be, it is thoroughly recommended to at least read the
+introduction section before proceeding as it contains some theory behind SNNs, the traceTorch ethos and layers available
+as well as a brief explanation of what it is that each mechanic actually does. It also contains a couple tutorials to
+recreate the code found in `examples/`.
 
 ## Installation
 
@@ -169,7 +171,7 @@ clarity.
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch import snn, rnn
+from tracetorch import snn, rnn, ssm
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -179,14 +181,14 @@ class SNN(tt.Model):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 32, 3, padding=1),
-            snn.LIB(16, dim=-3),
+            snn.LIB(16, dim=-3),  # Works on the color channel dimension
             nn.MaxPool2d(2, 2),
             nn.Conv2d(32, 64, 3, padding=1),
-            snn.LIB(64, dim=-3),
+            snn.LIB(64, beta=torch.rand(64), dim=-3),  # Can set parameters to a custom tensor too
             nn.MaxPool2d(2, 2),
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 128),
-            rnn.SelectiveSSM(128, 128, 32),
+            ssm.SelectiveSSM(128, 128, 32),  # Selective state space model
             nn.Linear(128, 10)
         )
 
@@ -218,9 +220,9 @@ Example code can be found in `examples/`. To test the code, make sure that you h
 installed for the example, and that you've either installed traceTorch from PyPI or as an editable installation.
 
 The current examples are unfortunately rather limited: `mnist/` with `monotonic.py` for rate-coded classification on the
-entire image and `nonmonotonic.py` for sequential MNIST with an adjustable kernel size. `byte_lm/` is a personal project
-on a byte level language model training on wikitext-103 and `BirdCLEF+2026/` is a similarly experimental project on the
-BirdCLEF+2026 dataset.
+entire image and `nonmonotonic.py` for shuffled sequential MNIST with an adjustable kernel size. `byte_lm/` is a
+personal project on a byte level language model training on wikitext-103 and `BirdCLEF+2026/` is a similarly
+experimental project on the BirdCLEF+2026 dataset.
 
 ## Authors
 
@@ -235,17 +237,14 @@ on it.
 
 traceTorch still has a long way to go. Namely:
 
-- Clean up `spike_fn` and `quant_fn` for
 - Fix `tt.functional` to be cleaner
 - Clean up `tt.plot` plotting functions
-- Fix `TTcompile` and `TTdecompile` to work with `tt.rnn.SelectiveSSM` and other layers: this means that parameter
-  initialization must ask for an initialization function aside from just the inverse and activation functions.
+- Fix `_register_parameter` method for `tt.Layer` to use `init_fn` for initialization instead of the inverse function
+- Fix `TTcompile` and `TTdecompile` to actually use the saved inverse and activation function
 - Clean up and make sure that the `save_states` and `load_states` work as intended without fault
 - Create tests for compilation and decompilation, saving and loading
 - Finish the `examples/` section for example code for various examples
 - Make proper requirements for each example in `examples/`
-- Finish the `introduction/` section of the docs
-- Do the `reference/` section for the docs
-- Do the `tutorials/` section for the docs, basing it on the `examples/`
+- Write the documentation
 - Make docstrings
 - Figure out versioning requirements for the library
