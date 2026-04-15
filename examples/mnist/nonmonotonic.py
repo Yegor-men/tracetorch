@@ -98,14 +98,14 @@ import tracetorch as tt
 
 
 class SSM(tt.Model):
-    def __init__(self, working_dim, num_layers):
+    def __init__(self, working_dim, d_state, num_layers):
         super().__init__()
         self.enc = nn.Linear(kernel_size ** 2, working_dim)
 
         self.layers = nn.ModuleList([
             tt.ssm.S6(
                 num_neurons=working_dim,
-                d_state=16,
+                d_state=d_state,
             ) for _ in range(num_layers)
         ])
 
@@ -121,7 +121,7 @@ class SSM(tt.Model):
         return x
 
 
-model = SSM(working_dim=128, num_layers=4).to(device)
+model = SSM(working_dim=128, d_state=16, num_layers=10).to(device)
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
 loss_fn = nn.functional.cross_entropy
