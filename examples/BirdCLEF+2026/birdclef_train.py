@@ -274,20 +274,35 @@ if __name__ == '__main__':
     batch_size = 50
     grad_accum_steps = 1
 
-    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_clean,
-                                  num_workers=4)
-    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_clean, num_workers=4)
+    train_dataloader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate_clean,
+        num_workers=4,
+    )
+    val_dataloader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate_clean,
+        num_workers=4,
+    )
 
     # Note: Default architecture params modified inside the imported class to handle 768 In-Features
-    model = BirdClassifierSNN(num_classes=num_classes).to(device)
+    model = BirdClassifierSNN(
+        in_features=768,
+        hidden_features=1024,
+        n1_layers=4,
+        n2_layers=1,
+        num_classes=num_classes,
+    ).to(device)
 
     ema_model = copy.deepcopy(model)
     ema_model.eval()
     for param in ema_model.parameters(): param.requires_grad = False
 
-    total_params = sum(p.numel() for p in model.parameters())
-    snn_params = model.get_param_count()
-    print(f"\nTotal Params: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
+    print(f"\nTotal Params: {sum(p.numel() for p in model.parameters()):,}")
     print(f"Num Train Batches: {len(train_dataloader):,}\n")
 
     # Instantiate Delta Function on GPU
