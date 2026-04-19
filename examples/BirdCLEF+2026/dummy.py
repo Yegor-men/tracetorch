@@ -187,36 +187,66 @@ class SSM(tt.Model):
         return x
 
 
-class FDSR(tt.Model):
-    def __init__(self, num_neurons: int, num_connections: int, flow: float):
+class Bar(tt.Model):
+    def __init__(self, working_dim, num_neurons, num_connections, num_dims, flow):
         super().__init__()
 
-        self.enc = nn.Linear(kernel_size ** 2, 128, bias=False)
+        self.lin_in = nn.Linear(working_dim, working_dim, bias=False)
+        nn.init.eye_(self.lin_in.weight)
 
         self.fdsr = tt.snn.FDSR(
-            in_features=128,
-            out_features=128,
+            in_features=working_dim,
+            out_features=working_dim,
             num_neurons=num_neurons,
             num_connections=num_connections,
             gamma=torch.rand(num_neurons) * scale_diff + min_scale,
-            num_dims=4,
+            num_dims=num_dims,
             flow=flow,
             dim=-1,
         )
 
-        self.dec = nn.Linear(128, 10, bias=False)
+        self.lin_out = nn.Linear(working_dim, working_dim, bias=False)
+        nn.init.zeros_(self.lin_out.weight)
+
+    def forward(self, x):
+        return x + self.lin_out(self.fdsr(self.lin_in(x)))
+
+
+class FDSR(tt.Model):
+    def __init__(
+            self,
+            working_dim: int,
+            num_neurons: int,
+            num_connections: int,
+            num_dims: int,
+            flow: float,
+            num_layers: int,
+    ):
+        super().__init__()
+
+        self.enc = nn.Linear(kernel_size ** 2, working_dim, bias=False)
+
+        self.layers = nn.ModuleList([Bar(
+            working_dim=working_dim,
+            num_neurons=num_neurons,
+            num_connections=num_connections,
+            num_dims=num_dims,
+            flow=flow,
+        ) for _ in range(num_layers)])
+
+        self.dec = nn.Linear(working_dim, 10, bias=False)
 
     def forward(self, x):
         x = self.enc(x)
-        x = self.fdsr(x)
+        for layer in self.layers:
+            x = layer(x)
         x = self.dec(x)
 
         return x
 
 
-model = FDSR(num_neurons=1280, num_connections=256, flow=0.1).to(device)
+model = FDSR(working_dim=128, num_neurons=512, num_connections=64, num_dims=4, flow=0.1, num_layers=5).to(device)
 # model = SSM(working_dim=128, d_state=16, num_layers=10).to(device)
-# model = SNN(hidden_dim=128, num_layers=10, num_decoder_blocks=2).to(device)
 
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
@@ -224,7 +254,7 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 5
+num_epochs = 10
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
@@ -330,7 +360,7 @@ with torch.no_grad():
         input_spike_train = []
         model_outputs = []
         losses = []
-        trace = []
+        traces = []
         running_loss = 0.0
 
         for t in range(seq.size(0)):  # Iterate over timesteps
@@ -343,17 +373,16 @@ with torch.no_grad():
             running_loss += loss.item() / seq.size(0)
             losses.append(loss.item())
 
-            synaptic_trace = model.fdsr.synaptic_trace.clone().detach()  # Get current synaptic trace
-            trace.append(synaptic_trace.squeeze(0))
+            trace_thing = model.layers[-1].fdsr.trace.clone().detach()  # Get current synaptic trace
+            traces.append(trace_thing.squeeze(0))
 
         tt.plot.render_image(img.unsqueeze(0), title=f"Digit: {label.item()}")
         # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
         input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
         tt.plot.spike_train([input_spike_tensor.T[t] for t in range(input_spike_tensor.T.size(0))], title="Input")
         tt.plot.spike_train(model_outputs, title="Model Output")
-        synaptic_trace_tensor = torch.stack(trace).T  # [num_neurons, T]
-        tt.plot.spike_train([synaptic_trace_tensor.T[t] for t in range(synaptic_trace_tensor.T.size(0))],
-                            title="Synaptic Trace")
+        traces_tensor = torch.stack(traces).T  # [num_neurons, T]
+        tt.plot.spike_train([traces_tensor.T[t] for t in range(traces_tensor.T.size(0))], title="Synaptic Trace")
         plt.title(f"Loss over time: {running_loss:.3f} | Final Loss: {losses[-1]:.3f}")
         plt.plot(losses)
         plt.show()
