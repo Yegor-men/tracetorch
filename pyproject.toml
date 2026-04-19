@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracetorch"
-version = "0.17.0"
+version = "0.18.0"
 authors = [{ name = "Yegor Menovchshikov", email = "yegor.mn@gmail.com" }]
 description = "A strict, ergonomic, and powerful library for SNNs, RNNs and SSMs in PyTorch."
 readme = "README.md"

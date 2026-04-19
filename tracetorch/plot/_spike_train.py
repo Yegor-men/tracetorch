@@ -5,8 +5,8 @@ from matplotlib.colors import LinearSegmentedColormap
 
 
 def create_diverging_colormap():
-    """Create a colormap with blue for positive, red for negative values."""
-    colors = ['red', 'white', 'blue']  # negative -> white -> positive
+    """Create a colormap with red for positive, blue for negative values."""
+    colors = ['blue', 'white', 'red']  # negative -> white -> positive
     n_bins = 256
     cmap = LinearSegmentedColormap.from_list('diverging', colors, N=n_bins)
     return cmap
