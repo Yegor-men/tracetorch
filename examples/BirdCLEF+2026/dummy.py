@@ -131,12 +131,6 @@ test_dataloader = DataLoader(
 
 import tracetorch as tt
 
-min_scale = tt.functional.halflife_to_decay(16 / (kernel_size ** 2))  # for 4x4 kernel, decay must be over 1 step
-max_scale = tt.functional.halflife_to_decay(784 / (kernel_size ** 2))  # for 1x1 kernel, halflife must be all steps
-scale_diff = max_scale - min_scale
-
-weight_scale = (kernel_size ** 2) / 16  # must be 1 when 4x4, and 1/16 when 1x1 since it's 16x less per step
-
 
 class Foo(tt.Model):
     def __init__(self, working_dim):
@@ -199,7 +193,7 @@ class Bar(tt.Model):
             out_features=working_dim,
             num_neurons=num_neurons,
             num_connections=num_connections,
-            gamma=torch.rand(num_neurons) * scale_diff + min_scale,
+            gamma=torch.rand(num_neurons),
             num_dims=num_dims,
             flow=flow,
             dim=-1,
