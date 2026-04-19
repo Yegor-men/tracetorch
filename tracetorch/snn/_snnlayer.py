@@ -42,3 +42,20 @@ class Layer(BaseLayer):
             inverse_function=functional.softplus_inverse,
             activation_function=nn.functional.softplus,
         )
+
+    def _register_bias(
+            self,
+            name: str,
+            value: Union[float, torch.Tensor],
+            rank: Literal[0, 1],
+            learnable: bool,
+    ):
+        self._register_parameter(
+            name,
+            value,
+            rank,
+            learnable,
+            init_fn=torch.sinh,
+            inverse_function=torch.sinh,
+            activation_function=torch.arcsinh,
+        )
