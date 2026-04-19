@@ -12,6 +12,7 @@ class LITS(SNNLayer):
             beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -20,11 +21,13 @@ class LITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
@@ -37,6 +40,7 @@ class LITS(SNNLayer):
         self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -48,8 +52,8 @@ class LITS(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + x
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -76,6 +80,7 @@ class DLITS(SNNLayer):
             neg_beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -85,12 +90,14 @@ class DLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
@@ -106,6 +113,7 @@ class DLITS(SNNLayer):
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -122,8 +130,8 @@ class DLITS(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -153,6 +161,7 @@ class SLITS(SNNLayer):
             beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -162,12 +171,14 @@ class SLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
@@ -184,6 +195,7 @@ class SLITS(SNNLayer):
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -198,8 +210,8 @@ class SLITS(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + syn
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -227,6 +239,7 @@ class RLITS(SNNLayer):
             gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -237,6 +250,7 @@ class RLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_gamma: bool = True,
@@ -244,6 +258,7 @@ class RLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
@@ -262,6 +277,7 @@ class RLITS(SNNLayer):
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -281,8 +297,8 @@ class RLITS(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -313,6 +329,7 @@ class DSLITS(SNNLayer):
             neg_beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -324,6 +341,7 @@ class DSLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             learn_pos_alpha: bool = True,
             learn_neg_alpha: bool = True,
             learn_pos_beta: bool = True,
@@ -332,6 +350,7 @@ class DSLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
@@ -352,6 +371,7 @@ class DSLITS(SNNLayer):
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -377,8 +397,8 @@ class DSLITS(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -410,6 +430,7 @@ class DRLITS(SNNLayer):
             neg_gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -423,6 +444,7 @@ class DRLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             pos_rec_weight_rank: Literal[0, 1] = 1,
             neg_rec_weight_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
@@ -433,6 +455,7 @@ class DRLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
@@ -456,6 +479,7 @@ class DRLITS(SNNLayer):
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -489,8 +513,8 @@ class DRLITS(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -522,6 +546,7 @@ class SRLITS(SNNLayer):
             gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -533,6 +558,7 @@ class SRLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
@@ -541,6 +567,7 @@ class SRLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
@@ -562,6 +589,7 @@ class SRLITS(SNNLayer):
 
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -585,8 +613,8 @@ class SRLITS(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)
@@ -619,6 +647,7 @@ class DSRLITS(SNNLayer):
             neg_gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -634,6 +663,7 @@ class DSRLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             pos_rec_weight_rank: Literal[0, 1] = 1,
             neg_rec_weight_rank: Literal[0, 1] = 1,
             learn_pos_alpha: bool = True,
@@ -646,6 +676,7 @@ class DSRLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
+            learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
@@ -673,6 +704,7 @@ class DSRLITS(SNNLayer):
         self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -716,8 +748,8 @@ class DSRLITS(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem)
+        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_spikes = self.quant_fn(pos_spike_prob)
         neg_spikes = -self.quant_fn(neg_spike_prob)

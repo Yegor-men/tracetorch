@@ -237,17 +237,20 @@ class DSLIB(SNNLayer):
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             dim: int = -1,
             pos_alpha_rank: Literal[0, 1] = 1,
             neg_alpha_rank: Literal[0, 1] = 1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             learn_pos_alpha: bool = True,
             learn_neg_alpha: bool = True,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_threshold: bool = True,
+            learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
     ):
@@ -267,6 +270,7 @@ class DSLIB(SNNLayer):
         self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
     def forward(self, x):
         self._ensure_states(x)
@@ -289,7 +293,7 @@ class DSLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
         spikes = self.quant_fn(spike_prob)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
@@ -311,6 +315,7 @@ class DRLIB(SNNLayer):
             pos_gamma: Union[float, torch.Tensor] = 0.9,
             neg_gamma: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
             neg_rec_weight: Union[float, torch.Tensor] = 0.0,
             dim: int = -1,
@@ -319,6 +324,7 @@ class DRLIB(SNNLayer):
             pos_gamma_rank: Literal[0, 1] = 1,
             neg_gamma_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             pos_rec_weight_rank: Literal[0, 1] = 1,
             neg_rec_weight_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
@@ -326,6 +332,7 @@ class DRLIB(SNNLayer):
             learn_pos_gamma: bool = True,
             learn_neg_gamma: bool = True,
             learn_threshold: bool = True,
+            learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
@@ -348,6 +355,7 @@ class DRLIB(SNNLayer):
         self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
         self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
@@ -378,7 +386,7 @@ class DRLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
         spikes = self.quant_fn(spike_prob)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
@@ -400,17 +408,20 @@ class SRLIB(SNNLayer):
             beta: Union[float, torch.Tensor] = 0.9,
             gamma: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
             dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
             gamma_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
             learn_gamma: bool = True,
             learn_threshold: bool = True,
+            learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
             quant_fn=functional.stochastic_round_ste(step_size=1.0),
@@ -431,6 +442,7 @@ class SRLIB(SNNLayer):
         self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
@@ -451,7 +463,7 @@ class SRLIB(SNNLayer):
 
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
-        spike_prob = self.spike_fn(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
         spikes = self.quant_fn(spike_prob)
 
         mem = mem - spikes * self.threshold
@@ -474,6 +486,7 @@ class DSRLIB(SNNLayer):
             pos_gamma: Union[float, torch.Tensor] = 0.9,
             neg_gamma: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
+            bias: Union[float, torch.Tensor] = 0.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
             neg_rec_weight: Union[float, torch.Tensor] = 0.0,
             dim: int = -1,
@@ -484,6 +497,7 @@ class DSRLIB(SNNLayer):
             pos_gamma_rank: Literal[0, 1] = 1,
             neg_gamma_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
+            bias_rank: Literal[0, 1] = 1,
             pos_rec_weight_rank: Literal[0, 1] = 1,
             neg_rec_weight_rank: Literal[0, 1] = 1,
             learn_pos_alpha: bool = True,
@@ -493,6 +507,7 @@ class DSRLIB(SNNLayer):
             learn_pos_gamma: bool = True,
             learn_neg_gamma: bool = True,
             learn_threshold: bool = True,
+            learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
@@ -520,6 +535,7 @@ class DSRLIB(SNNLayer):
         self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
+        self._register_bias("bias", bias, bias_rank, learn_bias)
 
         self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
         self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
@@ -560,7 +576,7 @@ class DSRLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold)
+        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
         spikes = self.quant_fn(spike_prob)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
