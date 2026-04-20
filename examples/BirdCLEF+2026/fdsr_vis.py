@@ -17,15 +17,17 @@ OUT_FEATURES = 32
 
 def generate_graph(num_neurons, num_connections, in_features, out_features):
     """Executes the exact FDSR initialization logic"""
-    torch.manual_seed(42)  # Fixed seed for reproducible visualization comparisons
+    torch.manual_seed(42)
 
     # 1. Spatial Embedding & Topological Flow
-    coords = torch.randn(num_neurons, 10)
-    dist = torch.linalg.vector_norm(coords, dim=1, keepdim=True)
-    coords = (coords / (dist + 1e-8)) * (dist + 0.1)
+    coords = torch.randn(num_neurons, 4)
+    # dist = torch.linalg.vector_norm(coords, dim=1, keepdim=True)
+    # coords = (coords / (dist + 1e-8)) * (dist + 0)
 
-    flow_values = torch.linalg.vector_norm(coords, ord=2, dim=1)
-    flow_values = torch.exp(flow_values * -0.1)
+    distances = torch.linalg.vector_norm(coords, ord=2, dim=1)
+    flow_values = 1 / (distances + 100)
+    # flow_values = torch.linalg.vector_norm(coords, ord=2, dim=1)
+    # flow_values = torch.exp(flow_values * -0.1)
 
     sorted_indices = torch.argsort(flow_values)
     input_idx = sorted_indices[:in_features]
@@ -40,9 +42,8 @@ def generate_graph(num_neurons, num_connections, in_features, out_features):
     D.fill_diagonal_(float('inf'))
     D[:, input_idx] = float('inf')
 
-    is_valid_src = torch.ones(num_neurons, dtype=torch.bool)
-    is_valid_src[output_idx] = False
-    valid_src_indices = torch.nonzero(is_valid_src).squeeze(-1)
+    # ALL nodes can now send signals
+    valid_src_indices = torch.arange(num_neurons)
 
     # 4. Routing
     src_list, dst_list = [], []
@@ -60,7 +61,7 @@ def generate_graph(num_neurons, num_connections, in_features, out_features):
 
 
 def plot_fdsr():
-    print(f"Generating FDSR Graph with {NUM_NEURONS}...")
+    print(f"Generating FDSR Graph with {NUM_NEURONS} nodes...")
     coords, flow_vals, input_idx, output_idx, src, dst = generate_graph(
         NUM_NEURONS, NUM_CONNECTIONS, IN_FEATURES, OUT_FEATURES
     )
@@ -73,20 +74,22 @@ def plot_fdsr():
         pca = PCA(n_components=3)
         plot_coords = pca.fit_transform(coords)
     elif num_dims == 2:
-        plot_coords = np.pad(coords, ((0, 0), (0, 1)), mode='constant')  # Add Z=0
+        plot_coords = np.pad(coords, ((0, 0), (0, 1)), mode='constant')
     else:
         plot_coords = coords
 
     x, y, z = plot_coords[:, 0], plot_coords[:, 1], plot_coords[:, 2]
 
     # Assign node colors
-    node_colors = ['#444444'] * NUM_NEURONS  # Default hidden: grey
+    node_colors = ['#444444'] * NUM_NEURONS
     node_sizes = [4] * NUM_NEURONS
     node_text = []
 
-    # Color mapping based on normalized flow for hidden nodes
     log_flow = np.log(flow_vals)
     norm_flow = (log_flow - log_flow.min()) / (log_flow.max() - log_flow.min() + 1e-9)
+
+    is_output_node = np.zeros(NUM_NEURONS, dtype=bool)
+    is_output_node[output_idx] = True
 
     for i in range(NUM_NEURONS):
         if i in input_idx:
@@ -98,71 +101,56 @@ def plot_fdsr():
             node_sizes[i] = 8
             node_text.append(f"<b>OUTPUT</b> Node {i}<br>Flow: {flow_vals[i]:.2f}")
         else:
-            # Color hidden nodes on a blue-to-red scale based on flow
             r_col = int(norm_flow[i] * 255)
             b_col = int((1 - norm_flow[i]) * 255)
             node_colors[i] = f'rgb({r_col}, 50, {b_col})'
             node_text.append(f"Hidden Node {i}<br>Flow: {flow_vals[i]:.2f}")
 
-    # Create the Nodes Trace
     trace_nodes = go.Scatter3d(
         x=x, y=y, z=z,
         mode='markers',
-        marker=dict(
-            size=node_sizes,
-            color=node_colors,
-            line=dict(color='white', width=0.5),
-            opacity=0.9
-        ),
-        text=node_text,
-        hoverinfo='text',
-        name='Neurons'
+        marker=dict(size=node_sizes, color=node_colors, line=dict(color='white', width=0.5), opacity=0.9),
+        text=node_text, hoverinfo='text', name='Neurons'
     )
 
-    # Create the Edges Trace
-    # Plotly trick: To draw thousands of lines efficiently, we use a single trace separated by None
-    edge_x, edge_y, edge_z = [], [], []
+    # Split edges into standard (grey) and lateral-output (magenta)
+    norm_edge_x, norm_edge_y, norm_edge_z = [], [], []
+    lat_edge_x, lat_edge_y, lat_edge_z = [], [], []
+
     for s, d in zip(src, dst):
-        edge_x.extend([x[s], x[d], None])
-        edge_y.extend([y[s], y[d], None])
-        edge_z.extend([z[s], z[d], None])
+        if is_output_node[s] and is_output_node[d]:
+            lat_edge_x.extend([x[s], x[d], None])
+            lat_edge_y.extend([y[s], y[d], None])
+            lat_edge_z.extend([z[s], z[d], None])
+        else:
+            norm_edge_x.extend([x[s], x[d], None])
+            norm_edge_y.extend([y[s], y[d], None])
+            norm_edge_z.extend([z[s], z[d], None])
 
-    trace_edges = go.Scatter3d(
-        x=edge_x, y=edge_y, z=edge_z,
-        mode='lines',
-        line=dict(color='rgba(150, 150, 150, 0.15)', width=1),
-        hoverinfo='none',
-        name='Synapses'
+    trace_norm_edges = go.Scatter3d(
+        x=norm_edge_x, y=norm_edge_y, z=norm_edge_z,
+        mode='lines', line=dict(color='rgba(150, 150, 150, 0.15)', width=1),
+        hoverinfo='none', name='Standard Synapses'
     )
 
-    # Define a completely invisible axis
-    no_axis = dict(
-        showbackground=False,
-        showgrid=False,  # Removes the grid lines
-        zeroline=False,  # Removes the zero line
-        showticklabels=False,
-        title='',
-        showspikes=False,  # Removes the hover projection lines
-        visible=False  # Completely hides the axis boundaries
+    # Visualize the zero-initialized lateral output edges!
+    trace_lat_edges = go.Scatter3d(
+        x=lat_edge_x, y=lat_edge_y, z=lat_edge_z,
+        mode='lines', line=dict(color='rgba(255, 0, 204, 0.6)', width=2),
+        hoverinfo='none', name='Lateral Output Synapses (Zero-Init)'
     )
 
-    # Render Layout
+    no_axis = dict(showbackground=False, showgrid=False, zeroline=False, showticklabels=False, title='',
+                   showspikes=False, visible=False)
+
     layout = go.Layout(
         title=f'FDSR Architecture (Density: {NUM_CONNECTIONS})<br>'
-              f'<span style="font-size:12px;">Cyan=Inputs, Magenta=Outputs, Color Gradient=Flow Direction</span>',
-        scene=dict(
-            xaxis=no_axis,
-            yaxis=no_axis,
-            zaxis=no_axis,
-            bgcolor='black'  # The pure void
-        ),
-        paper_bgcolor='black',
-        font=dict(color='white'),
-        margin=dict(l=0, r=0, b=0, t=50),
-        showlegend=False
+              f'<span style="font-size:12px;">Cyan=Inputs, Magenta=Outputs, Neon Pink Lines=Lateral Output Hub</span>',
+        scene=dict(xaxis=no_axis, yaxis=no_axis, zaxis=no_axis, bgcolor='black'),
+        paper_bgcolor='black', font=dict(color='white'), margin=dict(l=0, r=0, b=0, t=50), showlegend=False
     )
 
-    fig = go.Figure(data=[trace_edges, trace_nodes], layout=layout)
+    fig = go.Figure(data=[trace_norm_edges, trace_lat_edges, trace_nodes], layout=layout)
     print("Opening browser...")
     fig.show()
 

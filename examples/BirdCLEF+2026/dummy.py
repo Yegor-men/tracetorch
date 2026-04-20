@@ -132,76 +132,33 @@ test_dataloader = DataLoader(
 import tracetorch as tt
 
 
-class Foo(tt.Model):
-    def __init__(self, working_dim):
-        super().__init__()
-
-        self.lin_in = nn.Linear(working_dim, working_dim, bias=False)
-        nn.init.eye_(self.lin_in.weight)
-
-        self.lif = tt.snn.LIB(
-            num_neurons=working_dim,
-            beta=torch.rand(working_dim),
-            threshold=torch.rand(working_dim),
-            bias=torch.randn(working_dim) * 0.1,
-            quant_fn=nn.Identity(),
-        )
-
-        self.lin_out = nn.Linear(working_dim, working_dim, bias=False)
-        nn.init.zeros_(self.lin_out.weight)
-
-    def forward(self, x):
-        return x + self.lin_out(self.lif(self.lin_in(x)))
-
-
-class SSM(tt.Model):
-    def __init__(self, working_dim, d_state, num_layers):
-        super().__init__()
-
-        self.enc = nn.Linear(kernel_size ** 2, working_dim)
-
-        # self.layers = nn.ModuleList([
-        #     tt.ssm.SelectiveSSM(
-        #         num_neurons=working_dim,
-        #         d_state=d_state,
-        #     ) for _ in range(num_layers)
-        # ])
-
-        self.layers = nn.ModuleList([Foo(working_dim) for _ in range(num_layers)])
-
-        self.dec = nn.Linear(working_dim, 10)
-        nn.init.zeros_(self.dec.weight)
-        nn.init.zeros_(self.dec.bias)
-
-    def forward(self, x):
-        x = self.enc(x)
-        for layer in self.layers:
-            x = layer(x)
-        x = self.dec(x)
-        return x
-
-
 class Bar(tt.Model):
-    def __init__(self, working_dim, num_neurons, num_connections, num_dims, flow):
+    def __init__(self, working_dim, num_neurons, num_connections):
         super().__init__()
 
         self.lin_in = nn.Linear(working_dim, working_dim, bias=False)
         nn.init.eye_(self.lin_in.weight)
 
         coordinates = torch.randn(num_neurons, 4)
-        dist = torch.linalg.vector_norm(coordinates, dim=1, keepdim=True)
-        coordinates = (coordinates / (dist + 1e-8)) * (dist + 0.1)
+        # dist = torch.linalg.vector_norm(coordinates, dim=1, keepdim=True)
+        # coordinates = (coordinates / (dist + 1e-8)) * (dist + 0.1)
 
         flow_values = torch.linalg.vector_norm(coordinates, ord=2, dim=1)
         flow_values = torch.exp(flow_values * -0.1)
 
         self.fdsr = tt.snn.FDSR(
-            in_features=working_dim,
-            out_features=working_dim,
+            lif_neurons=tt.snn.LIB(
+                num_neurons,
+                beta=torch.rand(num_neurons),
+                threshold=torch.rand(num_neurons),
+                bias=torch.randn(num_neurons) * 0.1,
+                quant_fn=nn.Identity(),
+            ),
             coordinates=coordinates,
             flow_values=flow_values,
+            in_features=working_dim,
+            out_features=working_dim,
             num_connections=num_connections,
-            gamma=torch.rand(num_neurons),
             dim=-1,
         )
 
@@ -218,8 +175,6 @@ class FDSR(tt.Model):
             working_dim: int,
             num_neurons: int,
             num_connections: int,
-            num_dims: int,
-            flow: float,
             num_layers: int,
     ):
         super().__init__()
@@ -230,8 +185,6 @@ class FDSR(tt.Model):
             working_dim=working_dim,
             num_neurons=num_neurons,
             num_connections=num_connections,
-            num_dims=num_dims,
-            flow=flow,
         ) for _ in range(num_layers)])
 
         self.dec = nn.Linear(working_dim, 10, bias=False)
@@ -245,8 +198,7 @@ class FDSR(tt.Model):
         return x
 
 
-model = FDSR(working_dim=32, num_neurons=512, num_connections=16, num_dims=3, flow=0.1, num_layers=5).to(device)
-# model = SSM(working_dim=128, d_state=16, num_layers=10).to(device)
+model = FDSR(working_dim=32, num_neurons=256, num_connections=32, num_layers=3).to(device)
 
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
