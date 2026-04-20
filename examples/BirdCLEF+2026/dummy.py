@@ -140,11 +140,9 @@ class Bar(tt.Model):
         nn.init.eye_(self.lin_in.weight)
 
         coordinates = torch.randn(num_neurons, 4)
-        # dist = torch.linalg.vector_norm(coordinates, dim=1, keepdim=True)
-        # coordinates = (coordinates / (dist + 1e-8)) * (dist + 0.1)
 
-        flow_values = torch.linalg.vector_norm(coordinates, ord=2, dim=1)
-        flow_values = torch.exp(flow_values * -0.1)
+        distances = torch.linalg.vector_norm(coordinates, ord=2, dim=1)
+        flow_values = 1 / (distances + 100)
 
         self.fdsr = tt.snn.FDSR(
             lif_neurons=tt.snn.LIB(
@@ -198,7 +196,19 @@ class FDSR(tt.Model):
         return x
 
 
-model = FDSR(working_dim=32, num_neurons=256, num_connections=32, num_layers=3).to(device)
+model = FDSR(working_dim=32, num_neurons=512, num_connections=8, num_layers=3).to(device)
+
+
+@torch.no_grad()
+def update_ema_model(model, ema_model, decay: float = 0.995):
+    for param, ema_param in zip(model.parameters(), ema_model.parameters()):
+        ema_param.data.mul_(decay).add_(param.data, alpha=1 - decay)
+
+
+ema_model = copy.deepcopy(model)
+ema_model.eval()
+for param in ema_model.parameters():
+    param.requires_grad = False
 
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
 optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
@@ -212,37 +222,18 @@ for e in range(num_epochs):
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
         img, seq, label = img.to(device), seq.to(device), label.to(device)
 
-        # Apply dynamic corruption per image in batch
-        batch_size = img.size(0)
-        corruption_levels = torch.rand(batch_size, device=device)  # [0,1] values
-        sqrt_corruption = torch.sqrt(corruption_levels)  # sqrt values for image weighting
-
-        # Generate noise for each image
-        noise = torch.rand_like(img)  # Same shape as images
-
-        # Apply corruption: image*sqrt(x) + noise*(1-sqrt(x))
-        # Need to expand sqrt_corruption to match image dimensions
-        sqrt_correlation = sqrt_corruption.view(batch_size, 1, 1, 1)  # [B,1,1,1]
-        img_corrupted = img * sqrt_correlation + noise * (1 - sqrt_correlation)
-
-        # Update seq with corrupted images
-        # Need to re-run patch_collate logic here with corrupted images
-        B, C, H, W = img_corrupted.shape
-        patches = img_corrupted.unfold(2, kernel_size, stride).unfold(3, kernel_size, stride)
-        patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
-        n_h = patches.size(1)
-        n_w = patches.size(2)
-        n_patches = n_h * n_w
-        patches = patches.view(B, n_patches, C * kernel_size * kernel_size)
-        seq_corrupted = patches.permute(1, 0, 2).contiguous()  # [T, B, area]
+        with torch.no_grad():
+            corruption_levels_1d = torch.rand(batch_size).to(device)
+            corruption_levels = (corruption_levels_1d ** 0.5).view(1, -1, 1)
+            seq = seq * corruption_levels + torch.rand_like(seq) * (1 - corruption_levels)
 
         model.zero_grad()
         model.zero_states()
 
         # Collect outputs from all timesteps
         timestep_outputs = []
-        for t in range(seq_corrupted.size(0)):
-            model_output = model(seq_corrupted[t])
+        for t in range(seq.size(0)):
+            model_output = model(seq[t])
             timestep_outputs.append(model_output)
 
         # Calculate weighted loss for each timestep
@@ -252,7 +243,7 @@ for e in range(num_epochs):
         # Calculate per-image losses with corruption scaling
         final_outputs = timestep_outputs[-1]  # [B, 10]
         per_image_losses = torch.stack([
-            loss_fn(final_outputs[i:i + 1], label[i:i + 1]) * corruption_levels[i]
+            loss_fn(final_outputs[i:i + 1], label[i:i + 1]) * corruption_levels_1d[i]
             for i in range(batch_size)
         ])
 
@@ -267,6 +258,7 @@ for e in range(num_epochs):
 
         loss.backward()
         optimizer.step()
+        update_ema_model(model, ema_model, decay=0.995)
 
     plt.title("LOSS")
     plt.plot(train_losses, label="train")
@@ -279,16 +271,17 @@ for e in range(num_epochs):
     plt.show()
 
     model.eval()
+    ema_model.eval()
     test_loss = 0.0
     test_acc = 0.0
     with torch.no_grad():
         for (img, seq, label) in tqdm(test_dataloader, total=len(test_dataloader), desc=f"TEST - E{e}"):
             img, seq, label = img.to(device), seq.to(device), label.to(device)
 
-            model.zero_states()
+            ema_model.zero_states()
 
             for t in range(seq.size(0)):
-                model_output = model(seq[t])
+                model_output = ema_model(seq[t])
 
             loss = loss_fn(model_output, label)
             test_loss += loss.item()
@@ -307,7 +300,7 @@ with torch.no_grad():
 
     for i in range(10):
         img, seq, label = img_batch[i], seq_batch[:, i], label_batch[i]  # Extract i-th sample
-        model.zero_states()
+        ema_model.zero_states()
 
         input_spike_train = []
         model_outputs = []
@@ -319,13 +312,13 @@ with torch.no_grad():
             spk_input = seq[t].unsqueeze(0)  # [1, area]
             input_spike_train.append(spk_input.squeeze(0))  # [area]
 
-            model_output = model(spk_input).squeeze(0)  # [10]
+            model_output = ema_model(spk_input).squeeze(0)  # [10]
             model_outputs.append(nn.functional.softmax(model_output, dim=-1))
             loss = loss_fn(model_output, label.unsqueeze(0))
             running_loss += loss.item() / seq.size(0)
             losses.append(loss.item())
 
-            trace_thing = model.layers[-1].fdsr.trace.clone().detach()  # Get current synaptic trace
+            trace_thing = ema_model.layers[-1].fdsr.trace.clone().detach()  # Get current synaptic trace
             traces.append(trace_thing.squeeze(0))
 
         tt.plot.render_image(img.unsqueeze(0), title=f"Digit: {label.item()}")

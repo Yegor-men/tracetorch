@@ -7,7 +7,7 @@ from sklearn.decomposition import PCA
 # HYPERPARAMETERS TO PLAY WITH
 # ==========================================
 NUM_NEURONS = 512  # Keep < 1000 for smooth 3D rendering
-NUM_CONNECTIONS = 16  # Connections per neuron
+NUM_CONNECTIONS = 8  # Connections per neuron
 
 IN_FEATURES = 32
 OUT_FEATURES = 32
