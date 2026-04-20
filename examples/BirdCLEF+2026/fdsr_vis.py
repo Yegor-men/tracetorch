@@ -6,32 +6,34 @@ from sklearn.decomposition import PCA
 # ==========================================
 # HYPERPARAMETERS TO PLAY WITH
 # ==========================================
-NUM_NEURONS = 400  # Keep < 1000 for smooth 3D rendering
-NUM_CONNECTIONS = 5  # Connections per neuron
-NUM_DIMS = 3  # Spatial dimensions (if >3, PCA is used for display)
-FLOW = 0.1  # The flow scalar (Try 0.01, 0.5, and 2.0 to see the shape change!)
+NUM_NEURONS = 512  # Keep < 1000 for smooth 3D rendering
+NUM_CONNECTIONS = 16  # Connections per neuron
 
-IN_FEATURES = 10
-OUT_FEATURES = 10
+IN_FEATURES = 32
+OUT_FEATURES = 32
 
 
 # ==========================================
 
-def generate_graph(num_neurons, num_connections, num_dims, flow, in_features, out_features):
+def generate_graph(num_neurons, num_connections, in_features, out_features):
     """Executes the exact FDSR initialization logic"""
     torch.manual_seed(42)  # Fixed seed for reproducible visualization comparisons
 
     # 1. Spatial Embedding & Topological Flow
-    coords = torch.randn(num_neurons, num_dims)
-    flow_vals = torch.exp(flow * coords.sum(dim=1))
+    coords = torch.randn(num_neurons, 10)
+    dist = torch.linalg.vector_norm(coords, dim=1, keepdim=True)
+    coords = (coords / (dist + 1e-8)) * (dist + 0.1)
 
-    sorted_indices = torch.argsort(flow_vals)
+    flow_values = torch.linalg.vector_norm(coords, ord=2, dim=1)
+    flow_values = torch.exp(flow_values * -0.1)
+
+    sorted_indices = torch.argsort(flow_values)
     input_idx = sorted_indices[:in_features]
     output_idx = sorted_indices[-out_features:]
 
     # 2. Distance and Topology
     d = torch.cdist(coords, coords, p=2.0)
-    r = flow_vals.unsqueeze(0) / flow_vals.unsqueeze(1)
+    r = flow_values.unsqueeze(0) / flow_values.unsqueeze(1)
     D = d / r
 
     # 3. Masking
@@ -54,21 +56,23 @@ def generate_graph(num_neurons, num_connections, num_dims, flow, in_features, ou
     src_tensor = torch.cat(src_list)
     dst_tensor = torch.cat(dst_list)
 
-    return coords.numpy(), flow_vals.numpy(), input_idx.numpy(), output_idx.numpy(), src_tensor.numpy(), dst_tensor.numpy()
+    return coords.numpy(), flow_values.numpy(), input_idx.numpy(), output_idx.numpy(), src_tensor.numpy(), dst_tensor.numpy()
 
 
 def plot_fdsr():
-    print(f"Generating FDSR Graph with {NUM_NEURONS} nodes and Flow={FLOW}...")
+    print(f"Generating FDSR Graph with {NUM_NEURONS}...")
     coords, flow_vals, input_idx, output_idx, src, dst = generate_graph(
-        NUM_NEURONS, NUM_CONNECTIONS, NUM_DIMS, FLOW, IN_FEATURES, OUT_FEATURES
+        NUM_NEURONS, NUM_CONNECTIONS, IN_FEATURES, OUT_FEATURES
     )
 
+    num_nodes, num_dims = coords.shape
+
     # Project to 3D if necessary
-    if NUM_DIMS > 3:
-        print(f"Projecting {NUM_DIMS}D space to 3D using PCA...")
+    if num_dims > 3:
+        print(f"Projecting {num_dims}D space to 3D using PCA...")
         pca = PCA(n_components=3)
         plot_coords = pca.fit_transform(coords)
-    elif NUM_DIMS == 2:
+    elif num_dims == 2:
         plot_coords = np.pad(coords, ((0, 0), (0, 1)), mode='constant')  # Add Z=0
     else:
         plot_coords = coords
@@ -144,7 +148,7 @@ def plot_fdsr():
 
     # Render Layout
     layout = go.Layout(
-        title=f'FDSR Architecture (Dims: {NUM_DIMS}, Flow: {FLOW}, Density: {NUM_CONNECTIONS})<br>'
+        title=f'FDSR Architecture (Density: {NUM_CONNECTIONS})<br>'
               f'<span style="font-size:12px;">Cyan=Inputs, Magenta=Outputs, Color Gradient=Flow Direction</span>',
         scene=dict(
             xaxis=no_axis,

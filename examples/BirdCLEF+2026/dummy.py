@@ -188,14 +188,20 @@ class Bar(tt.Model):
         self.lin_in = nn.Linear(working_dim, working_dim, bias=False)
         nn.init.eye_(self.lin_in.weight)
 
+        coordinates = torch.randn(num_neurons, 4)
+        dist = torch.linalg.vector_norm(coordinates, dim=1, keepdim=True)
+        coordinates = (coordinates / (dist + 1e-8)) * (dist + 0.1)
+
+        flow_values = torch.linalg.vector_norm(coordinates, ord=2, dim=1)
+        flow_values = torch.exp(flow_values * -0.1)
+
         self.fdsr = tt.snn.FDSR(
             in_features=working_dim,
             out_features=working_dim,
-            num_neurons=num_neurons,
+            coordinates=coordinates,
+            flow_values=flow_values,
             num_connections=num_connections,
             gamma=torch.rand(num_neurons),
-            num_dims=num_dims,
-            flow=flow,
             dim=-1,
         )
 
@@ -239,7 +245,7 @@ class FDSR(tt.Model):
         return x
 
 
-model = FDSR(working_dim=128, num_neurons=512, num_connections=64, num_dims=4, flow=0.1, num_layers=5).to(device)
+model = FDSR(working_dim=32, num_neurons=512, num_connections=16, num_dims=3, flow=0.1, num_layers=5).to(device)
 # model = SSM(working_dim=128, d_state=16, num_layers=10).to(device)
 
 print(f"Total: {sum(p.numel() for p in model.parameters()):,}")

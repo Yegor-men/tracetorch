@@ -35,35 +35,31 @@ class FDSR(SNNLayer):
             self,
             in_features: int,
             out_features: int,
-            num_neurons: int,
+            coordinates: torch.Tensor,
+            flow_values: torch.Tensor,
             num_connections: int,
             gamma: Union[float, torch.Tensor] = 0.9,
             spk_scale: Union[float, torch.Tensor] = 0.0,
-            num_dims: int = 3,
-            flow: float = 0.1,
             dim: int = -1,
             gamma_rank: Literal[0, 1] = 1,
             spk_scale_rank: Literal[0, 1] = 1,
             learn_gamma: bool = True,
             learn_spk_scale: bool = True,
     ):
-        super().__init__(num_neurons=num_neurons, dim=dim)
-
+        num_neurons, num_dims = coordinates.shape
+        self.num_neurons = num_neurons
+        self.num_dims = num_dims
         self.in_features = in_features
         self.out_features = out_features
-        self.num_neurons = num_neurons
+        super().__init__(num_neurons=num_neurons, dim=dim)
 
-        # 1) spatial embedding and topological flow
-        coords = torch.randn(num_neurons, num_dims)
-        flow_vals = torch.exp(flow * coords.sum(dim=1))
-
-        sorted_indices = torch.argsort(flow_vals)
+        sorted_indices = torch.argsort(flow_values)
         self.register_buffer("input_idx", sorted_indices[:in_features])
         self.register_buffer("output_idx", sorted_indices[-out_features:])
 
         # 2) effective distance matrix (euclidean / flow ratio)
-        d = torch.cdist(coords, coords, p=2.0)
-        r = flow_vals.unsqueeze(0) / flow_vals.unsqueeze(1)
+        d = torch.cdist(coordinates, coordinates, p=2.0)
+        r = flow_values.unsqueeze(0) / flow_values.unsqueeze(1)
         D = d / r
 
         # 3) topology masking so that input neurons don't listen to FSDR and output neurons don't feed FSDR
