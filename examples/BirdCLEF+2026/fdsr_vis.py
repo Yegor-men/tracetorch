@@ -9,7 +9,7 @@ from sklearn.decomposition import PCA
 NUM_NEURONS = 400  # Keep < 1000 for smooth 3D rendering
 NUM_CONNECTIONS = 5  # Connections per neuron
 NUM_DIMS = 3  # Spatial dimensions (if >3, PCA is used for display)
-FLOW = 1  # The flow scalar (Try 0.01, 0.5, and 2.0 to see the shape change!)
+FLOW = 0.1  # The flow scalar (Try 0.01, 0.5, and 2.0 to see the shape change!)
 
 IN_FEATURES = 10
 OUT_FEATURES = 10
@@ -131,15 +131,26 @@ def plot_fdsr():
         name='Synapses'
     )
 
+    # Define a completely invisible axis
+    no_axis = dict(
+        showbackground=False,
+        showgrid=False,  # Removes the grid lines
+        zeroline=False,  # Removes the zero line
+        showticklabels=False,
+        title='',
+        showspikes=False,  # Removes the hover projection lines
+        visible=False  # Completely hides the axis boundaries
+    )
+
     # Render Layout
     layout = go.Layout(
         title=f'FDSR Architecture (Dims: {NUM_DIMS}, Flow: {FLOW}, Density: {NUM_CONNECTIONS})<br>'
               f'<span style="font-size:12px;">Cyan=Inputs, Magenta=Outputs, Color Gradient=Flow Direction</span>',
         scene=dict(
-            xaxis=dict(showbackground=False, showticklabels=False, title=''),
-            yaxis=dict(showbackground=False, showticklabels=False, title=''),
-            zaxis=dict(showbackground=False, showticklabels=False, title=''),
-            bgcolor='black'  # Dark mode makes the neon colors pop
+            xaxis=no_axis,
+            yaxis=no_axis,
+            zaxis=no_axis,
+            bgcolor='black'  # The pure void
         ),
         paper_bgcolor='black',
         font=dict(color='white'),
