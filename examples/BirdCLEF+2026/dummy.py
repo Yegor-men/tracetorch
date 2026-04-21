@@ -145,10 +145,10 @@ class Bar(tt.Model):
 
         out_degrees = torch.empty(num_neurons).log_normal_(2, 1) + 1
 
-        flow_values = torch.ones_like(distances) + (5 / out_degrees)
+        flow_values = torch.ones_like(distances) + (1 / out_degrees)
 
-        self.fdsr = tt.snn.FDSR(
-            lif_neurons=tt.snn.LIB(
+        self.fdsr = tt.nn.FDSR(
+            neurons=tt.snn.LIB(
                 num_neurons,
                 beta=torch.rand(num_neurons),
                 threshold=torch.rand(num_neurons),
@@ -173,9 +173,9 @@ class Bar(tt.Model):
 class FDSR(tt.Model):
     def __init__(
             self,
-            num_neurons=2048,
-            num_in_out=128,
-            num_layers=2,
+            num_neurons=1024,
+            num_in_out=64,
+            num_layers=1,
     ):
         super().__init__()
 
@@ -186,12 +186,15 @@ class FDSR(tt.Model):
             num_neurons=num_neurons,
         ) for _ in range(num_layers)])
 
+        self.ssm = tt.ssm.S6(num_in_out, 16)
+
         self.dec = nn.Linear(num_in_out, 10, bias=False)
 
     def forward(self, x):
         x = self.enc(x)
         for layer in self.layers:
             x = layer(x)
+        x = self.ssm(x)
         x = self.dec(x)
 
         return x

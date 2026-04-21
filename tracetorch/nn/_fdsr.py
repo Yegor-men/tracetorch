@@ -1,9 +1,9 @@
 import torch
 from torch import nn
-from ._snnlayer import Layer as SNNLayer
+from ..core import Layer
 
 
-class FDSR(SNNLayer):
+class FDSR(Layer):
     """
     Flow-Directed Spatial Reservoir
 
@@ -14,12 +14,12 @@ class FDSR(SNNLayer):
 
     High flow nodes are used as outputs, low flow nodes are used as inputs.
 
-    The output of any node is a residual addition: arcsinh(input) + delta created by SNN (must be set to dim=-1)
+    The output of any node is a residual addition: arcsinh(input) + delta created by the neurons (must be set to dim=-1)
     """
 
     def __init__(
             self,
-            lif_neurons,
+            neurons,
             coordinates: torch.Tensor,
             flow_values: torch.Tensor,
             out_degrees: torch.Tensor,
@@ -72,8 +72,8 @@ class FDSR(SNNLayer):
         std_dev_per_edge = std_dev[src_tensor]
         self.edge_weights = nn.Parameter(torch.randn(len(src_tensor)) * std_dev_per_edge)
 
-        # 5) SNN Core
-        self.lif = lif_neurons
+        # 5) Reservoir core
+        self.neurons = neurons
 
         # 6) Instantaneous Spatial State
         self._initialize_state("trace")
@@ -95,8 +95,8 @@ class FDSR(SNNLayer):
         # Inject pure external inputs
         cumsum[..., self.input_idx] = x_working
 
-        # The SNN computes the complex non-linear ODE based on the total accumulated current
-        delta = self.lif(cumsum)
+        # The reservoir computes the complex non-linear ODE based on the total accumulated current
+        delta = self.neurons(cumsum)
 
         # The instantaneous state is a smoothened sum + the non-linear SNN spike
         new_trace = torch.arcsinh(cumsum) + delta

@@ -18,8 +18,8 @@ class Bar(tt.Model):
 
         flow_values = torch.ones_like(distances) + (5 / out_degrees)
 
-        self.fdsr = tt.snn.FDSR(
-            lif_neurons=tt.snn.LIB(
+        self.fdsr = tt.nn.FDSR(
+            neurons=tt.snn.LIB(
                 num_neurons,
                 beta=torch.rand(num_neurons),
                 threshold=torch.rand(num_neurons),

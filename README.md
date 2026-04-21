@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.18.1-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.18.2-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.18.1-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.18.2-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -40,13 +40,13 @@ Integrator, albeit a bit more complex. Subsequently, the philosophy was then ext
 is an opinionated, but extremely extensive and ergonomic extension to PyTorch for RNN, SNN and SSM models, adding a
 total of 43 layers, with more to come:
 
-| 33 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer`                                          |
-|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------|
-| Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                               |
-| Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
-| Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
-| Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
-| Flow-Directed Spatial Reservoir: `FDSR` for a biologically plausible, graph based network                       |                                                 |                                                                                          |
+| 1 NN layer, based on `tt.Layer` (alias for `tt.core.Layer`)                                                                    | 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer`                                          |
+|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------|
+| Flow-Directed Spatial Reservoir: `FDSR` for a biologically plausible, graph based networks, using any kind of reservoir neuron | Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                               |
+|                                                                                                                                | Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
+|                                                                                                                                | Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
+|                                                                                                                                | Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
+|                                                                                                                                |                                                                                                                 |                                                 |                                                                                          |
 
 But above all, the main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from
 `tt.Model` grants access to powerful recursive methods that handle all the boilerplate of state management:
@@ -158,7 +158,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.18.1 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.18.2 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
@@ -176,7 +176,6 @@ clarity.
 import torch
 from torch import nn
 import tracetorch as tt
-from tracetorch import snn, rnn, ssm
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -186,14 +185,14 @@ class SNN(tt.Model):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 32, 3, padding=1),
-            rnn.GRU(in_features=16, out_features=16, dim=-3),  # RNN, dim=-3 works on the color channel dimension
+            tt.rnn.GRU(in_features=16, out_features=16, dim=-3),  # RNN, dim=-3 works on the color channel dimension
             nn.MaxPool2d(2, 2),
             nn.Conv2d(32, 64, 3, padding=1),
-            snn.LIB(num_neurons=64, beta=torch.rand(64), dim=-3),  # SNN, can set parameters to a custom tensor too
+            tt.snn.LIB(num_neurons=64, beta=torch.rand(64), dim=-3),  # SNN, can set parameters to a custom tensor too
             nn.MaxPool2d(2, 2),
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 128),
-            ssm.S6(num_neurons=128, d_state=16),  # S6 SSM, you can mix all the different layers into one model
+            tt.ssm.S6(num_neurons=128, d_state=16),  # S6 SSM, you can mix all the different layers into one model
             nn.Linear(128, 10)
         )
 
