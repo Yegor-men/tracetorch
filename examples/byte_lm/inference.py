@@ -102,9 +102,9 @@ def sample(model, device, out_path=None, sample_cfg=None, gen_length=1000):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    from architecture import SNNLM
+    from architecture import TTLM
 
-    model = SNNLM(2048, 10).to(device)
+    model = TTLM(1000, 100, 3).to(device)
     modelfile = "checkpoints/step_20300_e2_bpb15334.safetensors"
     model.load_state_dict(load_file(modelfile))
 

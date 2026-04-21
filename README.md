@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.18.0-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.18.1-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.18.0-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.18.1-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -46,7 +46,7 @@ total of 43 layers, with more to come:
 | Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
 | Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
 | Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
-| Flow-Directed Spatial Reservoir: `FDSR`                                                                         |                                                 |                                                                                          |
+| Flow-Directed Spatial Reservoir: `FDSR` for a biologically plausible, graph based network                       |                                                 |                                                                                          |
 
 But above all, the main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from
 `tt.Model` grants access to powerful recursive methods that handle all the boilerplate of state management:
@@ -158,7 +158,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.18.0 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.18.1 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```

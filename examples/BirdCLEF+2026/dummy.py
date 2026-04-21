@@ -133,16 +133,19 @@ import tracetorch as tt
 
 
 class Bar(tt.Model):
-    def __init__(self, working_dim, num_neurons, num_connections):
+    def __init__(self, num_in_out, num_neurons):
         super().__init__()
 
-        self.lin_in = nn.Linear(working_dim, working_dim, bias=False)
+        self.lin_in = nn.Linear(num_in_out, num_in_out, bias=False)
         nn.init.eye_(self.lin_in.weight)
 
-        coordinates = torch.randn(num_neurons, 4)
+        coordinates = torch.randn(num_neurons, 5)
+        distances = torch.linalg.vector_norm(coordinates, ord=2, dim=-1)
+        coordinates = coordinates / distances.unsqueeze(-1)
 
-        distances = torch.linalg.vector_norm(coordinates, ord=2, dim=1)
-        flow_values = 1 / (distances + 100)
+        out_degrees = torch.empty(num_neurons).log_normal_(2, 1) + 1
+
+        flow_values = torch.ones_like(distances) + (5 / out_degrees)
 
         self.fdsr = tt.snn.FDSR(
             lif_neurons=tt.snn.LIB(
@@ -154,13 +157,13 @@ class Bar(tt.Model):
             ),
             coordinates=coordinates,
             flow_values=flow_values,
-            in_features=working_dim,
-            out_features=working_dim,
-            num_connections=num_connections,
+            out_degrees=out_degrees,
+            in_features=num_in_out,
+            out_features=num_in_out,
             dim=-1,
         )
 
-        self.lin_out = nn.Linear(working_dim, working_dim, bias=False)
+        self.lin_out = nn.Linear(num_in_out, num_in_out, bias=False)
         nn.init.zeros_(self.lin_out.weight)
 
     def forward(self, x):
@@ -170,22 +173,20 @@ class Bar(tt.Model):
 class FDSR(tt.Model):
     def __init__(
             self,
-            working_dim: int,
-            num_neurons: int,
-            num_connections: int,
-            num_layers: int,
+            num_neurons=2048,
+            num_in_out=128,
+            num_layers=2,
     ):
         super().__init__()
 
-        self.enc = nn.Linear(kernel_size ** 2, working_dim, bias=False)
+        self.enc = nn.Linear(kernel_size ** 2, num_in_out, bias=False)
 
         self.layers = nn.ModuleList([Bar(
-            working_dim=working_dim,
+            num_in_out=num_in_out,
             num_neurons=num_neurons,
-            num_connections=num_connections,
         ) for _ in range(num_layers)])
 
-        self.dec = nn.Linear(working_dim, 10, bias=False)
+        self.dec = nn.Linear(num_in_out, 10, bias=False)
 
     def forward(self, x):
         x = self.enc(x)
@@ -196,7 +197,7 @@ class FDSR(tt.Model):
         return x
 
 
-model = FDSR(working_dim=32, num_neurons=512, num_connections=8, num_layers=3).to(device)
+model = FDSR().to(device)
 
 
 @torch.no_grad()
@@ -224,8 +225,8 @@ for e in range(num_epochs):
 
         with torch.no_grad():
             corruption_levels_1d = torch.rand(batch_size).to(device)
-            corruption_levels = (corruption_levels_1d ** 0.5).view(1, -1, 1)
-            seq = seq * corruption_levels + torch.rand_like(seq) * (1 - corruption_levels)
+            corruption_levels = (corruption_levels_1d ** 0.1).view(1, -1, 1)
+            seq = seq * corruption_levels + (torch.randn_like(seq) + 0.5) * (1 - corruption_levels)
 
         model.zero_grad()
         model.zero_states()
@@ -236,21 +237,39 @@ for e in range(num_epochs):
             model_output = model(seq[t])
             timestep_outputs.append(model_output)
 
-        # Calculate weighted loss for each timestep
-        T = len(timestep_outputs)
-        weights = torch.arange(1, T + 1, dtype=torch.float32, device=device) / T
+        # 1. Stack all outputs: [T, B, 10]
+        all_outputs = torch.stack(timestep_outputs, dim=0)
+        T, B, _ = all_outputs.shape
 
-        # Calculate per-image losses with corruption scaling
-        final_outputs = timestep_outputs[-1]  # [B, 10]
-        per_image_losses = torch.stack([
-            loss_fn(final_outputs[i:i + 1], label[i:i + 1]) * corruption_levels_1d[i]
-            for i in range(batch_size)
-        ])
+        # 2. Calculate the raw per-timestep, per-sample loss
+        # target needs to be [T, B] so we expand the label
+        target = label.unsqueeze(0).expand(T, B)
 
-        loss = per_image_losses.mean()
+        # We flatten to [T*B, 10] and [T*B] to use the fast functional cross_entropy
+        raw_loss = nn.functional.cross_entropy(
+            all_outputs.reshape(-1, 10),
+            target.reshape(-1),
+            reduction='none'
+        ).view(T, B)  # Reshape back to [T, B]
+
+        # 3. Apply Temporal Weighting (Linear ramp)
+        # weights: [T, 1]
+        weights = (torch.arange(1, T + 1, dtype=torch.float32, device=device).view(T, 1) / T) ** 10
+
+        # Weight the loss and normalize by the mean weight to preserve magnitude
+        # (loss * weights).sum() / weights.sum()
+        temporal_weighted_loss = (raw_loss * weights).sum(dim=0) / weights.sum()  # Result: [B]
+
+        # 4. Apply Batch Corruption Weighting
+        # corruption_levels_1d: [B]
+        # We want to trust clean images more than noisy ones.
+        batch_weighted_loss = (temporal_weighted_loss * corruption_levels_1d).sum() / corruption_levels_1d.sum()
+
+        # Final scalar loss
+        loss = batch_weighted_loss
 
         # Use final timestep for accuracy (without corruption weighting)
-        pred_classes = final_outputs.argmax(dim=-1)
+        pred_classes = timestep_outputs[-1].argmax(dim=-1)
         frac_correct = (pred_classes == label).sum().item() / batch_size
 
         train_losses.append(loss.item())
