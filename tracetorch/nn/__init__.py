@@ -1,1 +1,2 @@
-from ._fdsr import FDSR
+from ._sng import SNG
+from ._tng import TNG

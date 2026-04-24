@@ -38,15 +38,15 @@ the box, and the layer mixin used for SNNs could also be used for standard RNNs.
 it becomes evident that State Space Models (SSMs) such as Mamba, are incredibly similar in concept to the Leaky
 Integrator, albeit a bit more complex. Subsequently, the philosophy was then extended to RNN and SSM layers. The result
 is an opinionated, but extremely extensive and ergonomic extension to PyTorch for RNN, SNN and SSM models, adding a
-total of 43 layers, with more to come:
+total of 44 layers, with more to come:
 
-| 1 NN layer, based on `tt.Layer` (alias for `tt.core.Layer`)                                                                    | 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer`                                          |
-|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------|
-| Flow-Directed Spatial Reservoir: `FDSR` for a biologically plausible, graph based networks, using any kind of reservoir neuron | Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                               |
-|                                                                                                                                | Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
-|                                                                                                                                | Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
-|                                                                                                                                | Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
-|                                                                                                                                |                                                                                                                 |                                                 |                                                                                          |
+| 2 NN layer, based on `tt.Layer` (alias for `tt.core.Layer`) | 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer`                                          |
+|-------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------|
+| Spatial Neural Graph `SNG`                                  | Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                               |
+| Topological Neural Graph `TNG`                              | Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
+|                                                             | Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
+|                                                             | Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
+|                                                             |                                                                                                                 |                                                 |                                                                                          |
 
 But above all, the main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from
 `tt.Model` grants access to powerful recursive methods that handle all the boilerplate of state management:
@@ -102,7 +102,7 @@ methods for the downstream layer types, but the core one presents the following:
 - `TTcompile` to compile the layer
 - `TTdecompile` to decompile the layer
 
-Speaking of layers, traceTorch has a total of 43 for SNNs, RNNs, and SSMs; each of which reside in their own
+Speaking of layers, traceTorch has a total of 44 for SNNs, RNNs, and SSMs; each of which reside in their own
 subdirectory: `tt.snn`, `tt.rnn`, and `tt.ssm`. Regardless of where the layer comes from though, it's inevitably a child
 of `tt.Layer`, which makes it integrate with `tt.Model` and all other PyTorch modules in a layer-like way. This means
 that the layers expect one input, and produce only one output. All hidden states stay hidden, internal to the layer. And

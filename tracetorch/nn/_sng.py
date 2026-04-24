@@ -3,9 +3,9 @@ from torch import nn
 from ..core import Layer
 
 
-class FDSR(Layer):
+class SNG(Layer):
     """
-    Flow-Directed Spatial Reservoir
+    Spatial Neural Graph
 
     Nodes are primarily routed based on Euclidean distance between coordinates, a tensor of size [num_nodes, num_dimensions]
 
@@ -14,6 +14,7 @@ class FDSR(Layer):
 
     High flow nodes are used as outputs, low flow nodes are used as inputs.
 
+    Inputs are injected additively, acting as sensory dendrites that stack on top of the network's recurrent predictive feedback.
     The output of any node is a residual addition: arcsinh(input) + delta created by the neurons (must be set to dim=-1)
     """
 
@@ -44,8 +45,8 @@ class FDSR(Layer):
         D = d / r
 
         # 2) Topology masking
-        D.fill_diagonal_(float('inf'))
-        D[:, self.input_idx] = float('inf')  # Inputs don't receive recurrent signals
+        D.fill_diagonal_(float('inf'))  # Prevent self-connections
+        # (We no longer mask input_idx, allowing the network to send predictive feedback to input nodes)
 
         # All nodes can route forward
         valid_src_indices = torch.arange(num_neurons)
@@ -54,7 +55,9 @@ class FDSR(Layer):
         src_list, dst_list = [], []
 
         k_per_src = out_degrees.clone().long().to(coordinates.device)
-        k_per_src = torch.clamp(k_per_src, min=1, max=num_neurons - in_features - 1)
+        # Max connections is now num_neurons - 1 (since we only block self-connections)
+        k_per_src = torch.clamp(k_per_src, min=1, max=num_neurons - 1)
+
         for i in valid_src_indices:
             real_k = k_per_src[i].item()
             best_dst = torch.topk(D[i], real_k, largest=False).indices
@@ -92,14 +95,14 @@ class FDSR(Layer):
         expanded_dst = self.dst_indices.expand(*trace_working.shape[:-1], -1)
         cumsum.scatter_add_(-1, expanded_dst, weighted_acts)
 
-        # Inject pure external inputs
-        cumsum[..., self.input_idx] = x_working
+        # Inject pure external inputs additively
+        cumsum[..., self.input_idx] = cumsum[..., self.input_idx] + x_working
 
         # The reservoir computes the complex non-linear ODE based on the total accumulated current
         delta = self.neurons(cumsum)
 
         # The instantaneous state is a smoothened sum + the non-linear SNN spike
-        new_trace = torch.arcsinh(cumsum) + delta
+        new_trace = delta
 
         # Update the instantaneous state
         self.trace = self._from_working_dim(new_trace)

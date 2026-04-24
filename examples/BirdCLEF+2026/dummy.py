@@ -17,8 +17,8 @@ torch.cuda.manual_seed_all(0)
 
 min_prob, max_prob, noise_offset = 0.0, 1.0, 0.0
 batch_size = 100
-kernel_size = 4
-stride = 4
+kernel_size = 2
+stride = 2
 pad = False
 num_workers = 0
 pin_memory = True
@@ -133,74 +133,74 @@ import tracetorch as tt
 
 
 class Bar(tt.Model):
-    def __init__(self, num_in_out, num_neurons):
+    def __init__(self, num_neurons, in_features, out_features, working_dim):
         super().__init__()
 
-        self.lin_in = nn.Linear(num_in_out, num_in_out, bias=False)
-        nn.init.eye_(self.lin_in.weight)
+        self.proj_in = nn.Linear(working_dim, in_features, bias=False)
 
-        coordinates = torch.randn(num_neurons, 5)
-        distances = torch.linalg.vector_norm(coordinates, ord=2, dim=-1)
-        coordinates = coordinates / distances.unsqueeze(-1)
-
-        out_degrees = torch.empty(num_neurons).log_normal_(2, 1) + 1
-
-        flow_values = torch.ones_like(distances) + (1 / out_degrees)
-
-        self.fdsr = tt.nn.FDSR(
-            neurons=tt.snn.LIB(
+        self.sing = tt.nn.TNG(
+            neurons=tt.snn.DLIB(
                 num_neurons,
-                beta=torch.rand(num_neurons),
+                pos_beta=torch.rand(num_neurons),
+                neg_beta=torch.rand(num_neurons),
                 threshold=torch.rand(num_neurons),
                 bias=torch.randn(num_neurons) * 0.1,
                 quant_fn=nn.Identity(),
             ),
-            coordinates=coordinates,
-            flow_values=flow_values,
-            out_degrees=out_degrees,
-            in_features=num_in_out,
-            out_features=num_in_out,
+            in_features=in_features,
+            out_features=out_features,
+            num_neurons=num_neurons,
+            avg_out_degree=8,
             dim=-1,
         )
 
-        self.lin_out = nn.Linear(num_in_out, num_in_out, bias=False)
-        nn.init.zeros_(self.lin_out.weight)
+        self.proj_out = nn.Linear(out_features, working_dim)
+        nn.init.zeros_(self.proj_out.weight)
+        nn.init.zeros_(self.proj_out.bias)
 
     def forward(self, x):
-        return x + self.lin_out(self.fdsr(self.lin_in(x)))
+        return x + self.proj_out(self.sing(self.proj_in(x)))
 
 
-class FDSR(tt.Model):
+class TNG(tt.Model):
     def __init__(
             self,
+            num_layers=2,
             num_neurons=1024,
-            num_in_out=64,
-            num_layers=1,
+            in_features=128,
+            out_features=128,
+            working_dim=128,
     ):
         super().__init__()
 
-        self.enc = nn.Linear(kernel_size ** 2, num_in_out, bias=False)
+        self.enc = nn.Linear(kernel_size ** 2, working_dim, bias=False)
 
-        self.layers = nn.ModuleList([Bar(
-            num_in_out=num_in_out,
-            num_neurons=num_neurons,
-        ) for _ in range(num_layers)])
+        self.layers = nn.ModuleList([
+            Bar(
+                num_neurons=num_neurons,
+                in_features=in_features,
+                out_features=out_features,
+                working_dim=working_dim,
+            ) for _ in range(num_layers)
+        ])
 
-        self.ssm = tt.ssm.S6(num_in_out, 16)
+        self.accum = tt.ssm.Mamba(working_dim, 16)
 
-        self.dec = nn.Linear(num_in_out, 10, bias=False)
+        self.dec = nn.Linear(working_dim, 10)
+        nn.init.zeros_(self.dec.weight)
+        nn.init.zeros_(self.dec.bias)
 
     def forward(self, x):
         x = self.enc(x)
         for layer in self.layers:
             x = layer(x)
-        x = self.ssm(x)
+        x = self.accum(x)
         x = self.dec(x)
-
         return x
 
 
-model = FDSR().to(device)
+model = TNG().to(device)
+num_think_steps = 1
 
 
 @torch.no_grad()
@@ -234,45 +234,12 @@ for e in range(num_epochs):
         model.zero_grad()
         model.zero_states()
 
-        # Collect outputs from all timesteps
-        timestep_outputs = []
         for t in range(seq.size(0)):
-            model_output = model(seq[t])
-            timestep_outputs.append(model_output)
+            for step in range(num_think_steps):
+                model_output = model(seq[t])
 
-        # 1. Stack all outputs: [T, B, 10]
-        all_outputs = torch.stack(timestep_outputs, dim=0)
-        T, B, _ = all_outputs.shape
-
-        # 2. Calculate the raw per-timestep, per-sample loss
-        # target needs to be [T, B] so we expand the label
-        target = label.unsqueeze(0).expand(T, B)
-
-        # We flatten to [T*B, 10] and [T*B] to use the fast functional cross_entropy
-        raw_loss = nn.functional.cross_entropy(
-            all_outputs.reshape(-1, 10),
-            target.reshape(-1),
-            reduction='none'
-        ).view(T, B)  # Reshape back to [T, B]
-
-        # 3. Apply Temporal Weighting (Linear ramp)
-        # weights: [T, 1]
-        weights = (torch.arange(1, T + 1, dtype=torch.float32, device=device).view(T, 1) / T) ** 10
-
-        # Weight the loss and normalize by the mean weight to preserve magnitude
-        # (loss * weights).sum() / weights.sum()
-        temporal_weighted_loss = (raw_loss * weights).sum(dim=0) / weights.sum()  # Result: [B]
-
-        # 4. Apply Batch Corruption Weighting
-        # corruption_levels_1d: [B]
-        # We want to trust clean images more than noisy ones.
-        batch_weighted_loss = (temporal_weighted_loss * corruption_levels_1d).sum() / corruption_levels_1d.sum()
-
-        # Final scalar loss
-        loss = batch_weighted_loss
-
-        # Use final timestep for accuracy (without corruption weighting)
-        pred_classes = timestep_outputs[-1].argmax(dim=-1)
+        loss = loss_fn(model_output, label)
+        pred_classes = model_output.argmax(dim=-1)
         frac_correct = (pred_classes == label).sum().item() / batch_size
 
         train_losses.append(loss.item())
@@ -303,7 +270,8 @@ for e in range(num_epochs):
             ema_model.zero_states()
 
             for t in range(seq.size(0)):
-                model_output = ema_model(seq[t])
+                for step in range(num_think_steps):
+                    model_output = ema_model(seq[t])
 
             loss = loss_fn(model_output, label)
             test_loss += loss.item()
@@ -331,17 +299,18 @@ with torch.no_grad():
         running_loss = 0.0
 
         for t in range(seq.size(0)):  # Iterate over timesteps
-            spk_input = seq[t].unsqueeze(0)  # [1, area]
-            input_spike_train.append(spk_input.squeeze(0))  # [area]
+            for step in range(num_think_steps):
+                spk_input = seq[t].unsqueeze(0)  # [1, area]
+                input_spike_train.append(spk_input.squeeze(0))  # [area]
 
-            model_output = ema_model(spk_input).squeeze(0)  # [10]
-            model_outputs.append(nn.functional.softmax(model_output, dim=-1))
-            loss = loss_fn(model_output, label.unsqueeze(0))
-            running_loss += loss.item() / seq.size(0)
-            losses.append(loss.item())
+                model_output = ema_model(spk_input).squeeze(0)  # [10]
+                model_outputs.append(nn.functional.softmax(model_output, dim=-1))
+                loss = loss_fn(model_output, label.unsqueeze(0))
+                running_loss += loss.item() / seq.size(0)
+                losses.append(loss.item())
 
-            trace_thing = ema_model.layers[-1].fdsr.trace.clone().detach()  # Get current synaptic trace
-            traces.append(trace_thing.squeeze(0))
+                trace_thing = ema_model.layers[-1].sing.trace.clone().detach()  # Get current synaptic trace
+                traces.append(trace_thing.squeeze(0))
 
         tt.plot.render_image(img.unsqueeze(0), title=f"Digit: {label.item()}")
         # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)

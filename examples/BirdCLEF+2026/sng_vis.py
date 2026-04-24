@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import plotly.graph_objects as go
 from sklearn.decomposition import PCA
+import math
 
 # ==========================================
 # HYPERPARAMETERS TO PLAY WITH
@@ -18,15 +19,16 @@ def generate_graph(num_neurons, in_features, out_features):
     torch.manual_seed(42)
 
     # 1. Spatial Embedding
-    coords = torch.randn(num_neurons, 3)
-    distances = torch.linalg.vector_norm(coords, ord=2, dim=-1)
-    coords = coords / (distances.unsqueeze(-1) + 1e-8)
+    coords = torch.rand(num_neurons, 3)
+    # distances = torch.linalg.vector_norm(coords, ord=2, dim=-1)
+    # coords = coords / distances.unsqueeze(-1)
 
-    # Log-Normal Out-Degrees (renamed from num_connections)
-    out_degrees = (torch.empty(num_neurons).log_normal_(2, 1)) + 1
+    out_degrees = torch.ceil(torch.distributions.Exponential(1 / math.log(num_neurons)).sample((num_neurons,)))
+    print(torch.sum(out_degrees))
 
-    # Flow: High out-degree -> Low Flow (Inputs). Low out-degree -> High Flow (Outputs)
-    flow_values = torch.ones_like(distances) + (5 / out_degrees)
+    # flow_values = torch.ones_like(distances) + (1 / out_degrees)
+    # flow_values = 1 + (torch.rand_like(distances) / math.log(num_neurons)) + (0.5 / out_degrees)
+    flow_values = coords[:, 0] + 1
 
     sorted_indices = torch.argsort(flow_values)
     input_idx = sorted_indices[:in_features]
