@@ -3,7 +3,7 @@ from torch import nn
 from ..core import Layer
 
 
-class SNG(Layer):
+class SpatialNeuralGraph(Layer):
     """
     Spatial Neural Graph
 

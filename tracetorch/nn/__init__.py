@@ -1,2 +1,2 @@
-from ._sng import SNG
-from ._tng import TNG
+from ._sng import SpatialNeuralGraph
+from ._tng import TopologicalNeuralGraph

@@ -19,16 +19,16 @@ def generate_graph(num_neurons, in_features, out_features):
     torch.manual_seed(42)
 
     # 1. Spatial Embedding
-    coords = torch.rand(num_neurons, 3)
-    # distances = torch.linalg.vector_norm(coords, ord=2, dim=-1)
-    # coords = coords / distances.unsqueeze(-1)
+    coords = torch.randn(num_neurons, 3)
+    distances = torch.linalg.vector_norm(coords, ord=2, dim=-1)
+    coords = coords / distances.unsqueeze(-1)
 
     out_degrees = torch.ceil(torch.distributions.Exponential(1 / math.log(num_neurons)).sample((num_neurons,)))
     print(torch.sum(out_degrees))
 
     # flow_values = torch.ones_like(distances) + (1 / out_degrees)
-    # flow_values = 1 + (torch.rand_like(distances) / math.log(num_neurons)) + (0.5 / out_degrees)
-    flow_values = coords[:, 0] + 1
+    flow_values = 1 + (torch.rand_like(distances) / math.log(num_neurons)) + (0.5 / out_degrees)
+    # flow_values = coords[:, 0] + 1
 
     sorted_indices = torch.argsort(flow_values)
     input_idx = sorted_indices[:in_features]

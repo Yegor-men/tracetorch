@@ -21,7 +21,7 @@ import atexit
 from sklearn.metrics import roc_auc_score
 
 import tracetorch as tt
-from birdclef_architecture import BirdClassifierSNN
+from birdclef_architecture import BirdClefModel
 
 # Fix the 'too many fds' multiprocessing error
 import torch.multiprocessing
@@ -290,13 +290,7 @@ if __name__ == '__main__':
     )
 
     # Note: Default architecture params modified inside the imported class to handle 768 In-Features
-    model = BirdClassifierSNN(
-        in_features=768,
-        hidden_features=1024,
-        n1_layers=4,
-        n2_layers=1,
-        num_classes=num_classes,
-    ).to(device)
+    model = BirdClefModel(num_classes=num_classes).to(device)
 
     ema_model = copy.deepcopy(model)
     ema_model.eval()

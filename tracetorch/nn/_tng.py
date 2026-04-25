@@ -3,7 +3,7 @@ from torch import nn
 from ..core import Layer
 
 
-class TNG(Layer):
+class TopologicalNeuralGraph(Layer):
     """
     Topological Neural Graph
 
@@ -16,15 +16,13 @@ class TNG(Layer):
             neurons,
             in_features: int,
             out_features: int,
-            num_neurons: int,
             avg_out_degree: float,
             dim: int = -1,
             temperature: float = None
     ):
-        super().__init__(num_neurons=num_neurons, dim=dim)
+        super().__init__(num_neurons=neurons.num_neurons, dim=dim)
         self.in_features = in_features
         self.out_features = out_features
-        self.num_neurons = num_neurons
 
         # Default the softmax temperature to avg_out_degree.
         # Mathematically, this perfectly stabilizes the Exponential distribution for Softmax.
@@ -33,10 +31,10 @@ class TNG(Layer):
 
         # 1) Axons: Exponentially distributed out-degrees
         dist = torch.distributions.Exponential(1.0 / avg_out_degree)
-        out_degrees = torch.round(dist.sample((num_neurons,))).long()
+        out_degrees = torch.round(dist.sample((self.num_neurons,))).long()
 
         # Clamp to ensure we never ask a neuron to connect to more neurons than actually exist
-        out_degrees = torch.clamp(out_degrees, min=1, max=num_neurons - 1)
+        out_degrees = torch.clamp(out_degrees, min=1, max=self.num_neurons - 1)
 
         # 2) Dendrites: Sparse Preferential Attachment
         src_list, dst_list = [], []
@@ -44,7 +42,7 @@ class TNG(Layer):
         # Scale out_degrees by temperature for numerical stability
         logits = torch.log1p(out_degrees.float()) / temperature
 
-        for i in range(num_neurons):
+        for i in range(self.num_neurons):
             k = out_degrees[i].item()
 
             # Mask self out to prevent autapses (self-connections)
@@ -72,7 +70,7 @@ class TNG(Layer):
         self.edge_weights = nn.Parameter(torch.randn(len(src_tensor)) * std_dev_per_edge)
 
         # 4) Calculate actual in-degrees (dendrites) based on how the multinomial sorted it out
-        in_degrees = torch.zeros(num_neurons, dtype=torch.float)
+        in_degrees = torch.zeros(self.num_neurons, dtype=torch.float)
         in_degrees.scatter_add_(0, dst_tensor, torch.ones_like(dst_tensor, dtype=torch.float))
 
         # 5) Smart Input/Output Node Selection
