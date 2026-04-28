@@ -3,62 +3,56 @@ from torch import nn
 import tracetorch as tt
 
 
-class Bar(tt.Model):
-    def __init__(self, working_dim, num_neurons):
+class Residual(tt.Model):
+    def __init__(self, num_neurons):
         super().__init__()
+        self.num_neurons = int(num_neurons)
 
-        self.lin_in = nn.Linear(working_dim, working_dim, bias=False)
-        nn.init.eye_(self.lin_in.weight)
+        self.BD = nn.Linear(num_neurons, 2 * num_neurons, bias=False)
+        self.C = nn.Linear(num_neurons, num_neurons, bias=False)
+        # nn.init.zeros_(self.BD.weight)
+        # nn.init.zeros_(self.C.weight)
 
-        coordinates = torch.randn(num_neurons, 5)
-        distances = torch.linalg.vector_norm(coordinates, ord=2, dim=-1)
-        coordinates = coordinates / distances.unsqueeze(-1)
-
-        out_degrees = torch.empty(num_neurons).log_normal_(2, 1) + 1
-
-        flow_values = torch.ones_like(distances) + (5 / out_degrees)
-
-        self.fdsr = tt.nn.FDSR(
-            neurons=tt.snn.LIB(
-                num_neurons,
-                beta=torch.rand(num_neurons),
-                threshold=torch.rand(num_neurons),
-                bias=torch.randn(num_neurons) * 0.1,
-                quant_fn=nn.Identity(),
-            ),
-            coordinates=coordinates,
-            flow_values=flow_values,
-            out_degrees=out_degrees,
-            in_features=working_dim,
-            out_features=working_dim,
-            dim=-1,
+        self.lif = tt.snn.RLIB(
+            num_neurons,
+            beta=torch.rand(num_neurons),
+            gamma=torch.rand(num_neurons),
+            threshold=torch.rand(num_neurons),
+            quant_fn=nn.Identity(),
         )
 
-        self.lin_out = nn.Linear(working_dim, working_dim, bias=False)
-        nn.init.zeros_(self.lin_out.weight)
-
     def forward(self, x):
-        return x + self.lin_out(self.fdsr(self.lin_in(x)))
+        B, D = torch.split(self.BD(x), [self.num_neurons, self.num_neurons], dim=-1)
+        C = self.C(self.lif(B))
+        return x + C * nn.functional.silu(D)
 
 
 class TTLM(tt.Model):
     def __init__(
             self,
-            num_neurons=2048,
-            num_in_out=128,
-            num_layers=1,
+            num_neurons=1024,
+            num_layers=10,
     ):
         super().__init__()
+        self.emb = nn.Embedding(256, num_neurons)
 
-        self.emb = nn.Embedding(256, num_in_out)
+        self.layers = nn.ModuleList([
+            Residual(
+                num_neurons=num_neurons,
+            ) for _ in range(num_layers)
+        ])
 
-        self.layers = nn.ModuleList([Bar(
-            working_dim=num_in_out,
-            num_neurons=num_neurons,
-        ) for _ in range(num_layers)])
+        # self.layers = nn.ModuleList([
+        #     tt.ssm.Mamba(
+        #         num_neurons=num_neurons,
+        #         d_state=16,
+        #     ) for _ in range(num_layers)
+        # ])
 
-        self.dec = nn.Linear(num_in_out, 256)
-        nn.init.zeros_(self.dec.bias)
+        # self.ssm = tt.ssm.Mamba(num_neurons, 16)
+
+        self.dec = nn.Linear(num_neurons, 256, bias=False)
+        nn.init.zeros_(self.dec.weight)
 
     def forward(self, x):
         x = self.emb(x)

@@ -139,14 +139,14 @@ if __name__ == '__main__':
 
     atexit.register(cleanup)
 
-    batch_size = 64
+    batch_size = 32
     minibatch_size = 1
-    seq_len = 128
+    seq_len = 512
     train_dataloader, val_dataloader = get_dataloaders(batch_size, seq_len, num_workers=0)
 
     from architecture import TTLM
 
-    model = TTLM(1000, 100, 3).to(device)
+    model = TTLM().to(device)
     # model.load_state_dict(load_file("checkpoints/_model_step_4100_ema.safetensors"))
     print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -164,7 +164,7 @@ if __name__ == '__main__':
             ema_param.data.mul_(decay).add_(param.data, alpha=1 - decay)
 
 
-    optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
     loss_fn = nn.CrossEntropyLoss()
     optimizer_steps = 0
     accum_steps = 0
