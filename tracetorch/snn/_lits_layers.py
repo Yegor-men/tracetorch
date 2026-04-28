@@ -29,7 +29,7 @@ class LITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -99,7 +99,7 @@ class DLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -180,7 +180,7 @@ class SLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -261,7 +261,7 @@ class RLITS(SNNLayer):
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -352,7 +352,7 @@ class DSLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -459,7 +459,7 @@ class DRLITS(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -570,7 +570,7 @@ class SRLITS(SNNLayer):
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -680,7 +680,7 @@ class DSRLITS(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=functional.stochastic_round_ste(step_size=1.0),
+            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
