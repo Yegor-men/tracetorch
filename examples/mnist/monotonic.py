@@ -81,10 +81,8 @@ class SNN(tt.Model):
 
 
 model = SNN().to(device)
-total_params = sum(p.numel() for p in model.parameters())
-snn_params = model.get_param_count()
-print(f"Total: {total_params:,} -> SNN: {snn_params:,} | Non-SNN: {total_params - snn_params:,}")
-optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
+print(f"Total: {sum(p.numel() for p in model.parameters()):,}")
+optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
 
 loss_fn = nn.functional.cross_entropy
 

@@ -1,8 +1,8 @@
 ![traceTorch Banner](media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.18.2-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.18.3-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.18.2-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.18.3-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
@@ -40,13 +40,12 @@ Integrator, albeit a bit more complex. Subsequently, the philosophy was then ext
 is an opinionated, but extremely extensive and ergonomic extension to PyTorch for RNN, SNN and SSM models, adding a
 total of 42 layers, with more to come:
 
-| 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer`                                          |
-|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------|
-| Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                               |
-| Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                           |
-| Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SpikeSSM` |
-| Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                          |
-|                                                                                                                 |                                                 |                                                                                          |
+| 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer` (note, these are _not_ the official, optimized implementations, these are custom versions adapted to traceTorch) |
+|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                                                                                                       |
+| Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                                                                                                   |
+| Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SelectiveSNN`                                                                     |
+| Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                                                                                                  |
 
 But above all, the main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from
 `tt.Model` grants access to powerful recursive methods that handle all the boilerplate of state management:
@@ -158,7 +157,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.18.2 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.18.3 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
