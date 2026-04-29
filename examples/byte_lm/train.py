@@ -164,7 +164,7 @@ if __name__ == '__main__':
             ema_param.data.mul_(decay).add_(param.data, alpha=1 - decay)
 
 
-    optimizer = torch.optim.AdamW(model.parameters(), 1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), 1e-4)
     loss_fn = nn.CrossEntropyLoss()
     optimizer_steps = 0
     accum_steps = 0

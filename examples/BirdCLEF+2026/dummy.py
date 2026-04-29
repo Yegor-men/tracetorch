@@ -132,61 +132,40 @@ test_dataloader = DataLoader(
 import tracetorch as tt
 
 
-class Bar(tt.Model):
-    def __init__(self, num_neurons, in_features, out_features, working_dim):
-        super().__init__()
-
-        self.proj_in = nn.Linear(working_dim, in_features, bias=False)
-
-        self.sing = tt.nn.TNG(
-            neurons=tt.snn.DLIB(
-                num_neurons,
-                pos_beta=torch.rand(num_neurons),
-                neg_beta=torch.rand(num_neurons),
-                threshold=torch.rand(num_neurons),
-                bias=torch.randn(num_neurons) * 0.1,
-                quant_fn=nn.Identity(),
-            ),
-            in_features=in_features,
-            out_features=out_features,
-            num_neurons=num_neurons,
-            avg_out_degree=8,
-            dim=-1,
-        )
-
-        self.proj_out = nn.Linear(out_features, working_dim)
-        nn.init.zeros_(self.proj_out.weight)
-        nn.init.zeros_(self.proj_out.bias)
-
-    def forward(self, x):
-        return x + self.proj_out(self.sing(self.proj_in(x)))
-
-
-class TNG(tt.Model):
+class NeuralGraph(tt.Model):
     def __init__(
             self,
-            num_layers=2,
-            num_neurons=1024,
-            in_features=128,
-            out_features=128,
-            working_dim=128,
+            num_layers=3,
+            num_neurons=256,
+            d_state=16,
     ):
         super().__init__()
 
-        self.enc = nn.Linear(kernel_size ** 2, working_dim, bias=False)
+        self.enc = nn.Linear(kernel_size ** 2, num_neurons, bias=False)
+
+        # self.layers = nn.ModuleList([
+        #     tt.ssm.SelectiveSNN(
+        #         num_neurons=num_neurons,
+        #         snn_layer=tt.snn.RLIB(
+        #             d_state,
+        #             beta=torch.rand(d_state),
+        #             gamma=torch.rand(d_state),
+        #             threshold=torch.rand(d_state),
+        #             quant_fn=nn.Identity(),
+        #         ),
+        #     ) for _ in range(num_layers)
+        # ])
 
         self.layers = nn.ModuleList([
-            Bar(
-                num_neurons=num_neurons,
-                in_features=in_features,
-                out_features=out_features,
-                working_dim=working_dim,
+            tt.ssm.Mamba(
+                num_neurons,
+                d_state,
             ) for _ in range(num_layers)
         ])
 
-        self.accum = tt.ssm.Mamba(working_dim, 16)
+        # self.accum = tt.ssm.Mamba(working_dim, 16)
 
-        self.dec = nn.Linear(working_dim, 10)
+        self.dec = nn.Linear(num_neurons, 10)
         nn.init.zeros_(self.dec.weight)
         nn.init.zeros_(self.dec.bias)
 
@@ -194,12 +173,12 @@ class TNG(tt.Model):
         x = self.enc(x)
         for layer in self.layers:
             x = layer(x)
-        x = self.accum(x)
+        # x = self.accum(x)
         x = self.dec(x)
         return x
 
 
-model = TNG().to(device)
+model = NeuralGraph().to(device)
 num_think_steps = 1
 
 
@@ -220,7 +199,7 @@ loss_fn = nn.functional.cross_entropy
 
 train_losses, train_accs = [], []
 
-num_epochs = 10
+num_epochs = 5
 for e in range(num_epochs):
     model.train()
     for (img, seq, label) in tqdm(train_dataloader, total=len(train_dataloader), desc=f"TRAIN - E{e}"):
@@ -228,7 +207,7 @@ for e in range(num_epochs):
 
         with torch.no_grad():
             corruption_levels_1d = torch.rand(batch_size).to(device)
-            corruption_levels = (corruption_levels_1d ** 0.1).view(1, -1, 1)
+            corruption_levels = (corruption_levels_1d ** 0.5).view(1, -1, 1)
             seq = seq * corruption_levels + (torch.randn_like(seq) + 0.5) * (1 - corruption_levels)
 
         model.zero_grad()
@@ -295,7 +274,6 @@ with torch.no_grad():
         input_spike_train = []
         model_outputs = []
         losses = []
-        traces = []
         running_loss = 0.0
 
         for t in range(seq.size(0)):  # Iterate over timesteps
@@ -309,16 +287,11 @@ with torch.no_grad():
                 running_loss += loss.item() / seq.size(0)
                 losses.append(loss.item())
 
-                trace_thing = ema_model.layers[-1].sing.trace.clone().detach()  # Get current synaptic trace
-                traces.append(trace_thing.squeeze(0))
-
         tt.plot.render_image(img.unsqueeze(0), title=f"Digit: {label.item()}")
         # Visualize the input spike train (transpose to [neurons, timesteps] for spike_train)
         input_spike_tensor = torch.stack(input_spike_train).T  # [area, T]
         tt.plot.spike_train([input_spike_tensor.T[t] for t in range(input_spike_tensor.T.size(0))], title="Input")
         tt.plot.spike_train(model_outputs, title="Model Output")
-        traces_tensor = torch.stack(traces).T  # [num_neurons, T]
-        tt.plot.spike_train([traces_tensor.T[t] for t in range(traces_tensor.T.size(0))], title="Synaptic Trace")
         plt.title(f"Loss over time: {running_loss:.3f} | Final Loss: {losses[-1]:.3f}")
         plt.plot(losses)
         plt.show()

@@ -89,22 +89,27 @@ class SelectiveZOHSSM(SSMLayer):
         return out
 
 
-class SpikeSSM(SSMLayer):
-    """SNN Layer serves as the state. B projects D to N, C projects spikes N to D."""
+class SelectiveSNN(SSMLayer):
+    def __init__(self, num_neurons: int, snn_layer, dim: int = -1):
+        super().__init__(num_neurons, dim, snn_layer.num_neurons)
 
-    def __init__(self, num_neurons: int, lif_layer, d_state: int = 16, dim: int = -1):
-        super().__init__(num_neurons, dim, d_state=1)
-
-        self.lif = lif_layer
-        self.B = nn.Linear(num_neurons, d_state)
-        self.C = nn.Linear(d_state, num_neurons)
+        self.snn_layer = snn_layer
+        self.B = nn.Linear(num_neurons, num_neurons, bias=False)
+        self.C = nn.Linear(self.d_state, 1)
+        self.D = nn.Linear(num_neurons, num_neurons)
+        nn.init.zeros_(self.C.bias)
+        # nn.init.zeros_(self.D.weight)
 
     def forward(self, x):
-        self._ensure_states(x)  # Ensures base layer stuff if needed, though LIF handles itself
+        self._ensure_states(x)
         x_w = self._to_working_dim(x)
 
         snn_in = self.B(x_w)
-        spikes = self.lif(snn_in)
-        y = self.C(spikes)
+        snn_in_expanded = snn_in.unsqueeze(-1).expand(*snn_in.shape, self.d_state)
+        spikes = self.snn_layer(snn_in_expanded)
+        y = self.C(spikes).squeeze(-1)
 
-        return self._from_working_dim(y)
+        D = self.D(x_w)
+        out = x_w + y * nn.functional.silu(D)
+
+        return self._from_working_dim(out)

@@ -30,26 +30,39 @@ class Residual(tt.Model):
 class TTLM(tt.Model):
     def __init__(
             self,
-            num_neurons=1024,
-            num_layers=10,
+            num_neurons=256,
+            d_state=128,
+            num_layers=2,
     ):
         super().__init__()
         self.emb = nn.Embedding(256, num_neurons)
 
+        # self.layers = nn.ModuleList([
+        #     Residual(
+        #         num_neurons=num_neurons,
+        #     ) for _ in range(num_layers)
+        # ])
+
         self.layers = nn.ModuleList([
-            Residual(
+            tt.ssm.SelectiveSNN(
                 num_neurons=num_neurons,
+                snn_layer=tt.snn.RLIB(
+                    d_state,
+                    beta=torch.rand(d_state),
+                    gamma=torch.rand(d_state),
+                    threshold=torch.rand(d_state),
+                    quant_fn=nn.Identity(),
+                ),
             ) for _ in range(num_layers)
         ])
 
         # self.layers = nn.ModuleList([
         #     tt.ssm.Mamba(
         #         num_neurons=num_neurons,
-        #         d_state=16,
+        #         d_state=d_state,
+        #         conv_kernel=1,
         #     ) for _ in range(num_layers)
         # ])
-
-        # self.ssm = tt.ssm.Mamba(num_neurons, 16)
 
         self.dec = nn.Linear(num_neurons, 256, bias=False)
         nn.init.zeros_(self.dec.weight)
