@@ -5,10 +5,12 @@ from .. import functional
 
 
 class Layer(nn.Module):
-    """
-    Universal base mixin helper for all recurrent layers.
+    r"""The superclass used for all traceTorch layers.
+    Handles state management, parameter initialization, compilation and decompilation, moving around tensors to the target dimension.
 
-    Handles state management, movedim, parameter registration, compile/decompile
+    Args:
+        num_neurons (int): the number of neurons the layer is considered to have. When initializing any hidden states or registering parameters via the tracetorch methods, this is the value used.
+        dim (int, default=-1): the dimension along which the layer operates.
     """
 
     def __init__(self, num_neurons: int, dim: int = -1):
@@ -24,9 +26,29 @@ class Layer(nn.Module):
             rank: Literal[0, 1],
             learnable: bool,
             init_fn=lambda x: x,
-            inverse_function=lambda x: x,
-            activation_function=lambda x: x,
-    ):
+            inverse_fn=lambda x: x,
+            activation_fn=lambda x: x,
+    ) -> None:
+        r"""Register a parameter with dynamic activation functions.
+
+        Creates a raw parameter that can be dynamically transformed through activation functions.
+        The raw parameter is stored as ``raw_{name}`` while the activated version is accessed via ``name``.
+
+        Args:
+            name (str): parameter name. Access raw version via ``self.raw_{name}``, activated via ``self.{name}``.
+            value (Union[float, torch.Tensor]): initial value. Scalar or vector matching `num_neurons` if rank=1. Can be set to a custom PyTorch tensor instead, and will automatically update the rank depending on the tensor's rank.
+            rank (Literal[0, 1]): 0 for scalar, 1 for vector of length `num_neurons`.
+            learnable (bool): whether parameter should be trainable (nn.Parameter) or fixed (buffer).
+            init_fn (Callable): function applied once during initialization to create raw parameter.
+            inverse_fn (Callable): function used during decompilation to recover raw parameter.
+            activation_fn (Callable): function applied when accessing the parameter dynamically.
+
+        Notes:
+            - Raw parameters are stored as ``nn.Parameter`` if learnable, otherwise as buffers.
+            - Dynamic access via ``self.{name}`` applies ``activation_fn`` to raw value.
+            - Parameters registered this way can be compiled and decompiled by traceTorch by utilizing the ``activation_fn`` and ``inverse_fn``.
+        """
+
         if not hasattr(self, '_dynamic_params'):
             self._dynamic_params = {}
             self._inverse_functions = {}
@@ -55,11 +77,11 @@ class Layer(nn.Module):
             self.register_buffer(f"raw_{name}", param_tensor.detach().clone())
 
         # Store the activation and inverse functions directly in the instance
-        self._dynamic_params[name] = activation_function
-        self._inverse_functions[name] = inverse_function
+        self._dynamic_params[name] = activation_fn
+        self._inverse_functions[name] = inverse_fn
 
     def __getattr__(self, name: str):
-        """Intercept attribute access to dynamically compute activations on raw parameters."""
+        r"""Intercept attribute access to dynamically compute activations on raw parameters."""
         try:
             return super().__getattr__(name)
         except AttributeError:
@@ -72,33 +94,50 @@ class Layer(nn.Module):
                     pass
             raise
 
-    def _initialize_state(self, state_name: str):
-        """Initialize and register a state name for bulk operations"""
+    def _initialize_state(self, state_name: str) -> None:
+        r"""Initialize and register a state for traceTorch operations.
+
+        Args:
+            state_name (str): state name.
+        """
         self._state_names.add(state_name)
         setattr(self, state_name, None)
 
-    def _detach_state(self, state_name: str):
-        """Detach a state tensor if it exists"""
+    def _detach_state(self, state_name: str) -> None:
+        r"""Detach a state tensor from the computation graph if it exists and is not None.
+
+        Args:
+            state_name (str): state name.
+        """
         state = getattr(self, state_name)
         if state is not None:
             setattr(self, state_name, state.detach())
 
-    def detach_states(self):
-        """Detach all registered states"""
+    def detach_states(self) -> None:
+        r"""Detach all initialized state tensors from the computation graph if they are not None."""
         for state_name in self._state_names:
             self._detach_state(state_name)
 
-    def _zero_state(self, state_name: str):
-        """Set a state to None"""
+    def _zero_state(self, state_name: str) -> None:
+        r"""Set a state to None.
+
+        Args:
+            state_name (str): state name.
+        """
         setattr(self, state_name, None)
 
-    def zero_states(self):
-        """Zero all registered states"""
+    def zero_states(self) -> None:
+        r"""Set all initialized states to None."""
         for state_name in self._state_names:
             self._zero_state(state_name)
 
-    def _ensure_state(self, state_name: str, reference_tensor: torch.Tensor):
-        """Initialize a state with zeros if None, otherwise return existing state"""
+    def _ensure_state(self, state_name: str, reference_tensor: torch.Tensor) -> None:
+        r"""Initialize a state with zeros if it is None.
+
+        Args:
+            state_name (str): state name.
+            reference_tensor (torch.Tensor): the reference tensor, whose shape the state will copy. The shape will be the same except ``dim``, which will be set to ``num_neurons`` instead.
+        """
         state = getattr(self, state_name)
         if state is None:
             # Create shape that matches reference_tensor except for self.dim
@@ -112,21 +151,38 @@ class Layer(nn.Module):
             )
             setattr(self, state_name, state)
 
-    def _ensure_states(self, reference_tensor: torch.Tensor):
-        """Ensure all registered states are initialized"""
+    def _ensure_states(self, reference_tensor: torch.Tensor) -> None:
+        r"""Initialize all initialized states with zeros if they are None.
+
+        Args:
+            reference_tensor (torch.Tensor): the reference tensor, whose shape the states will copy. The shapes will be the same except ``dim``, which will be set to ``num_neurons`` instead.
+        """
         for state_name in self._state_names:
             self._ensure_state(state_name, reference_tensor)
 
     def _to_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Move tensor to working dimension (last dim)"""
+        r"""Move a tensor's ``dim`` dimension to the working (last) dimension.
+
+        Args:
+            tensor (torch.Tensor): the tensor whose ``dim`` dimension will be moved to the last dimension.
+        """
         return tensor.movedim(self.dim, -1)
 
     def _from_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Move tensor back from working dimension"""
+        r"""Move tensor back from the working (last) dimension to the ``dim`` dimension.
+
+        Args:
+            tensor (torch.Tensor): the tensor whose last dimension will be moved to the ``dim`` dimension.
+        """
         return tensor.movedim(-1, self.dim)
 
-    def TTcompile(self):
-        """Compile layer for inference by pre-computing parameters"""
+    def TTcompile(self) -> None:
+        r"""Compile the layer for inference by pre-computing parameters.
+
+        Notes:
+            All parameters registered via ``_register_parameter`` will be optimized, as the ``activation_fn`` will be baked in to the activated parameter.
+            Proper training is not possible on a compiled layer.
+        """
         if hasattr(self, '_compiled') and self._compiled:
             return
 
@@ -159,8 +215,12 @@ class Layer(nn.Module):
 
         self._compiled = True
 
-    def TTdecompile(self):
-        """Decompile layer to restore training capabilities"""
+    def TTdecompile(self) -> None:
+        r"""Decompile the layer to restore training capabilities.
+
+        Notes:
+            All parameters registered via ``_register_parameter`` will be decompiled, as the ``inverse_fn`` will be used to re-create the raw version of the parameter.
+        """
         if not hasattr(self, '_compiled') or not self._compiled:
             return
 

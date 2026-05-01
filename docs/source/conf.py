@@ -9,7 +9,7 @@
 project = 'traceTorch'
 copyright = '2026, Yegor Menovchshikov'
 author = 'Yegor Menovchshikov'
-release = 'v0.18.3'
+release = 'v0.19.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -21,8 +21,11 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
     'myst_parser'
 ]
+
+napoleon_use_ivar = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

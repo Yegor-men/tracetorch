@@ -22,8 +22,8 @@ class Layer(BaseLayer):
             rank,
             learnable,
             init_fn=functional.sigmoid_inverse,
-            inverse_function=functional.sigmoid_inverse,
-            activation_function=nn.functional.sigmoid,
+            inverse_fn=functional.sigmoid_inverse,
+            activation_fn=nn.functional.sigmoid,
         )
 
     def _register_threshold(
@@ -39,8 +39,8 @@ class Layer(BaseLayer):
             rank,
             learnable,
             init_fn=functional.softplus_inverse,
-            inverse_function=functional.softplus_inverse,
-            activation_function=nn.functional.softplus,
+            inverse_fn=functional.softplus_inverse,
+            activation_fn=nn.functional.softplus,
         )
 
     def _register_bias(
@@ -56,6 +56,6 @@ class Layer(BaseLayer):
             rank,
             learnable,
             init_fn=torch.sinh,
-            inverse_function=torch.sinh,
-            activation_function=torch.arcsinh,
+            inverse_fn=torch.sinh,
+            activation_fn=torch.arcsinh,
         )

@@ -6,6 +6,7 @@ from .. import functional
 
 
 class LIB(SNNLayer):
+    """Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -33,6 +34,7 @@ class LIB(SNNLayer):
         self._register_bias("bias", bias, bias_rank, learn_bias)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -51,6 +53,7 @@ class LIB(SNNLayer):
 
 
 class DLIB(SNNLayer):
+    """Dual Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -84,6 +87,7 @@ class DLIB(SNNLayer):
         self._register_bias("bias", bias, bias_rank, learn_bias)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -108,6 +112,7 @@ class DLIB(SNNLayer):
 
 
 class SLIB(SNNLayer):
+    """Synaptic Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -142,6 +147,7 @@ class SLIB(SNNLayer):
         self._register_bias("bias", bias, bias_rank, learn_bias)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -163,6 +169,7 @@ class SLIB(SNNLayer):
 
 
 class RLIB(SNNLayer):
+    """Recurrent Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -203,6 +210,7 @@ class RLIB(SNNLayer):
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -229,6 +237,7 @@ class RLIB(SNNLayer):
 
 
 class DSLIB(SNNLayer):
+    """Dual Synaptic Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -273,6 +282,7 @@ class DSLIB(SNNLayer):
         self._register_bias("bias", bias, bias_rank, learn_bias)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -307,6 +317,7 @@ class DSLIB(SNNLayer):
 
 
 class DRLIB(SNNLayer):
+    """Dual Recurrent Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -361,6 +372,7 @@ class DRLIB(SNNLayer):
         self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -401,6 +413,7 @@ class DRLIB(SNNLayer):
 
 
 class SRLIB(SNNLayer):
+    """Synaptic Recurrent Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -447,6 +460,7 @@ class SRLIB(SNNLayer):
         self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -476,6 +490,7 @@ class SRLIB(SNNLayer):
 
 
 class DSRLIB(SNNLayer):
+    """Dual Synaptic Recurrent Leaky Integrator with Binary output."""
     def __init__(
             self,
             num_neurons: int,
@@ -541,6 +556,7 @@ class DSRLIB(SNNLayer):
         self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 

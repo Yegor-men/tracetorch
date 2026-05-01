@@ -1,1 +1,0 @@
-from ._soft_cross_entropy import soft_cross_entropy

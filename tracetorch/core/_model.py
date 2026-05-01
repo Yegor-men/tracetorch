@@ -6,24 +6,24 @@ from ._layer import Layer
 
 
 class Model(nn.Module):
-    """
-    Base class that makes it trivial to call lifecycle methods (zero_states, detach_states, ...)
-    across an entire model tree (registered submodules *and* common non-module containers).
-    Inherit your models from this to get model.zero_states() / model.detach_states() behavior.
+    r"""The superclass used for all traceTorch models.
+    Handles zeroing and detaching, compiling and decompiling, and saving and loading of states across the entire model tree: in PyTorch and python modules.
     """
 
     def __init__(self):
         super().__init__()
 
     def save_states(self) -> Dict[str, torch.Tensor]:
-        """
-        Save all hidden states from Layers in the model.
-
-        states = model.save_states()
-        torch.save(states, "model_states.pt")
+        r"""Save all hidden states from all Layers in the model.
 
         Returns:
             Dictionary mapping layer_state_name -> tensor, compatible with torch.save()
+
+        Examples::
+
+            >>> states = model.save_states()
+            >>> torch.save(states, "model_states.pt")
+            # Keys look like: "net.layer1.H", "net.layer2.C", et cetera.
         """
         states = {}
 
@@ -64,16 +64,17 @@ class Model(nn.Module):
         return states
 
     def load_states(self, states: Dict[str, torch.Tensor], strict: bool = True, device=None) -> None:
-        """
-        Load hidden states into Layers.
-
-        states = torch.load("model_states.pt")
-        model.load_states(states)
+        r"""Load hidden states into the layers in the model.
 
         Args:
-            states: Dictionary from save_states() or torch.load()
-            strict: If True, raise error for missing/extra states
-            device: Target device for loaded states (auto-detected if None)
+            states (Dict): dictionary from ``save_states()`` or ``torch.load()``.
+            strict (bool, default=True): if True, raises an error for missing / extra states.
+            device (str, default=None): target device for the loaded states. Automatically detected if set to None.
+
+        Examples::
+
+            >>> states = torch.load("model_states.pt")
+            >>> model.load_states(states)
         """
         loaded_count = 0
         missing_states = []
@@ -150,15 +151,46 @@ class Model(nn.Module):
         print(f"Loaded {loaded_count} states")
 
     def zero_states(self) -> None:
-        """Public API — zero any stateful child that implements zero_states()."""
+        r"""Set all hidden states to None across the entire model tree.
+
+        Recursively traverses the model hierarchy to find all traceTorch layers and sets their hidden states to None.
+        This forces lazy re-initialization on the next forward pass with proper tensor shapes.
+
+        Notes:
+            - Traverses traceTorch models, PyTorch modules and Python containers.
+            - Only affects traceTorch layers that implement state management.
+            - Used for resetting model states between batches or episodes.
+        """
         self._call_recursive("zero_states")
 
     def detach_states(self) -> None:
-        """Public API — detach (stop-gradient) any stateful child that implements detach_states()."""
+        r"""Detach all hidden states from the computation graph across the entire model tree.
+
+        Recursively traverses the model hierarchy to find all traceTorch layers and detaches their hidden states from the computation graph.
+        This enables online learning by preventing gradients from flowing through time.
+
+        Notes:
+            - Traverses traceTorch models, PyTorch modules and Python containers.
+            - Only affects traceTorch layers that implement state management.
+            - Used for online learning or truncated backpropagation, when you want to break temporal gradients.
+        """
         self._call_recursive("detach_states")
 
-    # --- internal recursive walker ---
     def _call_recursive(self, method_name: str) -> None:
+        r"""Internal recursive walker that calls methods on traceTorch layers.
+
+        Traverses the entire model tree to find leaf components (traceTorch layers) and calls the specified method on them.
+        Handles traceTorch models, PyTorch modules and Python containers while avoiding circular references.
+
+        Args:
+            method_name (str): name of the method to call (e.g., "zero_states", "detach_states").
+
+        Notes:
+            - Uses object IDs to detect and avoid circular references.
+            - Calls methods on layer instances (leaf components).
+            - Respects method overrides in model subclasses.
+            - Internal method used by public APIs like ``zero_states()`` and ``detach_states()``.
+        """
         visited: Set[int] = set()
 
         def recurse(obj: Any) -> None:
@@ -229,9 +261,17 @@ class Model(nn.Module):
         recurse(self)
 
     def TTcompile(self):
-        """Recursively compile all Layer instances for inference"""
+        r"""Compiles all layers for inference by pre-computing parameters.
+
+        Recursively traverses the model hierarchy to find all traceTorch layers and compiles their parameters.
+        This allows a trained model to skip needless computation for each forward pass.
+        """
         self._call_recursive("TTcompile")
 
-    def TTuncompile(self):
-        """Recursively uncompile all TTLayer instances"""
-        self._call_recursive("TTuncompile")
+    def TTdecompile(self):
+        r"""Decompiles all layers to restore training capabilities.
+
+        Recursively traverses the model hierarchy to find all traceTorch layers and decompiles their parameters.
+        This allows a compiled model to be trained once again.
+        """
+        self._call_recursive("TTdecompile")

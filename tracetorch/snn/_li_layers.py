@@ -5,6 +5,7 @@ from ._snnlayer import Layer as SNNLayer
 
 
 class LI(SNNLayer):
+    """Leaky Integrator."""
     def __init__(
             self,
             num_neurons: int,
@@ -19,6 +20,7 @@ class LI(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -31,6 +33,7 @@ class LI(SNNLayer):
 
 
 class DLI(SNNLayer):
+    """Dual Leaky Integrator."""
     def __init__(
             self,
             num_neurons: int,
@@ -50,6 +53,7 @@ class DLI(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -67,6 +71,7 @@ class DLI(SNNLayer):
 
 
 class SLI(SNNLayer):
+    """Synaptic Leaky Integrator."""
     def __init__(
             self,
             num_neurons: int,
@@ -87,6 +92,7 @@ class SLI(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -103,6 +109,7 @@ class SLI(SNNLayer):
 
 
 class DSLI(SNNLayer):
+    """Dual Synaptic Leaky Integrator."""
     def __init__(
             self,
             num_neurons: int,
@@ -133,6 +140,7 @@ class DSLI(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
 
         x = self._to_working_dim(x)
@@ -161,6 +169,7 @@ class DSLI(SNNLayer):
 
 
 class LIEMA(SNNLayer):
+    """Leaky Integrator with Exponential Moving Average output."""
     def __init__(
             self,
             num_neurons: int,
@@ -175,6 +184,7 @@ class LIEMA(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -187,6 +197,7 @@ class LIEMA(SNNLayer):
 
 
 class DLIEMA(SNNLayer):
+    """Dual Leaky Integrator with Exponential Moving Average output."""
     def __init__(
             self,
             num_neurons: int,
@@ -206,6 +217,7 @@ class DLIEMA(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -223,6 +235,7 @@ class DLIEMA(SNNLayer):
 
 
 class SLIEMA(SNNLayer):
+    """Synaptic Leaky Integrator with Exponential Moving Average output."""
     def __init__(
             self,
             num_neurons: int,
@@ -243,6 +256,7 @@ class SLIEMA(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
@@ -259,6 +273,7 @@ class SLIEMA(SNNLayer):
 
 
 class DSLIEMA(SNNLayer):
+    """Dual Synaptic Leaky Integrator with Exponential Moving Average output."""
     def __init__(
             self,
             num_neurons: int,
@@ -289,6 +304,7 @@ class DSLIEMA(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
+        """Computes the forward pass."""
         self._ensure_states(x)
 
         x = self._to_working_dim(x)

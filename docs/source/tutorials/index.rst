@@ -9,5 +9,5 @@ all the necessary dynamics needed to show that ``traceTorch`` works.
    :caption: Contents:
 
    T0_memorizing_patterns
-   T1_monotonic_mnist
-   T2_nonmonotonic_mnist
+   T1_rate_coded_mnist
+   T2_sequential_mnist

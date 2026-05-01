@@ -1,4 +1,4 @@
-7. Surrogate Derivatives
+8. Surrogate Derivatives
 ========================
 
 At the heart of every spiking neural network lies a fundamental paradox: spikes are inherently discrete, yet learning requires continuous gradients. A spike either fires or it doesn't - there's no middle ground. But if gradients can't flow through discrete events, how can a network possibly learn when to fire? This is where surrogate derivatives come into play, and it's one of the most elegant solutions in modern SNN research.

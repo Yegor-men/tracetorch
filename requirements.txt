@@ -1,3 +1,4 @@
-torch
-matplotlib
-numpy
+torch>=2.0.0
+matplotlib>=3.0.0
+numpy>=1.20.0
+scipy>=1.10.0

@@ -9,7 +9,7 @@ The reference documentation covers in detail all the features present in ``trace
 
    core/index
    functional/index
-   loss/index
    plot/index
    rnn/index
    snn/index
+   ssm/index

@@ -1,14 +1,12 @@
-![traceTorch Banner](media/tracetorch_banner.png)
+![traceTorch Banner](https://raw.githubusercontent.com/Yegor-men/tracetorch/main/media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.18.3-red.svg)](https://yegor-men.github.io/tracetorch/)
+[![Documentation](https://img.shields.io/badge/Documentation-v0.19.0-red.svg)](https://yegor-men.github.io/tracetorch/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.18.3-blue.svg)](https://pypi.org/project/tracetorch/)
+[![PyPI](https://img.shields.io/badge/PyPI-v0.19.0-blue.svg)](https://pypi.org/project/tracetorch/)
 
 # traceTorch
 
 A strict, ergonomic, and powerful library for SNNs, RNNs and SSMs in PyTorch.
-
-Table of contents:
 
 - [Introduction](#introduction)
 - [Features](#features)
@@ -24,7 +22,7 @@ Table of contents:
 
 traceTorch is a unified library for a wide array of recurrent networks in PyTorch: Spiking Neural Networks (SNNs),
 classic Recurrent Neural Networks (RNNs) and the modern State Space Models (SSMs). traceTorch enforces a simple, albeit
-slightly unorthodox rule that should have been the default all along: hidden states stay hidden. But that's not to
+slightly opinionated rule that should have been the default all along: hidden states stay hidden. But that's not to
 say that they're inaccessible. On the contrary, traceTorch is designed to make state management easier than ever. They
 are lazily created in the forward pass, work with any target dimension, and most importantly are easy to clear, detach,
 and even save and load. traceTorch makes it easy for you to mix and mash recurrent layers with any other PyTorch layer.
@@ -38,13 +36,13 @@ the box, and the layer mixin used for SNNs could also be used for standard RNNs.
 it becomes evident that State Space Models (SSMs) such as Mamba, are incredibly similar in concept to the Leaky
 Integrator, albeit a bit more complex. Subsequently, the philosophy was then extended to RNN and SSM layers. The result
 is an opinionated, but extremely extensive and ergonomic extension to PyTorch for RNN, SNN and SSM models, adding a
-total of 42 layers, with more to come:
+total of 39 layers, with more to come:
 
-| 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 7 SSM layers: `tt.ssm`, based on `tt.ssm.Layer` (note, these are _not_ the official, optimized implementations, these are custom versions adapted to traceTorch) |
+| 32 SNN layers: `tt.snn`, based on `tt.snn.Layer`                                                                | 3 RNN layers: `tt.rnn`, based on `tt.rnn.Layer` | 4 SSM layers: `tt.ssm`, based on `tt.ssm.Layer` (note, these are _not_ the official, optimized implementations, these are custom versions adapted to traceTorch) |
 |-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Leaky Integrator (no spiking): `LI`, `DLI`, `SLI`, `DSLI`, `LIEMA`, `DLIEMA`, `SLIEMA`, `DSLIEMA`               | Classic RNNs: `SimpleRNN`                       | S series: `S4`, `S5`, `S6`                                                                                                                                       |
 | Leaky Integrate Binary fire: `LIB`, `DLIB`, `SLIB`, `RLIB`, `DSLIB`, `DRLIB`, `SRLIB`, `DSRLIB`                 | LSTMs: `LSTM`                                   | Mamba: `Mamba`                                                                                                                                                   |
-| Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     | Custom, lightweight experimental variants: `SelectiveSSM`, `SelectiveZOHSSM`, `SelectiveSNN`                                                                     |
+| Leaky Integrate Ternary fire: `LIT`, `DLIT`, `SLIT`, `RLIT`, `DSLIT`, `DRLIT`, `SRLIT`, `DSRLIT`                | GRUs: `GRU`                                     |                                                                                                                                                                  |
 | Leaky Integrate Ternary Scaled fire: `LITS`, `DLITS`, `SLITS`, `RLITS`, `DSLITS`, `DRLITS`, `SRLITS`, `DSRLITS` |                                                 |                                                                                                                                                                  |
 
 But above all, the main advantage and selling point of traceTorch is with how it manages hidden states. Inheriting from
@@ -101,7 +99,7 @@ methods for the downstream layer types, but the core one presents the following:
 - `TTcompile` to compile the layer
 - `TTdecompile` to decompile the layer
 
-Speaking of layers, traceTorch has a total of 42 for SNNs, RNNs, and SSMs; each of which reside in their own
+Speaking of layers, traceTorch has a total of 39 for SNNs, RNNs, and SSMs; each of which reside in their own
 subdirectory: `tt.snn`, `tt.rnn`, and `tt.ssm`. Regardless of where the layer comes from though, it's inevitably a child
 of `tt.Layer`, which makes it integrate with `tt.Model` and all other PyTorch modules in a layer-like way. This means
 that the layers expect one input, and produce only one output. All hidden states stay hidden, internal to the layer. And
@@ -110,9 +108,8 @@ one timestep at a time, it's expected that the looping is done externally.
 
 RNN and SSM layers are self-explanatory and follow the standard architectures. `tt.rnn` presents 3 layers: `SimpleRNN`
 for the classic Elman RNN, `LSTM` and `GRU` for the LSTM and GRU written in a traceTorch way. `tt.ssm` presents 4
-standard and 3 experimental (work in progress) layers: `S4`, `S5`, `S6`, `Mamba` for the S4, S5, S6 and Mamba
-architectures; and `SelectiveSSM`, `SelectiveZOHSSM`, and `SpikeSSM` for an EMA, ZOH, and spiking alternatives to the S
-series. However, `tt.snn` is the most expansive of all, with 32 layers with a modular naming schema:
+layers: `S4`, `S5`, `S6`, `Mamba` for the S4, S5, S6 and Mamba architectures. However, `tt.snn` is the most expansive of
+all, with 32 layers with a modular naming schema:
 
 - `LI` base name stands for `Leaky Integrator`: the simplest of layer types with just one trace and decay: the membrane
   potential and the beta decay. No firing and no reset mechanics, this layer type is commonly known as `Readout` (
@@ -127,7 +124,7 @@ series. However, `tt.snn` is the most expansive of all, with 32 layers with a mo
 - `~S` suffix is only used with the `~T` suffix to create `~TS`, which stands for `Ternary Scaled`, meaning that the
   ternary outputs are multiplicatively separately scaled based on their polarity. This is done so that the three
   possible outputs are truly independent when we consider the downstream layer.
-- `D~` prefix stads for `Dual`, meaning that all traces (hidden states) and their decay parameters are split into a
+- `D~` prefix stands for `Dual`, meaning that all traces (hidden states) and their decay parameters are split into a
   separate positive and negative version for greater expressivity and unlocking more complex dynamics.
 - `S~` prefix stands for `Synaptic`, meaning that before the membrane there is a separate synaptic trace with its
   respective alpha decay that smooth out the inputs over time via an EMA before they get integrated into the membrane.
@@ -137,11 +134,10 @@ series. However, `tt.snn` is the most expansive of all, with 32 layers with a mo
 
 ## Documentation
 
-The online documentation can be found [here](https://yegor-men.github.io/tracetorch/), and it is nowhere close to being
-finished at the time of writing. However, once it will be, it is thoroughly recommended to at least read the
-introduction section before proceeding as it contains some theory behind SNNs, the traceTorch ethos and layers available
-as well as a brief explanation of what it is that each mechanic actually does. It also contains a couple tutorials to
-recreate the code found in `examples/`.
+The online documentation can be found [here](https://yegor-men.github.io/tracetorch/). It is recommended to at least
+read the introduction section before proceeding as it contains some theory behind SNNs, the traceTorch ethos and layers
+available as well as a brief explanation of what it is that each mechanic actually does. It also contains a couple
+tutorials to recreate the code found in `examples/`.
 
 ## Installation
 
@@ -157,7 +153,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.18.3 https://github.com/Yegor-men/tracetorch
+git clone --branch v0.19.0 https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```
@@ -184,7 +180,7 @@ class SNN(tt.Model):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 32, 3, padding=1),
-            tt.rnn.GRU(in_features=16, out_features=16, dim=-3),  # RNN, dim=-3 works on the color channel dimension
+            tt.rnn.GRU(in_features=16, out_features=16, dim=-3),  # GRU, dim=-3 works on the color channel dimension
             nn.MaxPool2d(2, 2),
             nn.Conv2d(32, 64, 3, padding=1),
             tt.snn.LIB(num_neurons=64, beta=torch.rand(64), dim=-3),  # SNN, can set parameters to a custom tensor too
@@ -222,10 +218,22 @@ for x, y in train_dataloader:
 Example code can be found in `examples/`. To test the code, make sure that you have the respective requirements
 installed for the example, and that you've either installed traceTorch from PyPI or as an editable installation.
 
-The current examples are unfortunately rather limited: `mnist/` with `monotonic.py` for rate-coded classification on the
-entire image and `nonmonotonic.py` for shuffled sequential MNIST with an adjustable kernel size. `byte_lm/` is a
-personal project on a byte level language model training on wikitext-103 and `BirdCLEF+2026/` is a similarly
-experimental project on the BirdCLEF+2026 dataset.
+The current examples are limited to Spiking Heidelberg Digits (SHD) and MNIST. It was **NOT** optimized for SOTA
+performance or even good results to begin with. Rather, these are just examples to show how traceTorch layers integrate
+with PyTorch. As with PyTorch, the best results arise from clever thinking, not the library itself.
+
+For example, running `examples/heidelberg_digits/main.py` will train an SNN (252k), RNN (973k), and SSM (227k) models,
+and plot the following graph:
+![SHD plot](https://raw.githubusercontent.com/Yegor-men/tracetorch/main/media/SHD.png)
+
+There is also `examples/mnist/` with three different approaches:
+
+- `rate_coded.py`: Rate-coded SNN using Bernoulli sampling over 20 timesteps
+- `sequential.py`: Sequential processing by splitting images into patches and processing them as a sequence
+- `noisy.py`: Robustness testing with additive noise during training
+
+Each example trains SNN, RNN, and SSM variants for comparison, demonstrating how traceTorch layers can handle different
+data modalities and processing strategies.
 
 ## Authors
 
@@ -238,14 +246,14 @@ on it.
 
 ## Roadmap
 
-traceTorch still has a long way to go. Namely:
+traceTorch is nearing its v1.0.0 release!
 
 - Fix `tt.functional` to be cleaner
 - Clean up `tt.plot` plotting functions
-- Clean up and make sure that the `save_states` and `load_states` work as intended without fault
-- Create tests for compilation and decompilation, saving and loading
+- ~~Clean up and make sure that the `save_states` and `load_states` work as intended without fault~~
+- ~~Create tests for compilation and decompilation, saving and loading~~
 - Finish the `examples/` section for example code for various examples
-- Make proper requirements for each example in `examples/`
+- ~~Make proper requirements for each example in `examples/`~~
 - Write the documentation
 - Make docstrings
-- Figure out versioning requirements for the library
+- ~~Figure out versioning requirements for the library~~

@@ -11,8 +11,9 @@ done a certain way, as well as everything behind traceTorch should help you make
 
    1_what_is_rnn
    2_what_is_snn
-   3_ethos_of_tracetorch
-   4_tracetorch_layers
-   5_distributed_hidden_state
-   6_monotonic_and_nonmonotonic
-   7_surrogate_derivatives
+   3_what_is_ssm
+   4_ethos_of_tracetorch
+   5_tracetorch_layers
+   6_distributed_hidden_state
+   7_monotonic_and_nonmonotonic
+   8_surrogate_derivatives

@@ -30,11 +30,11 @@ class Layer(BaseLayer):
 
     def _register_scale(self, name: str, value, rank: Literal[0, 1], learnable: bool):
         self._register_parameter(name, value, rank, learnable, init_fn=functional.mamba_scale,
-                                 inverse_function=torch.log, activation_function=torch.exp)
+                                 inverse_fn=torch.log, activation_fn=torch.exp)
 
     def _register_log_scale(self, name: str, value, rank: Literal[0, 1], learnable: bool):
-        self._register_parameter(name, value, rank, learnable, init_fn=torch.log, inverse_function=torch.log,
-                                 activation_function=torch.exp)
+        self._register_parameter(name, value, rank, learnable, init_fn=torch.log, inverse_fn=torch.log,
+                                 activation_fn=torch.exp)
 
     # NEW: Allows custom SSMs to register scales matching d_state size instead of num_neurons
     def _register_state_scale(self, name: str, value, rank: Literal[0, 1], learnable: bool):

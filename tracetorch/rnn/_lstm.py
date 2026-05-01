@@ -6,6 +6,52 @@ from typing import Union, Literal
 
 
 class LSTM(RNNLayer):
+    r"""A Long Short-Term Memory (LSTM) layer.
+    Uses input, forget, output gates and a cell state to handle long-term dependencies.
+
+    Args:
+        in_features (int): number of input features.
+        out_features (int): number of output features (automatically becomes the hidden and cell state size). This is the value used as ``num_neurons`` for superclass initialization.
+        dim (int, default=-1): the dimension along which the layer operates.
+
+    Attributes:
+        H: the hidden state. Stores the previous timestep's output.
+        C: the cell state. Stores long-term memory information.
+        gate_layers: linear layer computing all four gates simultaneously.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,in_features,*]`` where ``in_features`` is at index ``dim``.
+        - **Output**: tensor of shape ``[*,out_features,*]`` where ``out_features`` is at index ``dim``.
+
+        Computes input, forget, output gates and cell candidate from concatenated hidden state and input.
+        The forget gate controls what to discard from cell state, input gate controls what new information
+        to add, and output gate controls what to expose as the hidden state. Records results into ``H`` and ``C``,
+        returns ``H``. Pseudocode looks as follows:
+
+        ::
+
+            i, f, o, g = chunk(sigmoid(gate_layers(concatenate(H, x))), 4)
+            C = f * C + i * tanh(g)
+            H = o * tanh(C)
+            return H
+
+    Examples::
+
+        # Process 64->32 features along the last dimension
+        >>> layer = tt.rnn.LSTM(64, 32)
+        >>> input = torch.rand(16, 64)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+
+        # Process 64->128 features along the color dimension of an image
+        >>> layer = tt.rnn.LSTM(64, 128, -3)
+        >>> input = torch.rand(32, 64, 28, 28)  # [B, C, H, W] shape
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([32, 128, 28, 28])
+    """
+
     def __init__(
             self,
             in_features: int,

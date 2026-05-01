@@ -1,4 +1,4 @@
-5. The Distributed Hidden State
+6. The Distributed Hidden State
 ===============================
 
 As with any recurrent architecture, the biggest challenge is for the model to figure out what to keep and what to discard.

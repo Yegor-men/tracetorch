@@ -1,4 +1,4 @@
-6. Monotonic and Nonmonotonic Functions
+7. Monotonic and Nonmonotonic Functions
 =======================================
 
 The task of any neural network is to learn to map some high dimensional function. In the simplest of cases, it can be a

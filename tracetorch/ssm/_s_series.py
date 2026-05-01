@@ -4,6 +4,15 @@ from ._ssmlayer import Layer as SSMLayer
 
 
 class S4(SSMLayer):
+    """
+    S4 (Structured State Space Sequence) Layer adapted for traceTorch.
+    
+    Args:
+        num_neurons (int): The number of features in the working dimension.
+        d_state (int): The dimension of the state space.
+        dim (int): The dimension to operate on (default: -1).
+    """
+
     def __init__(self, num_neurons: int, d_state: int = 64, dim: int = -1):
         super().__init__(num_neurons, dim, d_state=d_state)
         A = torch.arange(1, d_state + 1).float().repeat(num_neurons, 1)
@@ -33,6 +42,16 @@ class S4(SSMLayer):
 
 
 class S5(SSMLayer):
+    """
+    S5 (Simplified State Space) Layer adapted for traceTorch.
+    Uses a global state shared across neurons.
+    
+    Args:
+        num_neurons (int): The number of features in the working dimension.
+        d_state (int): The dimension of the global state space.
+        dim (int): The dimension to operate on (default: -1).
+    """
+
     def __init__(self, num_neurons: int, d_state: int = 64, dim: int = -1):
         super().__init__(num_neurons, dim, d_state=1)
         self.d_state = d_state
@@ -72,6 +91,16 @@ class S5(SSMLayer):
 
 
 class S6(SSMLayer):
+    """S6 (Data-Dependent State Space) Layer adapted for traceTorch.
+    The core dynamic component of Mamba without the causal convolution and multiplicative gating.
+
+    Args:
+        num_neurons (int): The number of features in the working dimension.
+        d_state (int): The dimension of the state space.
+        dt_rank (int): Rank of the step size projection.
+        dim (int): The dimension to operate on (default: -1).
+    """
+
     def __init__(self, num_neurons: int, d_state: int = 16, dt_rank: int = -1, dim: int = -1):
         super().__init__(num_neurons, dim, d_state=d_state)
         if dt_rank == -1: dt_rank = max(1, num_neurons // 16)

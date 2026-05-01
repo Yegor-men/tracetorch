@@ -1,4 +1,4 @@
-1. What is an SNN?
+2. What is an SNN?
 ==================
 
 Spiking Neural Networks (SNNs) are a subtype of RNNs that aim to recreate, or at least more closely follow the

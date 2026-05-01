@@ -1,4 +1,4 @@
-2. The Ethos of traceTorch
+4. The Ethos of traceTorch
 ==========================
 
 traceTorch is a unified recurrent neural network library for PyTorch that rethinks how recurrent networks are built from

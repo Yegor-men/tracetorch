@@ -1,4 +1,10 @@
-Plotting modules
-================
+Plot modules
+============
 
-The following section is dedicated to the various ``plotting`` modules found in ``traceTorch``.
+The following section is dedicated to the various ``plot`` modules found in ``traceTorch``.
+
+.. automodule:: tracetorch.plot
+   :members:
+   :member-order: bysource
+   :undoc-members:
+   :show-inheritance:
