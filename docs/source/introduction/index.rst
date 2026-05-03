@@ -1,19 +1,14 @@
 Introduction
 ============
 
-Before proceeding with the library and tutorials, it is recommended to familiarize yourself with some background theory
-behind RNNs, SNNs, and the reasoning behind traceTorch. This isn't strictly necessary, but understanding why certain things are
-done a certain way, as well as everything behind traceTorch should help you make and debug models.
+The introduction section contains everything you need to know about traceTorch before starting. It covers the ethos of
+traceTorch, and subsequently how it is structured to comply. It contains background information on SNNs and justifies
+the specific implementation choices. Finally, it contains some tips on the practices to modelmaking that yield better results.
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+    :maxdepth: 2
+    :caption: Contents:
 
-   1_what_is_rnn
-   2_what_is_snn
-   3_what_is_ssm
-   4_ethos_of_tracetorch
-   5_tracetorch_layers
-   6_distributed_hidden_state
-   7_monotonic_and_nonmonotonic
-   8_surrogate_derivatives
+    ethos
+    layers
+    snns

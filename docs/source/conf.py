@@ -9,7 +9,7 @@
 project = 'traceTorch'
 copyright = '2026, Yegor Menovchshikov'
 author = 'Yegor Menovchshikov'
-release = 'v0.19.0'
+release = 'v0.19.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -32,6 +32,11 @@ napoleon_use_ivar = True
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+html_theme_options = {
+    'collapse_navigation': True,
+    'navigation_depth': 2,
+    'sticky_navigation': True,
+}
 
 import os
 import sys

@@ -1,12 +1,16 @@
 ![traceTorch Banner](https://raw.githubusercontent.com/Yegor-men/tracetorch/main/media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/badge/Documentation-v0.19.0-red.svg)](https://yegor-men.github.io/tracetorch/)
-[![License](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/license/mit)
-[![PyPI](https://img.shields.io/badge/PyPI-v0.19.0-blue.svg)](https://pypi.org/project/tracetorch/)
+[![Documentation](https://img.shields.io/pypi/v/tracetorch?style=flat&labelColor=555&label=Documentation&color=red)](https://yegor-men.github.io/tracetorch/)
+[![PyPI version](https://img.shields.io/pypi/v/tracetorch?style=flat&labelColor=555&label=PyPI&color=blue)](https://pypi.org/project/tracetorch/)
+[![License](https://img.shields.io/badge/License-MIT-purple.svg?style=flat&labelColor=555)](https://opensource.org/license/mit)
+[![GitHub stars](https://img.shields.io/github/stars/Yegor-men/tracetorch?style=flat&labelColor=555&label=Stars&color=gold)](https://github.com/Yegor-men/tracetorch/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/Yegor-men/tracetorch?style=flat&labelColor=555&label=Forks&color=green)](https://github.com/Yegor-men/tracetorch/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/Yegor-men/tracetorch?style=flat&labelColor=555&label=Issues&color=orange)](https://github.com/Yegor-men/tracetorch/issues)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/tracetorch?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=BLUE&left_text=Downloads)](https://pepy.tech/projects/tracetorch)
 
 # traceTorch
 
-A strict, ergonomic, and powerful library for SNNs, RNNs and SSMs in PyTorch.
+A strict, ergonomic, and powerful library for SNNs, RNNs, and SSMs in PyTorch.
 
 - [Introduction](#introduction)
 - [Features](#features)
@@ -153,7 +157,7 @@ If you don't want to install traceTorch as a library, or just want to test the e
 as an editable installation:
 
 ```bash
-git clone --branch v0.19.0 https://github.com/Yegor-men/tracetorch
+git clone https://github.com/Yegor-men/tracetorch
 cd tracetorch
 pip install -e .
 ```

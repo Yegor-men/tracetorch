@@ -1,7 +1,7 @@
-Documentation
-=============
+Reference
+=========
 
-The reference documentation covers in detail all the features present in ``traceTorch``.
+This section covers in detail all the features present in ``traceTorch``.
 
 .. toctree::
    :maxdepth: 2

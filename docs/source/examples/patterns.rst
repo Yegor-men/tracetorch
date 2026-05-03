@@ -1,12 +1,15 @@
-T0. Memorizing Patterns
-=======================
+Memorizing Patterns
+===================
 
-As the first task and challenge, we want to see if a traceTorch model is able to memorize a specific sequential pattern. This verifies that our state mechanism, compilation mechanisms, and backpropagation logic are functioning correctly over a basic temporal problem.
+The first and most important test is to see if the model can learn at all in the first place. If it can't memorize, then it can't generalize.
+For this, we will generate a random static input, feed it into the model, and see if it can memorize the target label.
+In doing so, we will also learn the fundamentals of how to make and train a traceTorch model.
+
 
 The Setup
 ---------
 
-In this tutorial (modeled heavily on ``tests/test_core.py``), we generate a random 2D image and assign it a fixed random label. We then force the model to continuously observe this same exact image over many timesteps and see if it can memorize the output. 
+In this tutorial (modeled heavily on ``tests/test_core.py``), we generate a random 2D image and assign it a fixed random label. We then force the model to continuously observe this same exact image over many timesteps and see if it can memorize the output.
 
 .. code-block:: python
 
@@ -19,14 +22,14 @@ In this tutorial (modeled heavily on ``tests/test_core.py``), we generate a rand
 
     # We will simulate a batch size of 2, 3 color channels, 10x10 resolution
     b, c, h, w = 2, 3, 10, 10
-    
+
     random_feature = torch.rand(b, c, h, w).to(device)
     random_label = torch.eye(b).to(device) # Just generating a random target
 
 Model Architecture
 ------------------
 
-We define a simple Multi-Layer Perceptron (MLP) mixed with some Spiking layers. 
+We define a simple Multi-Layer Perceptron (MLP) mixed with some Spiking layers.
 
 .. code-block:: python
 
@@ -63,14 +66,14 @@ To train the network, we must repeatedly pass our static feature into the networ
     for epoch in range(num_epochs):
         model.train()
         model.zero_grad()
-        
+
         # Reset the hidden membrane states
         model.zero_states()
-        
+
         for step in range(num_timesteps):
             # The model processes the same static feature at every timestep
             model_output = model(random_feature)
-            
+
         # We compute the loss on the final output
         loss = loss_fn(model_output, random_label)
         loss.backward()

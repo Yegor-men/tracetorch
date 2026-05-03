@@ -5,9 +5,9 @@ These tutorials focus on re-creating the code found in the main repository in ``
 all the necessary dynamics needed to show that ``traceTorch`` works.
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+    :maxdepth: 2
+    :caption: Contents:
 
-   T0_memorizing_patterns
-   T1_rate_coded_mnist
-   T2_sequential_mnist
+    custom_layer
+    save_load
+    compile_decompile

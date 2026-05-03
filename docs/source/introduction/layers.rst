@@ -1,4 +1,4 @@
-5. The traceTorch Layers
+2. The traceTorch Layers
 ========================
 
 It is time to (briefly) take a look at the base layer types that traceTorch presents. The practical application of the layers
