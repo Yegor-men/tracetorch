@@ -122,8 +122,8 @@ These methods thus allow traceTorch layers to work in any situation and architec
 boilerplate necessary to get a working model.
 
 
-Conclusion
-----------
+Summary
+-------
 
 In short, traceTorch exists to make writing, reading, debugging, and most importantly: experimenting, with recurrent
 networks in PyTorch to feel significantly more natural and less frustrating than in existing alternatives, while preserving

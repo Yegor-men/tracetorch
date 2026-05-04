@@ -22,10 +22,13 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
-    'myst_parser'
+    'myst_parser',
+    'sphinxcontrib.googleanalytics'
 ]
 
 napoleon_use_ivar = True
+googleanalytics_id = "G-4B6TFLZ5PC"
+googleanalytics_enabled = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

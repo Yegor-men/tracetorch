@@ -10,5 +10,5 @@ the specific implementation choices. Finally, it contains some tips on the pract
     :caption: Contents:
 
     ethos
-    layers
     snns
+    layers
