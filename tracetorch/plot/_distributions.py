@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 
 def _safe_to_numpy(t: torch.Tensor) -> np.ndarray:
+	"""Flatten a tensor to finite CPU NumPy values for plotting."""
 	t = t.detach().cpu().ravel()
 	a = t.numpy()
 	# remove nans and infs
@@ -13,6 +14,7 @@ def _safe_to_numpy(t: torch.Tensor) -> np.ndarray:
 
 
 def _silverman_bandwidth(x: np.ndarray) -> float:
+	"""Estimate a Gaussian KDE bandwidth using Silverman's rule of thumb."""
 	n = x.size
 	if n < 2:
 		return 1.0
@@ -29,13 +31,19 @@ def _gaussian_kde_eval(samples: np.ndarray,
 					   grid: np.ndarray,
 					   bw: Optional[float] = None,
 					   max_samples: int = 20000) -> np.ndarray:
-	"""
-	Vectorized Gaussian KDE evaluation at points in `grid`.
-	- samples: 1D numpy array of data
-	- grid: 1D numpy array of evaluation points
-	- bw: bandwidth (if None uses Silverman)
-	- max_samples: if samples too large, random subsample for speed
-	Returns density values aligned with grid (integrates approximately to 1).
+	"""Evaluate a Gaussian KDE over a grid.
+
+	Args:
+		samples (np.ndarray): one-dimensional sample array.
+		grid (np.ndarray): one-dimensional evaluation grid.
+		bw (float, optional): kernel bandwidth. If ``None``, Silverman's rule is
+			used.
+		max_samples (int, default=20000): maximum samples used for KDE; larger
+			inputs are deterministically subsampled.
+
+	Returns:
+		np.ndarray: density values aligned with ``grid`` and normalized to
+		integrate approximately to one.
 	"""
 	if samples.size == 0:
 		return np.zeros_like(grid, dtype=float)
@@ -71,43 +79,28 @@ def distributions(layers: List[torch.Tensor],
 				  compute_metrics: bool = True,
 				  max_kde_samples: int = 20000
 				  ) -> Dict[str, Any]:
-	"""
-	Estimate and plot continuous distributions for each layer (torch.Tensor) in `layers`.
-	Parameters
-	----------
-	title : str
-		Title for the single overlay plot.
-	layers : list[torch.Tensor]
-		Each item is a tensor containing continuous values for that layer (will be flattened).
-	n_grid : int
-		Number of x points for KDE evaluation.
-	n_percentiles : int
-		Number of percentile buckets (e.g. 100 -> percentiles at 0,1,...,100).
-	bandwidths : list or None
-		Optional list of bandwidths per layer; None to use Silverman's rule.
-	show_percentile_lines : bool
-		If True, plots vertical lines for a few percentiles (can clutter plot).
-	compute_metrics : bool
-		If True attempts to compute pairwise similarity metrics and returns them.
-	max_kde_samples : int
-		Maximum number of samples per layer used to compute KDE (subsample if larger).
-	Returns
-	-------
-	dict with keys:
-	  - 'grid': evaluation grid (numpy array)
-	  - 'kdes': list of density arrays (same order as layers)
-	  - 'percentiles': list of percentile arrays per layer
-	  - 'stats': list of dicts {n, mean, std, min, max}
-	  - 'metrics': dict of pairwise metrics (if compute_metrics)
-	:param title:
-	:param layers:
-	:param n_grid:
-	:param n_percentiles:
-	:param bandwidths:
-	:param show_percentile_lines:
-	:param compute_metrics:
-	:param max_kde_samples:
-	:return:
+	"""Estimate and plot value distributions for tensors.
+
+	Args:
+		layers (List[torch.Tensor]): tensors to flatten and compare.
+		title (str): plot title.
+		n_grid (int, default=1024): number of KDE evaluation points.
+		n_percentiles (int, default=100): number of percentile buckets.
+		bandwidths (List[Optional[float]], optional): per-layer KDE bandwidths.
+			``None`` entries use Silverman's rule.
+		show_percentile_lines (bool, default=False): if True, show selected
+			percentile markers.
+		compute_metrics (bool, default=True): if True, compute pairwise KDE L1
+			distance and Wasserstein distance when SciPy is available.
+		max_kde_samples (int, default=20000): maximum samples per tensor used for
+			KDE evaluation.
+
+	Returns:
+		Dict[str, Any]: plotting data including ``grid``, ``kdes``,
+		``percentiles``, ``stats``, ``fig_ax``, and optional ``metrics``.
+
+	Notes:
+		This helper is intended for exploratory analysis and calls ``plt.show()``.
 	"""
 	# prepare data arrays
 	arrs = [_safe_to_numpy(t) for t in layers]

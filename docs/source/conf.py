@@ -22,24 +22,42 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
-    'myst_parser',
-    'sphinxcontrib.googleanalytics'
 ]
 
 napoleon_use_ivar = True
-googleanalytics_id = "G-4B6TFLZ5PC"
-googleanalytics_enabled = True
+autodoc_mock_imports = [
+    'torch',
+    'numpy',
+    'matplotlib',
+    'matplotlib.pyplot',
+    'matplotlib.colors',
+    'scipy',
+    'scipy.stats',
+]
+
+import importlib.util
+
+if importlib.util.find_spec('myst_parser') is not None:
+    extensions.append('myst_parser')
+
+if importlib.util.find_spec('sphinxcontrib.googleanalytics') is not None:
+    extensions.append('sphinxcontrib.googleanalytics')
+    googleanalytics_id = "G-4B6TFLZ5PC"
+    googleanalytics_enabled = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'sphinx_rtd_theme'
+has_rtd_theme = importlib.util.find_spec('sphinx_rtd_theme') is not None
+html_theme = 'sphinx_rtd_theme' if has_rtd_theme else 'alabaster'
 html_static_path = ['_static']
-html_theme_options = {
-    'collapse_navigation': True,
-    'navigation_depth': 2,
-    'sticky_navigation': True,
-}
+html_theme_options = {}
+if has_rtd_theme:
+    html_theme_options = {
+        'collapse_navigation': True,
+        'navigation_depth': 2,
+        'sticky_navigation': True,
+    }
 
 import os
 import sys

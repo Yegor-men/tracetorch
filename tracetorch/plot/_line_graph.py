@@ -3,12 +3,18 @@ import matplotlib.pyplot as plt
 
 
 def line_graph(list_of_values, title: str, label=None) -> None:
-	"""
-	Uses a list of values (allows tensors) to make a line graph
-	:param list_of_values:
-	:param title:
-	:param label:
-	:return:
+	"""Plot a simple line graph from scalar values or tensors.
+
+	Args:
+		list_of_values: sequence of Python scalars or tensors. Tensor values are
+			stacked over time and each flattened element is plotted as its own
+			line.
+		title (str): plot title.
+		label (Sequence, optional): labels for tensor-valued lines.
+
+	Notes:
+		This helper is intended for quick experiment visualization. It calls
+		``plt.show()`` and does not return the figure.
 	"""
 	# Check if it's a list of tensors
 	if isinstance(list_of_values[0], torch.Tensor):

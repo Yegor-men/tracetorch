@@ -1,10 +1,20 @@
-Core modules
-============
+Core
+====
 
-The following section is dedicated to the various ``core`` modules found in ``traceTorch``.
+Core classes provide the state-management and parameter-management machinery used by every traceTorch layer.
 
-.. automodule:: tracetorch.core
+Model
+-----
+
+.. autoclass:: tracetorch.core.Model
    :members:
    :member-order: bysource
-   :undoc-members:
+   :show-inheritance:
+
+Layer
+-----
+
+.. autoclass:: tracetorch.core.Layer
+   :members:
+   :member-order: bysource
    :show-inheritance:

@@ -83,7 +83,29 @@ def test_save_load_states():
     assert torch.allclose(out1, out2)
 
 
+def test_synaptic_layers_use_previous_synaptic_state():
+    x = torch.ones(2, 4, device=device)
+    expected_first_syn = torch.full_like(x, 0.5)
+    expected_second_syn = torch.full_like(x, 0.75)
+
+    layers = [
+        snn.SLIB(4, alpha=0.5, learn_alpha=False).to(device),
+        snn.SRLIB(4, alpha=0.5, learn_alpha=False).to(device),
+        snn.SRLIT(4, alpha=0.5, learn_alpha=False).to(device),
+        snn.SRLITS(4, alpha=0.5, learn_alpha=False).to(device),
+    ]
+
+    for layer in layers:
+        layer.zero_states()
+        layer(x)
+        assert torch.allclose(layer.syn, expected_first_syn)
+
+        layer(x)
+        assert torch.allclose(layer.syn, expected_second_syn)
+
+
 if __name__ == "__main__":
     test_compile_decompile()
     test_save_load_states()
+    test_synaptic_layers_use_previous_synaptic_state()
     print("All tests passed!")

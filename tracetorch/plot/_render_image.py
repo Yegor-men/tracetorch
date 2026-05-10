@@ -8,6 +8,20 @@ import math
 
 
 def render_image(tensor: torch.Tensor, title: str = None, name: str = "", save: bool = False):
+    r"""Render a batch of grayscale or RGB images with Matplotlib.
+
+    Args:
+        tensor (torch.Tensor): image batch of shape ``[B, C, H, W]``. ``C`` must
+            be ``1`` or ``3``.
+        title (str, optional): optional figure title.
+        name (str, default=""): filename stem used when ``save=True``.
+        save (bool, default=False): if True, save the figure to
+            ``media/{name}.png``.
+
+    Notes:
+        This helper is intended for quick experiment visualization. It calls
+        ``plt.show()`` and does not return the figure.
+    """
     B, C, H, W = tensor.shape
 
     cols = math.ceil(math.sqrt(B))

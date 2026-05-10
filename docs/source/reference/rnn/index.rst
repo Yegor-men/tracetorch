@@ -1,10 +1,30 @@
-RNN modules
-===========
+RNN
+===
 
-The following section is dedicated to the various ``rnn`` modules found in ``traceTorch``.
+``tt.rnn`` contains conventional recurrent layers adapted to traceTorch's hidden-state contract.
 
-.. automodule:: tracetorch.rnn
+Base Layer
+----------
+
+.. autoclass:: tracetorch.rnn.Layer
    :members:
    :member-order: bysource
-   :undoc-members:
+   :show-inheritance:
+
+Layers
+------
+
+.. autoclass:: tracetorch.rnn.SimpleRNN
+   :members:
+   :member-order: bysource
+   :show-inheritance:
+
+.. autoclass:: tracetorch.rnn.LSTM
+   :members:
+   :member-order: bysource
+   :show-inheritance:
+
+.. autoclass:: tracetorch.rnn.GRU
+   :members:
+   :member-order: bysource
    :show-inheritance:

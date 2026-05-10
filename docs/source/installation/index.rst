@@ -1,20 +1,22 @@
 Installation
 ============
 
-Basic Installation
-------------------
-traceTorch is available on PyPI and can be installed via pip:
+PyPI install
+------------
+
+Install traceTorch with pip:
 
 .. code-block:: bash
 
     pip install tracetorch
 
-traceTorch depends on ``torch>=2.0.0``, ``numpy>=1.20.0``, ``matplotlib>=3.0.0``, ``scipy>=1.10.0``, which will be automatically installed.
+The package depends on PyTorch, NumPy, Matplotlib, and SciPy. PyTorch installation can be platform-specific, especially
+when choosing a CUDA build; if you already have a working PyTorch environment, install traceTorch into that environment.
 
-Developer Installation
-----------------------
-If you want to modify traceTorch or run the examples without copy pasting the code, it is recommended to clone the repository
-and install it in editable mode.
+Editable install
+----------------
+
+Use an editable install if you want to run the repository examples, inspect the source, or work on traceTorch itself.
 
 .. code-block:: bash
 
@@ -22,13 +24,49 @@ and install it in editable mode.
     cd tracetorch
     pip install -e .
 
-The ``examples/`` directory contains multiple subprojects (e.g., ``mnist/``) showcasing different traceTorch capabilities.
-Each example project includes its own ``requirements.txt`` for specific dependencies (like ``torchvision`` or ``tqdm``).
+Example dependencies
+--------------------
 
-To run the examples:
+Examples have their own requirements. Install them from the example directory you want to run.
+
+MNIST examples:
 
 .. code-block:: bash
 
     cd examples/mnist
     pip install -r requirements.txt
     python rate_coded.py
+
+Heidelberg Digits example:
+
+.. code-block:: bash
+
+    cd examples/heidelberg_digits
+    pip install -r requirements.txt
+    python main.py
+
+Documentation dependencies
+--------------------------
+
+To build the documentation locally:
+
+.. code-block:: bash
+
+    cd docs
+    pip install -r requirements.txt
+    make html
+
+The generated HTML is written to ``docs/build/html``.
+
+Check the install
+-----------------
+
+After installation, this should import successfully:
+
+.. code-block:: python
+
+    import tracetorch as tt
+    layer = tt.snn.LIB(num_neurons=16)
+
+If the import fails because of an optional plotting dependency, make sure the base requirements were installed into the
+same environment as PyTorch.

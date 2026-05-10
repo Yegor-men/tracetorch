@@ -6,7 +6,69 @@ from .. import functional
 
 
 class LIB(SNNLayer):
-    """Leaky Integrator with Binary output."""
+    r"""A leaky integrate-and-binary-fire layer.
+
+    ``LIB`` is traceTorch's one-sided firing layer. It stores one membrane trace,
+    converts the distance from threshold into a firing probability, optionally
+    quantizes that probability, subtracts the threshold-scaled output from the
+    membrane, and returns the output.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        beta (float or torch.Tensor, default=0.9): membrane decay, constrained
+            to ``(0, 1)``.
+        threshold (float or torch.Tensor, default=1.0): positive firing
+            threshold, constrained to positive values.
+        bias (float or torch.Tensor, default=0.0): additive bias applied before
+            the spike function.
+        dim (int, default=-1): the dimension along which the layer operates.
+        beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
+            decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
+            threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        learn_beta (bool, default=True): whether ``beta`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): function that maps
+            membrane distance from threshold to a firing probability.
+        quant_fn (Callable, default=nn.Identity()): function that maps firing
+            probability to the returned spike value.
+
+    Attributes:
+        mem: membrane state.
+        beta: activated membrane decay.
+        threshold: activated positive threshold.
+        bias: activated bias.
+        spike_fn: spike probability function.
+        quant_fn: output quantization function.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        With the default ``quant_fn=nn.Identity()``, the layer returns smooth
+        firing probabilities. Pass a straight-through quantizer such as
+        ``tt.functional.round_ste()`` for harder binary events. Pseudocode looks
+        as follows:
+
+        ::
+
+            mem = beta * mem + x
+            spike_prob = spike_fn(mem - threshold + bias)
+            spikes = quant_fn(spike_prob)
+            mem = mem - spikes * threshold
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.LIB(num_neurons=32)
+        >>> input = torch.rand(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -53,7 +115,65 @@ class LIB(SNNLayer):
 
 
 class DLIB(SNNLayer):
-    """Dual Leaky Integrator with Binary output."""
+    r"""A dual leaky integrate-and-binary-fire layer.
+
+    ``DLIB`` splits membrane integration into positive and negative branches, but
+    still emits a one-sided binary-style output. The two membrane branches are
+    summed for thresholding, then the reset is split evenly across both branches.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
+        neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        dim (int, default=-1): the dimension along which the layer operates.
+        pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            decay.
+        neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
+            threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        learn_pos_beta (bool, default=True): whether ``pos_beta`` is trainable.
+        learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        pos_mem: positive membrane state.
+        neg_mem: negative membrane state.
+        threshold: activated positive threshold.
+        bias: activated bias.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        Pseudocode looks as follows:
+
+        ::
+
+            pos_mem = pos_beta * pos_mem + where(x >= 0, x, 0)
+            neg_mem = neg_beta * neg_mem + where(x <= 0, x, 0)
+            mem = pos_mem + neg_mem
+            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            pos_mem = pos_mem - 0.5 * spikes * threshold
+            neg_mem = neg_mem - 0.5 * spikes * threshold
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.DLIB(num_neurons=32)
+        >>> input = torch.randn(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -112,7 +232,62 @@ class DLIB(SNNLayer):
 
 
 class SLIB(SNNLayer):
-    """Synaptic Leaky Integrator with Binary output."""
+    r"""A synaptic leaky integrate-and-binary-fire layer.
+
+    ``SLIB`` smooths the input through a synaptic trace before membrane
+    integration and one-sided firing. This is useful when the input should behave
+    like a current with its own time constant rather than an instantaneous
+    membrane increment.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        alpha (float or torch.Tensor, default=0.5): synaptic decay.
+        beta (float or torch.Tensor, default=0.9): membrane decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        dim (int, default=-1): the dimension along which the layer operates.
+        alpha_rank (Literal[0, 1], default=1): scalar or per-neuron synaptic
+            decay.
+        beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
+            decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
+            threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        learn_alpha (bool, default=True): whether ``alpha`` is trainable.
+        learn_beta (bool, default=True): whether ``beta`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        syn: synaptic state.
+        mem: membrane state.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        Pseudocode looks as follows:
+
+        ::
+
+            syn = alpha * syn + (1 - alpha) * x
+            mem = beta * mem + syn
+            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            mem = mem - spikes * threshold
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.SLIB(num_neurons=32)
+        >>> input = torch.rand(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -151,7 +326,7 @@ class SLIB(SNNLayer):
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
-        syn = self._to_working_dim(x)
+        syn = self._to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
         mem = self._to_working_dim(self.mem)
@@ -169,7 +344,67 @@ class SLIB(SNNLayer):
 
 
 class RLIB(SNNLayer):
-    """Recurrent Leaky Integrator with Binary output."""
+    r"""A recurrent leaky integrate-and-binary-fire layer.
+
+    ``RLIB`` adds a recurrent trace of the previous output. The recurrent trace
+    is decayed with ``gamma``, scaled by ``rec_weight``, and added to the current
+    input before membrane integration.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        beta (float or torch.Tensor, default=0.9): membrane decay.
+        gamma (float or torch.Tensor, default=0.9): recurrent trace decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        rec_weight (float or torch.Tensor, default=0.0): recurrent input scale.
+        dim (int, default=-1): the dimension along which the layer operates.
+        beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
+            decay.
+        gamma_rank (Literal[0, 1], default=1): scalar or per-neuron recurrent
+            decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
+            threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
+            recurrent scale.
+        learn_beta (bool, default=True): whether ``beta`` is trainable.
+        learn_gamma (bool, default=True): whether ``gamma`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        mem: membrane state.
+        rec: recurrent trace state.
+        prev_output: previous returned output.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        Pseudocode looks as follows:
+
+        ::
+
+            rec = gamma * rec + (1 - gamma) * prev_output
+            mem = beta * mem + x + rec_weight * rec
+            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            mem = mem - spikes * threshold
+            prev_output = spikes
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.RLIB(num_neurons=32)
+        >>> input = torch.rand(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -237,7 +472,77 @@ class RLIB(SNNLayer):
 
 
 class DSLIB(SNNLayer):
-    """Dual Synaptic Leaky Integrator with Binary output."""
+    r"""A dual synaptic leaky integrate-and-binary-fire layer.
+
+    ``DSLIB`` combines dual positive/negative traces with a synaptic stage and a
+    one-sided firing output. Positive and negative inputs are smoothed
+    separately, summed, integrated into dual membrane traces, and thresholded as
+    one combined membrane.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        pos_alpha (float or torch.Tensor, default=0.5): positive synaptic decay.
+        neg_alpha (float or torch.Tensor, default=0.5): negative synaptic decay.
+        pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
+        neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        dim (int, default=-1): the dimension along which the layer operates.
+        pos_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            synaptic decay.
+        neg_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            synaptic decay.
+        pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            membrane decay.
+        neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            membrane decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
+            threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        learn_pos_alpha (bool, default=True): whether ``pos_alpha`` is trainable.
+        learn_neg_alpha (bool, default=True): whether ``neg_alpha`` is trainable.
+        learn_pos_beta (bool, default=True): whether ``pos_beta`` is trainable.
+        learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        pos_syn: positive synaptic state.
+        neg_syn: negative synaptic state.
+        pos_mem: positive membrane state.
+        neg_mem: negative membrane state.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        The reset is split evenly across the dual membrane branches. Pseudocode
+        looks as follows:
+
+        ::
+
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
+            syn = pos_syn + neg_syn
+            pos_mem = pos_beta * pos_mem + where(syn >= 0, syn, 0)
+            neg_mem = neg_beta * neg_mem + where(syn <= 0, syn, 0)
+            spikes = quant_fn(spike_fn(pos_mem + neg_mem - threshold + bias))
+            pos_mem = pos_mem - 0.5 * spikes * threshold
+            neg_mem = neg_mem - 0.5 * spikes * threshold
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.DSLIB(num_neurons=32)
+        >>> input = torch.randn(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -317,7 +622,86 @@ class DSLIB(SNNLayer):
 
 
 class DRLIB(SNNLayer):
-    """Dual Recurrent Leaky Integrator with Binary output."""
+    r"""A dual recurrent leaky integrate-and-binary-fire layer.
+
+    ``DRLIB`` keeps positive and negative membrane traces and positive and
+    negative recurrent traces. The previous output is split by sign, smoothed
+    into recurrent traces, scaled, and integrated with the current input before a
+    one-sided binary firing decision.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
+        neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
+        pos_gamma (float or torch.Tensor, default=0.9): positive recurrent decay.
+        neg_gamma (float or torch.Tensor, default=0.9): negative recurrent decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        pos_rec_weight (float or torch.Tensor, default=0.0): positive recurrent
+            input scale.
+        neg_rec_weight (float or torch.Tensor, default=0.0): negative recurrent
+            input scale.
+        dim (int, default=-1): the dimension along which the layer operates.
+        pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            membrane decay.
+        neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            membrane decay.
+        pos_gamma_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            recurrent decay.
+        neg_gamma_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            recurrent decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        pos_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
+            positive recurrent scale.
+        neg_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
+            negative recurrent scale.
+        learn_pos_beta (bool, default=True): whether ``pos_beta`` is trainable.
+        learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
+        learn_pos_gamma (bool, default=True): whether ``pos_gamma`` is trainable.
+        learn_neg_gamma (bool, default=True): whether ``neg_gamma`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        learn_pos_rec_weight (bool, default=True): whether ``pos_rec_weight`` is
+            trainable.
+        learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
+            trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        pos_mem: positive membrane state.
+        neg_mem: negative membrane state.
+        pos_rec: positive recurrent trace state.
+        neg_rec: negative recurrent trace state.
+        prev_output: previous returned output.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        Pseudocode looks as follows:
+
+        ::
+
+            pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * where(prev_output >= 0, prev_output, 0)
+            neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * where(prev_output <= 0, prev_output, 0)
+            pos_mem = pos_beta * pos_mem + pos_rec_weight * where(pos_rec + neg_rec >= 0, pos_rec + neg_rec, 0) + where(x >= 0, x, 0)
+            neg_mem = neg_beta * neg_mem + neg_rec_weight * where(pos_rec + neg_rec <= 0, pos_rec + neg_rec, 0) + where(x <= 0, x, 0)
+            spikes = quant_fn(spike_fn(pos_mem + neg_mem - threshold + bias))
+            prev_output = spikes
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.DRLIB(num_neurons=32)
+        >>> input = torch.randn(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -413,7 +797,72 @@ class DRLIB(SNNLayer):
 
 
 class SRLIB(SNNLayer):
-    """Synaptic Recurrent Leaky Integrator with Binary output."""
+    r"""A synaptic recurrent leaky integrate-and-binary-fire layer.
+
+    ``SRLIB`` combines an input synaptic trace with a recurrent trace of the
+    previous output. The membrane receives both the smoothed input and the scaled
+    recurrent current before one-sided firing.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        alpha (float or torch.Tensor, default=0.5): synaptic decay.
+        beta (float or torch.Tensor, default=0.9): membrane decay.
+        gamma (float or torch.Tensor, default=0.9): recurrent trace decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        rec_weight (float or torch.Tensor, default=0.0): recurrent input scale.
+        dim (int, default=-1): the dimension along which the layer operates.
+        alpha_rank (Literal[0, 1], default=1): scalar or per-neuron synaptic
+            decay.
+        beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
+            decay.
+        gamma_rank (Literal[0, 1], default=1): scalar or per-neuron recurrent
+            decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
+            recurrent scale.
+        learn_alpha (bool, default=True): whether ``alpha`` is trainable.
+        learn_beta (bool, default=True): whether ``beta`` is trainable.
+        learn_gamma (bool, default=True): whether ``gamma`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        syn: synaptic state.
+        mem: membrane state.
+        rec: recurrent trace state.
+        prev_output: previous returned output.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        Pseudocode looks as follows:
+
+        ::
+
+            syn = alpha * syn + (1 - alpha) * x
+            rec = gamma * rec + (1 - gamma) * prev_output
+            mem = beta * mem + syn + rec_weight * rec
+            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            mem = mem - spikes * threshold
+            prev_output = spikes
+            return spikes
+
+    Examples::
+
+        >>> layer = tt.snn.SRLIB(num_neurons=32)
+        >>> input = torch.rand(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,
@@ -464,7 +913,7 @@ class SRLIB(SNNLayer):
         self._ensure_states(x)
         x = self._to_working_dim(x)
 
-        syn = self._to_working_dim(x)
+        syn = self._to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
         self.syn = self._from_working_dim(syn)
 
@@ -490,7 +939,90 @@ class SRLIB(SNNLayer):
 
 
 class DSRLIB(SNNLayer):
-    """Dual Synaptic Recurrent Leaky Integrator with Binary output."""
+    r"""A dual synaptic recurrent leaky integrate-and-binary-fire layer.
+
+    ``DSRLIB`` is the most expressive binary SNN layer in traceTorch. It combines
+    dual positive/negative synaptic traces, dual positive/negative recurrent
+    traces, dual positive/negative membrane traces, and a one-sided binary firing
+    output.
+
+    Args:
+        num_neurons (int): number of neurons in the target dimension.
+        pos_alpha (float or torch.Tensor, default=0.5): positive synaptic decay.
+        neg_alpha (float or torch.Tensor, default=0.5): negative synaptic decay.
+        pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
+        neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
+        pos_gamma (float or torch.Tensor, default=0.9): positive recurrent decay.
+        neg_gamma (float or torch.Tensor, default=0.9): negative recurrent decay.
+        threshold (float or torch.Tensor, default=1.0): positive firing threshold.
+        bias (float or torch.Tensor, default=0.0): additive bias before firing.
+        pos_rec_weight (float or torch.Tensor, default=0.0): positive recurrent
+            input scale.
+        neg_rec_weight (float or torch.Tensor, default=0.0): negative recurrent
+            input scale.
+        dim (int, default=-1): the dimension along which the layer operates.
+        pos_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            synaptic decay.
+        neg_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            synaptic decay.
+        pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            membrane decay.
+        neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            membrane decay.
+        pos_gamma_rank (Literal[0, 1], default=1): scalar or per-neuron positive
+            recurrent decay.
+        neg_gamma_rank (Literal[0, 1], default=1): scalar or per-neuron negative
+            recurrent decay.
+        threshold_rank (Literal[0, 1], default=1): scalar or per-neuron threshold.
+        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
+        pos_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
+            positive recurrent scale.
+        neg_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
+            negative recurrent scale.
+        learn_pos_alpha (bool, default=True): whether ``pos_alpha`` is trainable.
+        learn_neg_alpha (bool, default=True): whether ``neg_alpha`` is trainable.
+        learn_pos_beta (bool, default=True): whether ``pos_beta`` is trainable.
+        learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
+        learn_pos_gamma (bool, default=True): whether ``pos_gamma`` is trainable.
+        learn_neg_gamma (bool, default=True): whether ``neg_gamma`` is trainable.
+        learn_threshold (bool, default=True): whether ``threshold`` is trainable.
+        learn_bias (bool, default=True): whether ``bias`` is trainable.
+        learn_pos_rec_weight (bool, default=True): whether ``pos_rec_weight`` is
+            trainable.
+        learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
+            trainable.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
+            function.
+        quant_fn (Callable, default=nn.Identity()): output quantization function.
+
+    Attributes:
+        pos_syn: positive synaptic state.
+        neg_syn: negative synaptic state.
+        pos_mem: positive membrane state.
+        neg_mem: negative membrane state.
+        pos_rec: positive recurrent trace state.
+        neg_rec: negative recurrent trace state.
+        prev_output: previous returned output.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
+          is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
+
+        ``DSRLIB`` is useful when the sign of the input and the sign of the
+        recurrent history should both have independent memory. The firing output
+        is still one-sided: negative internal evidence can suppress firing, but
+        the returned output is non-negative unless a custom ``quant_fn`` changes
+        that convention.
+
+    Examples::
+
+        >>> layer = tt.snn.DSRLIB(num_neurons=32)
+        >>> input = torch.randn(16, 32)
+        >>> output = layer(input)
+        >>> print(output.shape)
+        torch.Size([16, 32])
+    """
     def __init__(
             self,
             num_neurons: int,

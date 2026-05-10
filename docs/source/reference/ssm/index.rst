@@ -1,9 +1,35 @@
-SSM modules
-===========
+SSM
+===
 
-The following section is dedicated to the various ``ssm`` modules found in ``traceTorch``.
+``tt.ssm`` contains state-space-style layers adapted to traceTorch's one-timestep recurrent interface.
 
-.. automodule:: tracetorch.ssm
+Base Layer
+----------
+
+.. autoclass:: tracetorch.ssm.Layer
    :members:
-   :undoc-members:
+   :member-order: bysource
+   :show-inheritance:
+
+Layers
+------
+
+.. autoclass:: tracetorch.ssm.S4
+   :members:
+   :member-order: bysource
+   :show-inheritance:
+
+.. autoclass:: tracetorch.ssm.S5
+   :members:
+   :member-order: bysource
+   :show-inheritance:
+
+.. autoclass:: tracetorch.ssm.S6
+   :members:
+   :member-order: bysource
+   :show-inheritance:
+
+.. autoclass:: tracetorch.ssm.Mamba
+   :members:
+   :member-order: bysource
    :show-inheritance:

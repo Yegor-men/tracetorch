@@ -4,13 +4,29 @@ from ._ssmlayer import Layer as SSMLayer
 
 
 class S4(SSMLayer):
-    """
-    S4 (Structured State Space Sequence) Layer adapted for traceTorch.
-    
+    r"""A diagonal S4-style state-space layer adapted to traceTorch.
+
+    ``S4`` stores a per-feature latent state of size ``d_state`` and updates it
+    one timestep at a time. It is designed for traceTorch-style composition, not
+    as an optimized replacement for sequence-parallel S4 implementations.
+
     Args:
-        num_neurons (int): The number of features in the working dimension.
-        d_state (int): The dimension of the state space.
-        dim (int): The dimension to operate on (default: -1).
+        num_neurons (int): number of features in the target dimension.
+        d_state (int, default=64): latent state size per feature.
+        dim (int, default=-1): dimension along which the layer operates.
+
+    Attributes:
+        state: per-feature latent SSM state.
+        A_log: log-parameterized diagonal dynamics.
+        B: input projection into the state.
+        C: output projection from the state.
+        D: skip connection scale.
+        log_dt: log timestep scale.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where
+          ``num_neurons`` is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
     """
 
     def __init__(self, num_neurons: int, d_state: int = 64, dim: int = -1):
@@ -42,14 +58,29 @@ class S4(SSMLayer):
 
 
 class S5(SSMLayer):
-    """
-    S5 (Simplified State Space) Layer adapted for traceTorch.
-    Uses a global state shared across neurons.
-    
+    r"""An S5-style state-space layer with a global latent state.
+
+    ``S5`` projects the input features into a shared latent state of size
+    ``d_state`` and projects that state back to ``num_neurons`` outputs. It
+    processes one timestep per forward call and keeps the global state internal.
+
     Args:
-        num_neurons (int): The number of features in the working dimension.
-        d_state (int): The dimension of the global state space.
-        dim (int): The dimension to operate on (default: -1).
+        num_neurons (int): number of features in the target dimension.
+        d_state (int, default=64): size of the shared latent state.
+        dim (int, default=-1): dimension along which the layer operates.
+
+    Attributes:
+        global_state: shared latent state.
+        A_log: log-parameterized diagonal dynamics.
+        B: input projection into the global state.
+        C: output projection from the global state.
+        D: skip connection scale.
+        log_dt: log timestep scale.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where
+          ``num_neurons`` is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
     """
 
     def __init__(self, num_neurons: int, d_state: int = 64, dim: int = -1):
@@ -91,14 +122,32 @@ class S5(SSMLayer):
 
 
 class S6(SSMLayer):
-    """S6 (Data-Dependent State Space) Layer adapted for traceTorch.
-    The core dynamic component of Mamba without the causal convolution and multiplicative gating.
+    r"""A data-dependent S6 state-space layer adapted to traceTorch.
+
+    ``S6`` is the selective SSM core associated with Mamba-style models, without
+    the causal convolution and multiplicative block gate. The timestep, input,
+    and output projections are computed from the current input, then applied to
+    an internal per-feature state.
 
     Args:
-        num_neurons (int): The number of features in the working dimension.
-        d_state (int): The dimension of the state space.
-        dt_rank (int): Rank of the step size projection.
-        dim (int): The dimension to operate on (default: -1).
+        num_neurons (int): number of features in the target dimension.
+        d_state (int, default=16): latent state size per feature.
+        dt_rank (int, default=-1): rank of the timestep projection. ``-1`` uses
+            ``max(1, num_neurons // 16)``.
+        dim (int, default=-1): dimension along which the layer operates.
+
+    Attributes:
+        state: per-feature latent SSM state.
+        x_proj: input-dependent projection producing timestep, ``B``, and ``C``.
+        dt_proj: projection from low-rank timestep features to per-feature
+            timesteps.
+        A_log: log-parameterized diagonal dynamics.
+        D: skip connection scale.
+
+    Notes:
+        - **Input**: tensor of shape ``[*,num_neurons,*]`` where
+          ``num_neurons`` is at index ``dim``.
+        - **Output**: tensor with the same shape as the input.
     """
 
     def __init__(self, num_neurons: int, d_state: int = 16, dt_rank: int = -1, dim: int = -1):
@@ -111,7 +160,7 @@ class S6(SSMLayer):
 
         A = torch.arange(1, d_state + 1).float().repeat(num_neurons, 1)
         self.A_log = nn.Parameter(torch.log(A))
-        self.D = nn.Parameter(torch.ones(num_neurons))  # <--- Fixed: Added missing skip connection
+        self.D = nn.Parameter(torch.ones(num_neurons))
         self._initialize_state("state")
 
     def forward(self, x):
@@ -132,15 +181,34 @@ class S6(SSMLayer):
         state = state * bar_A + bar_B * x_w.unsqueeze(-1)
         self.state = self._state_from_working_dim(state)
 
-        y = torch.sum(state * C.unsqueeze(-2), dim=-1) + x_w * self.D  # <--- Fixed: Added + x_w * self.D
+        y = torch.sum(state * C.unsqueeze(-2), dim=-1) + x_w * self.D
         return self._from_working_dim(y)
 
 
 class Mamba(SSMLayer):
-    """
-    The full Mamba block natively inlined.
-    Integrates a Causal Conv1D, SiLU Multiplicative Gating, the S6 Data-Dependent SSM core,
-    and a Block-Level Residual Connection.
+    r"""A compact Mamba-style block adapted to traceTorch.
+
+    ``Mamba`` combines an input projection, optional causal convolution buffer,
+    SiLU gating, an S6-style selective SSM core, output projection, and residual
+    connection. It keeps the convolution buffer and SSM state internal and
+    processes one timestep per forward call.
+
+    Args:
+        num_neurons (int): number of features in the target dimension.
+        d_state (int, default=16): latent SSM state size per feature.
+        dim (int, default=-1): dimension along which the layer operates.
+        dt_rank (int, default=-1): rank of the timestep projection. ``-1`` uses
+            ``max(1, num_neurons // 16)``.
+        conv_kernel (int, default=4): causal convolution buffer length. Values
+            ``<= 1`` disable the convolution buffer.
+
+    Attributes:
+        ssm_state: per-feature selective SSM state.
+        conv_buffer: causal convolution buffer, present when ``conv_kernel > 1``.
+
+    Notes:
+        This is a traceTorch-compatible experimental implementation. It is not
+        an optimized replacement for production Mamba kernels.
     """
 
     def __init__(self, num_neurons: int, d_state: int = 16, dim: int = -1, dt_rank: int = -1, conv_kernel: int = 4):

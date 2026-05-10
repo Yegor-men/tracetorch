@@ -1,13 +1,15 @@
 Tutorials
 =========
 
-These tutorials focus on re-creating the code found in the main repository in ``examples/``. We will re-create and test
-all the necessary dynamics needed to show that ``traceTorch`` works.
+Tutorials cover traceTorch mechanics that are useful after you have built a first model.
+
+Read these when you need to preserve hidden state, optimize a trained model for inference, or create your own
+traceTorch-compatible layer.
 
 .. toctree::
     :maxdepth: 2
     :caption: Contents:
 
-    custom_layer
     save_load
     compile_decompile
+    custom_layer

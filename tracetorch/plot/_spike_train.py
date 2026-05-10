@@ -5,7 +5,12 @@ from matplotlib.colors import LinearSegmentedColormap
 
 
 def create_diverging_colormap():
-    """Create a colormap with red for positive, blue for negative values."""
+    r"""Create the default diverging colormap for signed spike values.
+
+    Returns:
+        matplotlib.colors.LinearSegmentedColormap: blue-white-red colormap where
+        negative values are blue, zero is white, and positive values are red.
+    """
     colors = ['blue', 'white', 'red']  # negative -> white -> positive
     n_bins = 256
     cmap = LinearSegmentedColormap.from_list('diverging', colors, N=n_bins)
@@ -20,8 +25,22 @@ def spike_train(
         title: str = "Spike Train Raster",
         use_imshow: bool = True,
 ):
-    # Stack into 2D array: shape (num_neurons, T)
-    # list_of_tensors assumed length T each
+    r"""Plot a spike train or signed activity sequence.
+
+    Args:
+        list_of_tensors (Sequence[torch.Tensor]): sequence of tensors, one per
+            timestep. Each tensor is flattened as neuron/activity values.
+        spacing (float, default=1.0): vertical spacing for event-plot mode.
+        linelength (float, default=0.8): line length for event-plot mode.
+        linewidth (float, default=0.5): line width for event-plot mode.
+        title (str, default="Spike Train Raster"): plot title.
+        use_imshow (bool, default=True): if True, draw a signed heatmap. If
+            False, draw an event plot of nonzero entries.
+
+    Notes:
+        This helper is intended for quick experiment visualization. It calls
+        ``plt.show()`` and does not return the figure.
+    """
     data = torch.stack(list_of_tensors).cpu().detach().numpy()  # shape (T, N)
     data = data.T  # shape (N, T)
 
