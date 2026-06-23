@@ -2,7 +2,7 @@ from .core import Layer as Layer
 from .core import Model as Model
 import importlib
 
-from . import core, functional, rnn, snn, ssm
+from . import core, functional, rnn, snn
 
 __all__ = [
     "Layer",
@@ -12,7 +12,6 @@ __all__ = [
     "plot",
     "rnn",
     "snn",
-    "ssm",
 ]
 
 
