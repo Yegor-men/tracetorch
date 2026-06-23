@@ -6,11 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "tracetorch"
 version = "0.19.2"
 authors = [{ name = "Yegor Menovchshikov", email = "yegor.mn@gmail.com" }]
-description = "A strict, ergonomic, and powerful library for SNNs, RNNs and SSMs in PyTorch."
+description = "A strict, ergonomic, and powerful library for SNNs and RNNs in PyTorch."
 readme = "README.md"
 requires-python = ">=3.6"
 license = "MIT"
-dependencies = ["torch>=2.0.0", "numpy>=1.20.0", "matplotlib>=3.0.0", "scipy>=1.10.0"]
+dependencies = ["torch>=2.0.0"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

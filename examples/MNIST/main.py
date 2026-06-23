@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 import torch
@@ -10,6 +11,12 @@ from tqdm import tqdm
 
 import tracetorch as tt
 
+examples_root = Path(__file__).resolve().parents[1]
+if str(examples_root) not in sys.path:
+    sys.path.append(str(examples_root))
+
+from plotting import plot_image_grid
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
 
@@ -18,7 +25,7 @@ num_timesteps = 10
 batch_size = 100
 learning_rate = 1e-3
 
-data_root = Path(__file__).resolve().parents[1] / "data"
+data_root = examples_root / "data"
 num_classes = 10
 
 
@@ -81,6 +88,7 @@ class ConvSNN(tt.Model):
             tt.snn.LIB(64, dim=-3, quant_fn=quant_factory()),
             nn.MaxPool2d(2),
             nn.Flatten(),
+            tt.snn.LI(64 * 7 * 7, beta=torch.rand(64 * 7 * 7)),
             nn.Linear(64 * 7 * 7, num_classes),
         )
 
@@ -190,13 +198,17 @@ def plot_history(history, epoch):
 
 def plot_mnist_sequence(sequence, label, alpha):
     frames = sequence[:, 0, 0].detach().cpu()
-    fig, axes = plt.subplots(2, 5, figsize=(10, 4))
-    for idx, ax in enumerate(axes.flat):
-        ax.imshow(frames[idx], cmap="gray", vmin=0.0, vmax=1.0)
+    title = f"Corrupted MNIST input, label={label.item()}, noise alpha={alpha[0].item():.3f}"
+    fig, axes = plot_image_grid(
+        frames,
+        title=title,
+        max_images=num_timesteps,
+        columns=5,
+        vmin=0.0,
+        vmax=1.0,
+    )
+    for idx, ax in enumerate(axes.flat[:frames.size(0)]):
         ax.set_title(f"t={idx}")
-        ax.axis("off")
-    fig.suptitle(f"Corrupted MNIST input, label={label.item()}, noise alpha={alpha[0].item():.3f}")
-    plt.tight_layout()
     plt.show(block=False)
 
 

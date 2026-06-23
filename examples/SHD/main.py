@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 import torch
@@ -11,6 +12,12 @@ import tonic
 import tonic.transforms as transforms
 import tracetorch as tt
 
+examples_root = Path(__file__).resolve().parents[1]
+if str(examples_root) not in sys.path:
+    sys.path.append(str(examples_root))
+
+from plotting import plot_spike_train
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
 
@@ -18,9 +25,11 @@ num_epochs = 5
 batch_size = 64
 learning_rate = 1e-3
 
-data_root = Path(__file__).resolve().parents[1] / "data"
+data_root = examples_root / "data"
 sensor_size = tonic.datasets.SHD.sensor_size
-num_inputs = sensor_size[0]
+num_inputs = 1
+for size in sensor_size:
+    num_inputs *= size
 num_classes = 20
 
 
@@ -50,9 +59,9 @@ def get_dataloaders():
 
 
 def flatten_events(events):
-    while events.ndim > 3 and events.shape[-1] == 1:
-        events = events.squeeze(-1)
-    return events.float()
+    if events.ndim < 3:
+        raise ValueError(f"Expected SHD events with shape [T, B, ...], got {tuple(events.shape)}")
+    return events.flatten(start_dim=2).float()
 
 
 class SHDSNN(tt.Model):
@@ -61,9 +70,11 @@ class SHDSNN(tt.Model):
         self.net = nn.Sequential(
             nn.Flatten(start_dim=1),
             nn.Linear(num_inputs, 256),
-            tt.snn.LIB(256),
+            tt.snn.RLIB(256, beta=torch.rand(256), threshold=torch.rand(256), gamma=torch.rand(256)),
             nn.Linear(256, 256),
-            tt.snn.LIB(256),
+            tt.snn.RLIB(256, beta=torch.rand(256), threshold=torch.rand(256), gamma=torch.rand(256)),
+            nn.Linear(256, 256),
+            tt.snn.LI(256, beta=(torch.rand(256) * 0.5 + 0.5)),
             nn.Linear(256, num_classes),
         )
 
@@ -166,14 +177,14 @@ def plot_history(history, epoch):
 
 
 def plot_shd_input(events, label):
-    sample = events[:, 0].detach().cpu().T
-    plt.figure("SHD diagnostic input", figsize=(10, 5))
-    plt.imshow(sample, aspect="auto", origin="lower", interpolation="nearest", cmap="magma")
-    plt.colorbar(label="event count")
-    plt.xlabel("Timestep")
-    plt.ylabel("Input neuron")
-    plt.title(f"SHD framed event input, label={label.item()}")
-    plt.tight_layout()
+    _, ax = plot_spike_train(
+        events[:, 0],
+        title=f"SHD framed event input, label={label.item()}",
+        cmap="magma",
+        symmetric=False,
+        colorbar_label="event count",
+    )
+    ax.set_ylabel("Input neuron")
     plt.show(block=False)
 
 
