@@ -81,9 +81,10 @@ Opinionated defaults
 
 traceTorch defaults are chosen for trainability and clarity.
 
-The most important SNN default is ``quant_fn=nn.Identity()``. A firing layer such as ``LIB`` therefore returns a smooth
-firing value by default instead of a hard spike. This makes the default behavior easier to train and closer to a
-differentiable dynamical system. If you want discrete forward events, pass a quantizer explicitly.
+The most important SNN default is ``spike_fn=tt.functional.sigmoid4x``. A firing layer such as ``LIB`` therefore returns
+a smooth firing value by default instead of a hard spike. This makes the default behavior easier to train and closer to a
+differentiable dynamical system. If you want discrete forward events, pass a hard spike function such as
+``tt.functional.round_sigmoid4x`` explicitly.
 
 This is not pretending to be the only correct SNN design. It is traceTorch choosing a stable starting point and making
 the sharper choices explicit.

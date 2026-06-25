@@ -1,6 +1,5 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
-from torch import nn
 from ._snnlayer import Layer as SNNLayer
 from .. import functional
 
@@ -37,9 +36,7 @@ class LIT(SNNLayer):
         learn_neg_threshold (bool, default=True): whether ``neg_threshold`` is
             trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         mem: membrane state.
@@ -53,14 +50,15 @@ class LIT(SNNLayer):
           is at index ``dim``.
         - **Output**: tensor with the same shape as the input.
 
-        With the default identity quantizer, positive and negative outputs are
-        smooth probabilities with opposite signs. Pseudocode looks as follows:
+        With the default ``spike_fn=tt.functional.sigmoid4x``, positive and negative
+        outputs are smooth firing intensities with opposite signs. Pseudocode looks
+        as follows:
 
         ::
 
             mem = beta * mem + x
-            pos = quant_fn(spike_fn(mem - pos_threshold + bias))
-            neg = -quant_fn(spike_fn(-neg_threshold - mem - bias))
+            pos = spike_fn(mem - pos_threshold + bias)
+            neg = -spike_fn(-neg_threshold - mem - bias)
             mem = mem - pos * pos_threshold
             mem = mem - neg * neg_threshold
             return pos + neg
@@ -90,7 +88,6 @@ class LIT(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -98,7 +95,6 @@ class LIT(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -111,11 +107,8 @@ class LIT(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + x
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -161,9 +154,7 @@ class DLIT(SNNLayer):
         learn_neg_threshold (bool, default=True): whether ``neg_threshold`` is
             trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -181,8 +172,8 @@ class DLIT(SNNLayer):
             pos_mem = pos_beta * pos_mem + where(x >= 0, x, 0)
             neg_mem = neg_beta * neg_mem + where(x < 0, x, 0)
             mem = pos_mem + neg_mem
-            pos = quant_fn(spike_fn(mem - pos_threshold + bias))
-            neg = -quant_fn(spike_fn(-neg_threshold - mem - bias))
+            pos = spike_fn(mem - pos_threshold + bias)
+            neg = -spike_fn(-neg_threshold - mem - bias)
             pos_mem = pos_mem - 0.5 * pos * pos_threshold - 0.5 * neg * neg_threshold
             neg_mem = neg_mem - 0.5 * pos * pos_threshold - 0.5 * neg * neg_threshold
             return pos + neg
@@ -215,7 +206,6 @@ class DLIT(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -225,7 +215,6 @@ class DLIT(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -243,11 +232,8 @@ class DLIT(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -295,9 +281,7 @@ class SLIT(SNNLayer):
         learn_neg_threshold (bool, default=True): whether ``neg_threshold`` is
             trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -314,8 +298,8 @@ class SLIT(SNNLayer):
 
             syn = alpha * syn + (1 - alpha) * x
             mem = beta * mem + syn
-            pos = quant_fn(spike_fn(mem - pos_threshold + bias))
-            neg = -quant_fn(spike_fn(-neg_threshold - mem - bias))
+            pos = spike_fn(mem - pos_threshold + bias)
+            neg = -spike_fn(-neg_threshold - mem - bias)
             mem = mem - pos * pos_threshold - neg * neg_threshold
             return pos + neg
 
@@ -347,7 +331,6 @@ class SLIT(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
         self._initialize_state("syn")
@@ -357,7 +340,6 @@ class SLIT(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -373,11 +355,8 @@ class SLIT(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + syn
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -428,9 +407,7 @@ class RLIT(SNNLayer):
             trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         mem: membrane state.
@@ -448,8 +425,8 @@ class RLIT(SNNLayer):
 
             rec = gamma * rec + (1 - gamma) * prev_output
             mem = beta * mem + x + rec_weight * rec
-            pos = quant_fn(spike_fn(mem - pos_threshold + bias))
-            neg = -quant_fn(spike_fn(-neg_threshold - mem - bias))
+            pos = spike_fn(mem - pos_threshold + bias)
+            neg = -spike_fn(-neg_threshold - mem - bias)
             mem = mem - pos * pos_threshold - neg * neg_threshold
             prev_output = pos + neg
             return prev_output
@@ -485,7 +462,6 @@ class RLIT(SNNLayer):
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -497,7 +473,6 @@ class RLIT(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -518,11 +493,8 @@ class RLIT(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -578,9 +550,7 @@ class DSLIT(SNNLayer):
         learn_neg_threshold (bool, default=True): whether ``neg_threshold`` is
             trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -629,7 +599,6 @@ class DSLIT(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -644,7 +613,6 @@ class DSLIT(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -671,11 +639,8 @@ class DSLIT(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -744,9 +709,7 @@ class DRLIT(SNNLayer):
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -803,7 +766,6 @@ class DRLIT(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -819,7 +781,6 @@ class DRLIT(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -854,11 +815,8 @@ class DRLIT(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
@@ -916,9 +874,7 @@ class SRLIT(SNNLayer):
             trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -938,8 +894,8 @@ class SRLIT(SNNLayer):
             syn = alpha * syn + (1 - alpha) * x
             rec = gamma * rec + (1 - gamma) * prev_output
             mem = beta * mem + syn + rec_weight * rec
-            pos = quant_fn(spike_fn(mem - pos_threshold + bias))
-            neg = -quant_fn(spike_fn(-neg_threshold - mem - bias))
+            pos = spike_fn(mem - pos_threshold + bias)
+            neg = -spike_fn(-neg_threshold - mem - bias)
             prev_output = pos + neg
             return prev_output
 
@@ -977,7 +933,6 @@ class SRLIT(SNNLayer):
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -992,7 +947,6 @@ class SRLIT(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -1017,11 +971,8 @@ class SRLIT(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         mem = mem - pos_spikes * self.pos_threshold
         mem = mem - neg_spikes * self.neg_threshold
@@ -1097,9 +1048,7 @@ class DSRLIT(SNNLayer):
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -1164,7 +1113,6 @@ class DSRLIT(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -1185,7 +1133,6 @@ class DSRLIT(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -1230,11 +1177,8 @@ class DSRLIT(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        pos_spike_prob = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spike_prob = self.spike_fn(-self.neg_threshold - mem - self.bias)
-
-        pos_spikes = self.quant_fn(pos_spike_prob)
-        neg_spikes = -self.quant_fn(neg_spike_prob)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
 
         pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
         neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5

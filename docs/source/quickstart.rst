@@ -35,9 +35,9 @@ traceTorch models are ordinary PyTorch modules with one important change: inheri
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = Net().to(device)
 
-``tt.snn.LIB`` is a leaky integrate-and-binary-fire layer. With the default ``quant_fn=nn.Identity()``, it returns a
-smooth firing value rather than a hard discrete spike. ``tt.snn.LI`` is a continuous leaky integrator, useful as a simple
-readout trace.
+``tt.snn.LIB`` is a leaky integrate-and-binary-fire layer. With the default
+``spike_fn=tt.functional.sigmoid4x``, it returns a smooth firing value rather than a hard discrete spike. ``tt.snn.LI``
+is a continuous leaky integrator, useful as a simple readout trace.
 
 The timestep loop
 -----------------

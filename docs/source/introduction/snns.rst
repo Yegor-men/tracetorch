@@ -39,8 +39,8 @@ The ``LIEMA`` variants use an exponential-moving-average form instead:
 This keeps the magnitude bounded in a way that is useful when the layer is meant to smooth a signal instead of
 accumulate evidence.
 
-Spikes, probabilities, and quantization
----------------------------------------
+Spikes, intensities, and surrogate functions
+--------------------------------------------
 
 The firing layers first update a membrane trace and then compare it with one or more thresholds. For a binary ``LIB``
 layer, the default calculation is:
@@ -48,8 +48,7 @@ layer, the default calculation is:
 ::
 
     mem = beta * mem + x
-    spike_prob = sigmoid4x(mem - threshold + bias)
-    spikes = quant_fn(spike_prob)
+    spikes = sigmoid4x(mem - threshold + bias)
     mem = mem - spikes * threshold
     return spikes
 
@@ -62,22 +61,21 @@ The default ``spike_fn`` is ``sigmoid4x``:
 This gives a smooth transition around threshold. It is steep enough to behave like a soft firing decision, but it still
 has useful gradients for optimization.
 
-The default ``quant_fn`` is ``nn.Identity()``. That means the default layer returns the smooth spike probability itself,
-not a hard ``0`` or ``1`` event. In this default mode, the SNN behaves more like a differentiable recurrent ODE-style
-system than a strictly discrete spiking mechanism. This is intentional: it gives stable gradients and makes the default
-layer easy to train.
+The default layer returns this smooth firing intensity itself, not a hard ``0`` or ``1`` event. In this default mode,
+the SNN behaves more like a differentiable recurrent ODE-style system than a strictly discrete spiking mechanism. This is
+intentional: it gives stable gradients and makes the default layer easy to train.
 
-To make the forward pass more spike-like, pass a quantization function explicitly:
+To make the forward pass more spike-like, pass a hard spike function explicitly:
 
 ::
 
     layer = tt.snn.LIB(
         num_neurons=128,
-        quant_fn=tt.functional.round_ste(),
+        spike_fn=tt.functional.round_sigmoid4x,
     )
 
-traceTorch provides straight-through quantizers in ``tt.functional``. These functions make a discrete or stochastic
-forward decision while defining a surrogate gradient for the backward pass.
+traceTorch provides hard spike functions in ``tt.functional``. These functions make a discrete or stochastic forward
+decision while defining a ``sigmoid4x`` surrogate gradient for the backward pass.
 
 Surrogate gradients
 -------------------
@@ -88,12 +86,12 @@ using a smoother backward approximation.
 
 In traceTorch, the separation is explicit:
 
-* ``spike_fn`` turns membrane distance from threshold into a smooth firing probability.
-* ``quant_fn`` decides whether that probability stays continuous or becomes discrete.
+* ``spike_fn`` turns membrane distance from threshold into the returned firing output.
+* ``sigmoid4x`` returns a continuous firing intensity.
+* ``round_sigmoid4x`` and ``stochastic_sigmoid4x`` return hard spikes with a ``sigmoid4x`` surrogate derivative.
 
-This design makes the training behavior visible. If you keep ``quant_fn=nn.Identity()``, gradients flow through the
-smooth probability. If you use ``round_ste()``, ``stochastic_round_ste()``, or ``probabilistic_ste()``, the forward pass
-becomes more discrete while the backward pass remains trainable.
+This design makes the training behavior visible. The default keeps the forward and backward paths continuous. The hard
+spike functions make the forward pass discrete while keeping the backward pass trainable.
 
 Synaptic traces
 ---------------

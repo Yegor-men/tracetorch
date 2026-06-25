@@ -91,7 +91,7 @@ Functional helpers
 * decay/halflife conversion helpers;
 * inverse transforms for constrained parameters;
 * ``sigmoid4x`` as the default SNN spike function;
-* straight-through quantizers such as ``round_ste()`` and ``stochastic_round_ste()``.
+* hard spike functions such as ``round_sigmoid4x`` and ``stochastic_sigmoid4x``.
 
 Plotting helpers
 ----------------

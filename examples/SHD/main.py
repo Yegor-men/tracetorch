@@ -1,5 +1,4 @@
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 import torch
@@ -12,12 +11,9 @@ import tonic
 import tonic.transforms as transforms
 import tracetorch as tt
 
+from examples.plotting import plot_spike_train
+
 examples_root = Path(__file__).resolve().parents[1]
-if str(examples_root) not in sys.path:
-    sys.path.append(str(examples_root))
-
-from plotting import plot_spike_train
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
 
@@ -99,7 +95,7 @@ class SHDRNN(tt.Model):
 
 def build_models():
     return {
-        "SNN Identity": SHDSNN().to(device),
+        "SNN Continuous": SHDSNN().to(device),
         "GRU": SHDRNN(tt.rnn.GRU).to(device),
         "LSTM": SHDRNN(tt.rnn.LSTM).to(device),
     }

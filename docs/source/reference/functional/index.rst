@@ -21,18 +21,11 @@ Parameter Transforms
 
 .. autofunction:: tracetorch.functional.softplus_inverse
 
-.. autofunction:: tracetorch.functional.mamba_scale
-
 Spike Functions
 ---------------
 
 .. autofunction:: tracetorch.functional.sigmoid4x
 
-Quantizers
-----------
+.. autofunction:: tracetorch.functional.round_sigmoid4x
 
-.. autofunction:: tracetorch.functional.round_ste
-
-.. autofunction:: tracetorch.functional.stochastic_round_ste
-
-.. autofunction:: tracetorch.functional.probabilistic_ste
+.. autofunction:: tracetorch.functional.stochastic_sigmoid4x

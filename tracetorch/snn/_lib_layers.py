@@ -1,6 +1,5 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
-from torch import nn
 from ._snnlayer import Layer as SNNLayer
 from .. import functional
 
@@ -9,8 +8,7 @@ class LIB(SNNLayer):
     r"""A leaky integrate-and-binary-fire layer.
 
     ``LIB`` is traceTorch's one-sided firing layer. It stores one membrane trace,
-    converts the distance from threshold into a firing probability, optionally
-    quantizes that probability, subtracts the threshold-scaled output from the
+    converts the distance from threshold into a firing output, subtracts the threshold-scaled output from the
     membrane, and returns the output.
 
     Args:
@@ -31,33 +29,29 @@ class LIB(SNNLayer):
         learn_threshold (bool, default=True): whether ``threshold`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         spike_fn (Callable, default=tt.functional.sigmoid4x): function that maps
-            membrane distance from threshold to a firing probability.
-        quant_fn (Callable, default=nn.Identity()): function that maps firing
-            probability to the returned spike value.
+            membrane distance from threshold to a firing output.
 
     Attributes:
         mem: membrane state.
         beta: activated membrane decay.
         threshold: activated positive threshold.
         bias: activated bias.
-        spike_fn: spike probability function.
-        quant_fn: output quantization function.
+        spike_fn: spike function.
 
     Notes:
         - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
           is at index ``dim``.
         - **Output**: tensor with the same shape as the input.
 
-        With the default ``quant_fn=nn.Identity()``, the layer returns smooth
-        firing probabilities. Pass a straight-through quantizer such as
-        ``tt.functional.round_ste()`` for harder binary events. Pseudocode looks
+        With the default ``spike_fn=tt.functional.sigmoid4x``, the layer returns smooth
+        firing intensities. Pass a hard surrogate spike function such as
+        ``tt.functional.round_sigmoid4x`` for binary events. Pseudocode looks
         as follows:
 
         ::
 
             mem = beta * mem + x
-            spike_prob = spike_fn(mem - threshold + bias)
-            spikes = quant_fn(spike_prob)
+            spikes = spike_fn(mem - threshold + bias)
             mem = mem - spikes * threshold
             return spikes
 
@@ -83,7 +77,6 @@ class LIB(SNNLayer):
             learn_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -91,7 +84,6 @@ class LIB(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
 
@@ -103,8 +95,7 @@ class LIB(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + x
 
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         mem = mem - spikes * self.threshold
 
@@ -139,9 +130,7 @@ class DLIB(SNNLayer):
         learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
         learn_threshold (bool, default=True): whether ``threshold`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -161,7 +150,7 @@ class DLIB(SNNLayer):
             pos_mem = pos_beta * pos_mem + where(x >= 0, x, 0)
             neg_mem = neg_beta * neg_mem + where(x <= 0, x, 0)
             mem = pos_mem + neg_mem
-            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            spikes = spike_fn(mem - threshold + bias)
             pos_mem = pos_mem - 0.5 * spikes * threshold
             neg_mem = neg_mem - 0.5 * spikes * threshold
             return spikes
@@ -191,7 +180,6 @@ class DLIB(SNNLayer):
             learn_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -201,7 +189,6 @@ class DLIB(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -218,8 +205,7 @@ class DLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
@@ -257,9 +243,7 @@ class SLIB(SNNLayer):
         learn_beta (bool, default=True): whether ``beta`` is trainable.
         learn_threshold (bool, default=True): whether ``threshold`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -276,7 +260,7 @@ class SLIB(SNNLayer):
 
             syn = alpha * syn + (1 - alpha) * x
             mem = beta * mem + syn
-            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            spikes = spike_fn(mem - threshold + bias)
             mem = mem - spikes * threshold
             return spikes
 
@@ -305,7 +289,6 @@ class SLIB(SNNLayer):
             learn_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -316,7 +299,6 @@ class SLIB(SNNLayer):
         self._register_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -331,8 +313,7 @@ class SLIB(SNNLayer):
 
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + syn
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         mem = mem - spikes * self.threshold
 
@@ -372,9 +353,7 @@ class RLIB(SNNLayer):
         learn_threshold (bool, default=True): whether ``threshold`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         mem: membrane state.
@@ -392,7 +371,7 @@ class RLIB(SNNLayer):
 
             rec = gamma * rec + (1 - gamma) * prev_output
             mem = beta * mem + x + rec_weight * rec
-            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            spikes = spike_fn(mem - threshold + bias)
             mem = mem - spikes * threshold
             prev_output = spikes
             return spikes
@@ -425,7 +404,6 @@ class RLIB(SNNLayer):
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -437,7 +415,6 @@ class RLIB(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -459,8 +436,7 @@ class RLIB(SNNLayer):
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         mem = mem - spikes * self.threshold
 
@@ -505,9 +481,7 @@ class DSLIB(SNNLayer):
         learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
         learn_threshold (bool, default=True): whether ``threshold`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -530,7 +504,7 @@ class DSLIB(SNNLayer):
             syn = pos_syn + neg_syn
             pos_mem = pos_beta * pos_mem + where(syn >= 0, syn, 0)
             neg_mem = neg_beta * neg_mem + where(syn <= 0, syn, 0)
-            spikes = quant_fn(spike_fn(pos_mem + neg_mem - threshold + bias))
+            spikes = spike_fn(pos_mem + neg_mem - threshold + bias)
             pos_mem = pos_mem - 0.5 * spikes * threshold
             neg_mem = neg_mem - 0.5 * spikes * threshold
             return spikes
@@ -566,7 +540,6 @@ class DSLIB(SNNLayer):
             learn_threshold: bool = True,
             learn_bias: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -581,7 +554,6 @@ class DSLIB(SNNLayer):
         self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -608,8 +580,7 @@ class DSLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
@@ -666,9 +637,7 @@ class DRLIB(SNNLayer):
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -690,7 +659,7 @@ class DRLIB(SNNLayer):
             neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * where(prev_output <= 0, prev_output, 0)
             pos_mem = pos_beta * pos_mem + pos_rec_weight * where(pos_rec + neg_rec >= 0, pos_rec + neg_rec, 0) + where(x >= 0, x, 0)
             neg_mem = neg_beta * neg_mem + neg_rec_weight * where(pos_rec + neg_rec <= 0, pos_rec + neg_rec, 0) + where(x <= 0, x, 0)
-            spikes = quant_fn(spike_fn(pos_mem + neg_mem - threshold + bias))
+            spikes = spike_fn(pos_mem + neg_mem - threshold + bias)
             prev_output = spikes
             return spikes
 
@@ -731,7 +700,6 @@ class DRLIB(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -747,7 +715,6 @@ class DRLIB(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -782,8 +749,7 @@ class DRLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5
@@ -828,9 +794,7 @@ class SRLIB(SNNLayer):
         learn_threshold (bool, default=True): whether ``threshold`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -850,7 +814,7 @@ class SRLIB(SNNLayer):
             syn = alpha * syn + (1 - alpha) * x
             rec = gamma * rec + (1 - gamma) * prev_output
             mem = beta * mem + syn + rec_weight * rec
-            spikes = quant_fn(spike_fn(mem - threshold + bias))
+            spikes = spike_fn(mem - threshold + bias)
             mem = mem - spikes * threshold
             prev_output = spikes
             return spikes
@@ -886,7 +850,6 @@ class SRLIB(SNNLayer):
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -901,7 +864,6 @@ class SRLIB(SNNLayer):
         self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -926,8 +888,7 @@ class SRLIB(SNNLayer):
 
         mem = self._to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         mem = mem - spikes * self.threshold
 
@@ -991,9 +952,7 @@ class DSRLIB(SNNLayer):
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike probability
-            function.
-        quant_fn (Callable, default=nn.Identity()): output quantization function.
+        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -1012,8 +971,8 @@ class DSRLIB(SNNLayer):
         ``DSRLIB`` is useful when the sign of the input and the sign of the
         recurrent history should both have independent memory. The firing output
         is still one-sided: negative internal evidence can suppress firing, but
-        the returned output is non-negative unless a custom ``quant_fn`` changes
-        that convention.
+        the returned output is non-negative when the spike function follows the
+        standard ``[0, 1]`` output convention.
 
     Examples::
 
@@ -1058,7 +1017,6 @@ class DSRLIB(SNNLayer):
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
             spike_fn=functional.sigmoid4x,
-            quant_fn=nn.Identity(),
     ):
         super().__init__(num_neurons, dim)
 
@@ -1079,7 +1037,6 @@ class DSRLIB(SNNLayer):
         self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self.quant_fn = quant_fn
 
         self._register_threshold("threshold", threshold, threshold_rank, learn_threshold)
         self._register_bias("bias", bias, bias_rank, learn_bias)
@@ -1124,8 +1081,7 @@ class DSRLIB(SNNLayer):
 
         mem = pos_mem + neg_mem
 
-        spike_prob = self.spike_fn(mem - self.threshold + self.bias)
-        spikes = self.quant_fn(spike_prob)
+        spikes = self.spike_fn(mem - self.threshold + self.bias)
 
         pos_mem = pos_mem - spikes * self.threshold * 0.5
         neg_mem = neg_mem - spikes * self.threshold * 0.5

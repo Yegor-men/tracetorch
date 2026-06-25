@@ -1,5 +1,4 @@
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 import torch
@@ -11,12 +10,9 @@ from tqdm import tqdm
 
 import tracetorch as tt
 
+from examples.plotting import plot_image_grid
+
 examples_root = Path(__file__).resolve().parents[1]
-if str(examples_root) not in sys.path:
-    sys.path.append(str(examples_root))
-
-from plotting import plot_image_grid
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
 
@@ -78,14 +74,14 @@ def weighted_final_loss(logits, labels, alpha):
 
 
 class ConvSNN(tt.Model):
-    def __init__(self, quant_factory):
+    def __init__(self, spike_fn=tt.functional.sigmoid4x):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1),
-            tt.snn.LIB(32, dim=-3, quant_fn=quant_factory()),
+            tt.snn.LIB(32, dim=-3, spike_fn=spike_fn),
             nn.MaxPool2d(2),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            tt.snn.LIB(64, dim=-3, quant_fn=quant_factory()),
+            tt.snn.LIB(64, dim=-3, spike_fn=spike_fn),
             nn.MaxPool2d(2),
             nn.Flatten(),
             tt.snn.LI(64 * 7 * 7, beta=torch.rand(64 * 7 * 7)),
@@ -116,9 +112,7 @@ class ConvRNN(tt.Model):
 
 def build_models():
     return {
-        "SNN Identity": ConvSNN(lambda: nn.Identity()).to(device),
-        "SNN Round": ConvSNN(lambda: tt.functional.round_ste()).to(device),
-        "SNN Stochastic": ConvSNN(lambda: tt.functional.stochastic_round_ste()).to(device),
+        "SNN Continuous": ConvSNN().to(device),
         "GRU": ConvRNN(tt.rnn.GRU).to(device),
         "LSTM": ConvRNN(tt.rnn.LSTM).to(device),
     }
