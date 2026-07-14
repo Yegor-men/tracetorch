@@ -19,7 +19,7 @@ class Layer(nn.Module):
         self.num_neurons = num_neurons
         self.dim = dim
 
-    def _register_parameter(
+    def define_parameter(
             self,
             name: str,
             value: Union[float, torch.Tensor],
@@ -94,7 +94,7 @@ class Layer(nn.Module):
                     pass
             raise
 
-    def _initialize_state(self, state_name: str) -> None:
+    def define_state(self, state_name: str) -> None:
         r"""Initialize and register a state for traceTorch operations.
 
         Args:
@@ -103,7 +103,7 @@ class Layer(nn.Module):
         self._state_names.add(state_name)
         setattr(self, state_name, None)
 
-    def _detach_state(self, state_name: str) -> None:
+    def detach_state(self, state_name: str) -> None:
         r"""Detach a state tensor from the computation graph if it exists and is not None.
 
         Args:
@@ -116,9 +116,9 @@ class Layer(nn.Module):
     def detach_states(self) -> None:
         r"""Detach all initialized state tensors from the computation graph if they are not None."""
         for state_name in self._state_names:
-            self._detach_state(state_name)
+            self.detach_state(state_name)
 
-    def _zero_state(self, state_name: str) -> None:
+    def reset_state(self, state_name: str) -> None:
         r"""Set a state to None.
 
         Args:
@@ -126,12 +126,12 @@ class Layer(nn.Module):
         """
         setattr(self, state_name, None)
 
-    def zero_states(self) -> None:
+    def reset_states(self) -> None:
         r"""Set all initialized states to None."""
         for state_name in self._state_names:
-            self._zero_state(state_name)
+            self.reset_state(state_name)
 
-    def _ensure_state(self, state_name: str, reference_tensor: torch.Tensor) -> None:
+    def zero_state(self, state_name: str, reference_tensor: torch.Tensor) -> None:
         r"""Initialize a state with zeros if it is None.
 
         Args:
@@ -151,16 +151,16 @@ class Layer(nn.Module):
             )
             setattr(self, state_name, state)
 
-    def _ensure_states(self, reference_tensor: torch.Tensor) -> None:
+    def zero_states(self, reference_tensor: torch.Tensor) -> None:
         r"""Initialize all initialized states with zeros if they are None.
 
         Args:
             reference_tensor (torch.Tensor): the reference tensor, whose shape the states will copy. The shapes will be the same except ``dim``, which will be set to ``num_neurons`` instead.
         """
         for state_name in self._state_names:
-            self._ensure_state(state_name, reference_tensor)
+            self.zero_state(state_name, reference_tensor)
 
-    def _to_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
+    def to_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
         r"""Move a tensor's ``dim`` dimension to the working (last) dimension.
 
         Args:
@@ -168,7 +168,7 @@ class Layer(nn.Module):
         """
         return tensor.movedim(self.dim, -1)
 
-    def _from_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
+    def from_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
         r"""Move tensor back from the working (last) dimension to the ``dim`` dimension.
 
         Args:
@@ -176,7 +176,7 @@ class Layer(nn.Module):
         """
         return tensor.movedim(-1, self.dim)
 
-    def TTcompile(self) -> None:
+    def compile_parameters(self) -> None:
         r"""Compile the layer for inference by pre-computing parameters.
 
         Notes:
@@ -215,7 +215,7 @@ class Layer(nn.Module):
 
         self._compiled = True
 
-    def TTdecompile(self) -> None:
+    def decompile_parameters(self) -> None:
         r"""Decompile the layer to restore training capabilities.
 
         Notes:

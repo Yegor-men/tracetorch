@@ -56,18 +56,18 @@ class LI(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + x
 
-        self.mem = self._from_working_dim(mem)
+        self.mem = self.from_working_dim(mem)
 
         return self.mem
 
@@ -134,23 +134,23 @@ class DLI(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0)
 
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
 
         mem = self.pos_mem + self.neg_mem
 
@@ -220,25 +220,25 @@ class SLI(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("syn")
-        self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
+        self.define_state("syn")
+        self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        syn = self._to_working_dim(self.syn)
+        syn = self.to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + syn
 
-        self.syn = self._from_working_dim(syn)
-        self.mem = self._from_working_dim(mem)
+        self.syn = self.from_working_dim(syn)
+        self.mem = self.from_working_dim(mem)
 
         return self.mem
 
@@ -319,39 +319,39 @@ class DSLI(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_syn")
-        self._initialize_state("neg_syn")
-        self._register_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
-        self._register_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
+        self.define_state("pos_syn")
+        self.define_state("neg_syn")
+        self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
+        self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
+        self.zero_states(x)
 
-        x = self._to_working_dim(x)
+        x = self.to_working_dim(x)
 
-        pos_syn = self._to_working_dim(self.pos_syn)
-        neg_syn = self._to_working_dim(self.neg_syn)
+        pos_syn = self.to_working_dim(self.pos_syn)
+        neg_syn = self.to_working_dim(self.neg_syn)
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self._from_working_dim(pos_syn)
-        self.neg_syn = self._from_working_dim(neg_syn)
+        self.pos_syn = self.from_working_dim(pos_syn)
+        self.neg_syn = self.from_working_dim(neg_syn)
 
         syn = pos_syn + neg_syn
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0)
 
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
 
         mem = self.pos_mem + self.neg_mem
 
@@ -407,18 +407,18 @@ class LIEMA(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + x * (1 - self.beta)
 
-        self.mem = self._from_working_dim(mem)
+        self.mem = self.from_working_dim(mem)
 
         return self.mem
 
@@ -482,23 +482,23 @@ class DLIEMA(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0) * (1 - self.pos_beta)
         neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0) * (1 - self.neg_beta)
 
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
 
         mem = self.pos_mem + self.neg_mem
 
@@ -563,25 +563,25 @@ class SLIEMA(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("syn")
-        self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
+        self.define_state("syn")
+        self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        syn = self._to_working_dim(self.syn)
+        syn = self.to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + syn * (1 - self.beta)
 
-        self.syn = self._from_working_dim(syn)
-        self.mem = self._from_working_dim(mem)
+        self.syn = self.from_working_dim(syn)
+        self.mem = self.from_working_dim(mem)
 
         return self.mem
 
@@ -663,39 +663,39 @@ class DSLIEMA(SNNLayer):
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_syn")
-        self._initialize_state("neg_syn")
-        self._register_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
-        self._register_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
+        self.define_state("pos_syn")
+        self.define_state("neg_syn")
+        self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
+        self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
+        self.zero_states(x)
 
-        x = self._to_working_dim(x)
+        x = self.to_working_dim(x)
 
-        pos_syn = self._to_working_dim(self.pos_syn)
-        neg_syn = self._to_working_dim(self.neg_syn)
+        pos_syn = self.to_working_dim(self.pos_syn)
+        neg_syn = self.to_working_dim(self.neg_syn)
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self._from_working_dim(pos_syn)
-        self.neg_syn = self._from_working_dim(neg_syn)
+        self.pos_syn = self.from_working_dim(pos_syn)
+        self.neg_syn = self.from_working_dim(neg_syn)
 
         syn = pos_syn + neg_syn
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0) * (1 - self.pos_beta)
         neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0) * (1 - self.neg_beta)
 
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
 
         mem = self.pos_mem + self.neg_mem
 

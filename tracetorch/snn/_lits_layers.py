@@ -1,7 +1,7 @@
 from typing import TypedDict, Optional, Literal, Union, Dict, Any
 import torch
 from ._snnlayer import Layer as SNNLayer
-from .. import functional
+from . import spike_fn as spike_functions
 
 
 class LITS(SNNLayer):
@@ -45,7 +45,7 @@ class LITS(SNNLayer):
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         mem: membrane state.
@@ -98,27 +98,27 @@ class LITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + x
 
         pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
@@ -132,8 +132,8 @@ class LITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.mem = self._from_working_dim(mem)
+        spikes = self.from_working_dim(spikes)
+        self.mem = self.from_working_dim(mem)
 
         return spikes
 
@@ -179,7 +179,7 @@ class DLITS(SNNLayer):
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -229,31 +229,31 @@ class DLITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
 
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
 
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0)
@@ -273,9 +273,9 @@ class DLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        spikes = self.from_working_dim(spikes)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
 
         return spikes
 
@@ -320,7 +320,7 @@ class SLITS(SNNLayer):
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -378,34 +378,34 @@ class SLITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("syn")
-        self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
+        self.define_state("syn")
+        self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
 
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        syn = self._to_working_dim(self.syn)
+        syn = self.to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + syn
 
         pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
@@ -419,9 +419,9 @@ class SLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.syn = self._from_working_dim(syn)
-        self.mem = self._from_working_dim(mem)
+        spikes = self.from_working_dim(spikes)
+        self.syn = self.from_working_dim(syn)
+        self.mem = self.from_working_dim(mem)
 
         return spikes
 
@@ -472,7 +472,7 @@ class RLITS(SNNLayer):
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         mem: membrane state.
@@ -526,40 +526,40 @@ class RLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
-        self._initialize_state("rec")
-        self._initialize_state("prev_output")
-        self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
+        self.define_state("rec")
+        self.define_state("prev_output")
+        self.define_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
 
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
-        self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
+        self.define_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        rec = self._to_working_dim(self.rec)
-        prev_output = self._to_working_dim(self.prev_output)
+        rec = self.to_working_dim(self.rec)
+        prev_output = self.to_working_dim(self.prev_output)
         rec = rec * self.gamma + prev_output * (1 - self.gamma)
 
         mem_delta = rec * self.rec_weight + x
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
         pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
@@ -573,9 +573,9 @@ class RLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.rec = self._from_working_dim(rec)
-        self.mem = self._from_working_dim(mem)
+        spikes = self.from_working_dim(spikes)
+        self.rec = self.from_working_dim(rec)
+        self.mem = self.from_working_dim(mem)
         self.prev_output = spikes
 
         return spikes
@@ -629,7 +629,7 @@ class DSLITS(SNNLayer):
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -688,46 +688,46 @@ class DSLITS(SNNLayer):
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_syn")
-        self._initialize_state("neg_syn")
-        self._register_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
-        self._register_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
+        self.define_state("pos_syn")
+        self.define_state("neg_syn")
+        self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
+        self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
         self.spike_fn = spike_fn
 
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        pos_syn = self._to_working_dim(self.pos_syn)
-        neg_syn = self._to_working_dim(self.neg_syn)
+        pos_syn = self.to_working_dim(self.pos_syn)
+        neg_syn = self.to_working_dim(self.neg_syn)
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self._from_working_dim(pos_syn)
-        self.neg_syn = self._from_working_dim(neg_syn)
+        self.pos_syn = self.from_working_dim(pos_syn)
+        self.neg_syn = self.from_working_dim(neg_syn)
 
         syn = pos_syn + neg_syn
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0)
 
@@ -746,9 +746,9 @@ class DSLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        spikes = self.from_working_dim(spikes)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
 
         return spikes
 
@@ -814,7 +814,7 @@ class DRLITS(SNNLayer):
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -879,55 +879,55 @@ class DRLITS(SNNLayer):
             learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self._initialize_state("pos_rec")
-        self._initialize_state("neg_rec")
-        self._initialize_state("prev_output")
-        self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
-        self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
+        self.define_state("pos_rec")
+        self.define_state("neg_rec")
+        self.define_state("prev_output")
+        self.define_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
+        self.define_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
 
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
-        self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
-        self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
+        self.define_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
+        self.define_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        pos_rec = self._to_working_dim(self.pos_rec)
-        neg_rec = self._to_working_dim(self.neg_rec)
-        prev_output = self._to_working_dim(self.prev_output)
+        pos_rec = self.to_working_dim(self.pos_rec)
+        neg_rec = self.to_working_dim(self.neg_rec)
+        prev_output = self.to_working_dim(self.prev_output)
 
         pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
         neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
 
-        self.pos_rec = self._from_working_dim(pos_rec)
-        self.neg_rec = self._from_working_dim(neg_rec)
+        self.pos_rec = self.from_working_dim(pos_rec)
+        self.neg_rec = self.from_working_dim(neg_rec)
 
         rec = pos_rec + neg_rec
 
         pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(x >= 0, x, 0.0)
         neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(x <= 0, x, 0.0)
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + pos_mem_delta
         neg_mem = neg_mem * self.neg_beta + neg_mem_delta
 
@@ -946,9 +946,9 @@ class DRLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        spikes = self.from_working_dim(spikes)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
         self.prev_output = spikes
 
         return spikes
@@ -1002,7 +1002,7 @@ class SRLITS(SNNLayer):
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
         learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -1070,47 +1070,47 @@ class SRLITS(SNNLayer):
             learn_neg_scale: bool = True,
             learn_bias: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("syn")
-        self._register_decay("alpha", alpha, alpha_rank, learn_alpha)
+        self.define_state("syn")
+        self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self._initialize_state("mem")
-        self._register_decay("beta", beta, beta_rank, learn_beta)
+        self.define_state("mem")
+        self.define_decay("beta", beta, beta_rank, learn_beta)
 
-        self._initialize_state("rec")
-        self._initialize_state("prev_output")
-        self._register_decay("gamma", gamma, gamma_rank, learn_gamma)
+        self.define_state("rec")
+        self.define_state("prev_output")
+        self.define_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
 
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
-        self._register_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
+        self.define_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        syn = self._to_working_dim(self.syn)
+        syn = self.to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        rec = self._to_working_dim(self.rec)
-        prev_output = self._to_working_dim(self.prev_output)
+        rec = self.to_working_dim(self.rec)
+        prev_output = self.to_working_dim(self.prev_output)
         rec = rec * self.gamma + prev_output * (1 - self.gamma)
-        self.rec = self._from_working_dim(rec)
+        self.rec = self.from_working_dim(rec)
 
         mem_delta = rec * self.rec_weight + syn
 
-        mem = self._to_working_dim(self.mem)
+        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
         pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
@@ -1124,9 +1124,9 @@ class SRLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.syn = self._from_working_dim(syn)
-        self.mem = self._from_working_dim(mem)
+        spikes = self.from_working_dim(spikes)
+        self.syn = self.from_working_dim(syn)
+        self.mem = self.from_working_dim(mem)
         self.prev_output = spikes
 
         return spikes
@@ -1202,7 +1202,7 @@ class DSRLITS(SNNLayer):
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.functional.sigmoid4x): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -1276,69 +1276,69 @@ class DSRLITS(SNNLayer):
             learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=functional.sigmoid4x,
+            spike_fn=spike_functions.smooth,
     ):
         super().__init__(num_neurons, dim)
 
-        self._initialize_state("pos_syn")
-        self._initialize_state("neg_syn")
-        self._register_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
-        self._register_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
+        self.define_state("pos_syn")
+        self.define_state("neg_syn")
+        self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
+        self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self._initialize_state("pos_mem")
-        self._initialize_state("neg_mem")
-        self._register_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
-        self._register_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
+        self.define_state("pos_mem")
+        self.define_state("neg_mem")
+        self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
+        self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self._initialize_state("pos_rec")
-        self._initialize_state("neg_rec")
-        self._initialize_state("prev_output")
-        self._register_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
-        self._register_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
+        self.define_state("pos_rec")
+        self.define_state("neg_rec")
+        self.define_state("prev_output")
+        self.define_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
+        self.define_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
         self.spike_fn = spike_fn
-        self._register_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
-        self._register_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self._register_bias("bias", bias, bias_rank, learn_bias)
+        self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
+        self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
+        self.define_bias("bias", bias, bias_rank, learn_bias)
 
-        self._register_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
-        self._register_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
+        self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
+        self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
 
-        self._register_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
-        self._register_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
+        self.define_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
+        self.define_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
 
-        pos_syn = self._to_working_dim(self.pos_syn)
-        neg_syn = self._to_working_dim(self.neg_syn)
+        pos_syn = self.to_working_dim(self.pos_syn)
+        neg_syn = self.to_working_dim(self.neg_syn)
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self._from_working_dim(pos_syn)
-        self.neg_syn = self._from_working_dim(neg_syn)
+        self.pos_syn = self.from_working_dim(pos_syn)
+        self.neg_syn = self.from_working_dim(neg_syn)
 
         syn = pos_syn + neg_syn
 
-        pos_rec = self._to_working_dim(self.pos_rec)
-        neg_rec = self._to_working_dim(self.neg_rec)
-        prev_output = self._to_working_dim(self.prev_output)
+        pos_rec = self.to_working_dim(self.pos_rec)
+        neg_rec = self.to_working_dim(self.neg_rec)
+        prev_output = self.to_working_dim(self.prev_output)
 
         pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
         neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
 
-        self.pos_rec = self._from_working_dim(pos_rec)
-        self.neg_rec = self._from_working_dim(neg_rec)
+        self.pos_rec = self.from_working_dim(pos_rec)
+        self.neg_rec = self.from_working_dim(neg_rec)
 
         rec = pos_rec + neg_rec
 
         pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(syn >= 0, syn, 0.0)
         neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(syn <= 0, syn, 0.0)
 
-        pos_mem = self._to_working_dim(self.pos_mem)
-        neg_mem = self._to_working_dim(self.neg_mem)
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + pos_mem_delta
         neg_mem = neg_mem * self.neg_beta + neg_mem_delta
 
@@ -1357,9 +1357,9 @@ class DSRLITS(SNNLayer):
 
         spikes = pos_spikes + neg_spikes
 
-        spikes = self._from_working_dim(spikes)
-        self.pos_mem = self._from_working_dim(pos_mem)
-        self.neg_mem = self._from_working_dim(neg_mem)
+        spikes = self.from_working_dim(spikes)
+        self.pos_mem = self.from_working_dim(pos_mem)
+        self.neg_mem = self.from_working_dim(neg_mem)
         self.prev_output = spikes
 
         return spikes

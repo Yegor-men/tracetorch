@@ -38,7 +38,7 @@ class Net(tt.Model):
 
 
 model = Net()
-model.zero_states()
+model.reset_states()
 out = model(torch.rand(32, 1, 28, 28))
 ```
 

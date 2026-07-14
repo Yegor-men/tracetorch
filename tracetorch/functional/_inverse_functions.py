@@ -1,4 +1,6 @@
 import torch
+
+
 def sigmoid_inverse(x: torch.Tensor) -> torch.Tensor:
     r"""Return the logit transform of a tensor in ``(0, 1)``.
 

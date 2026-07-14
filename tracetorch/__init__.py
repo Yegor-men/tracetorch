@@ -1,5 +1,5 @@
-from .core import Layer as Layer
-from .core import Model as Model
+from .core import Layer
+from .core import Model
 
 from . import core, functional, rnn, snn
 

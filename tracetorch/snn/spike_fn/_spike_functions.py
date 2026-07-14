@@ -1,7 +1,7 @@
 import torch
 
 
-def sigmoid4x(x: torch.Tensor) -> torch.Tensor:
+def smooth(x: torch.Tensor) -> torch.Tensor:
     r"""Apply the default traceTorch smooth spike function.
 
     ``sigmoid4x`` is a steeper sigmoid used to turn membrane distance from
@@ -19,7 +19,7 @@ def sigmoid4x(x: torch.Tensor) -> torch.Tensor:
 
 
 def _sigmoid4x_backward(x: torch.Tensor) -> torch.Tensor:
-    y = sigmoid4x(x)
+    y = smooth(x)
     return 4.0 * y * (1.0 - y)
 
 
@@ -37,7 +37,7 @@ class RoundSigmoid4x(torch.autograd.Function):
         return grad_output * _sigmoid4x_backward(x)
 
 
-def round_sigmoid4x(x: torch.Tensor) -> torch.Tensor:
+def deterministic(x: torch.Tensor) -> torch.Tensor:
     r"""Apply a deterministic hard spike with a ``sigmoid4x`` surrogate.
 
     The forward pass returns ``1`` when the membrane distance from threshold is
@@ -53,7 +53,7 @@ class StochasticSigmoid4x(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
         ctx.save_for_backward(x)
-        return torch.bernoulli(sigmoid4x(x))
+        return torch.bernoulli(smooth(x))
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -61,7 +61,7 @@ class StochasticSigmoid4x(torch.autograd.Function):
         return grad_output * _sigmoid4x_backward(x)
 
 
-def stochastic_sigmoid4x(x: torch.Tensor) -> torch.Tensor:
+def stochastic(x: torch.Tensor) -> torch.Tensor:
     r"""Apply a stochastic hard spike with a ``sigmoid4x`` surrogate.
 
     The forward pass samples from ``Bernoulli(sigmoid4x(x))``. The backward

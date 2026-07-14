@@ -17,9 +17,9 @@ examples_root = Path(__file__).resolve().parents[1]
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
 
-num_epochs = 5
-batch_size = 64
-learning_rate = 1e-3
+num_epochs = 100
+batch_size = 100
+learning_rate = 1e-4
 
 data_root = examples_root / "data"
 sensor_size = tonic.datasets.SHD.sensor_size
@@ -27,6 +27,7 @@ num_inputs = 1
 for size in sensor_size:
     num_inputs *= size
 num_classes = 20
+hidden_dim = 256
 
 
 def get_dataloaders():
@@ -65,28 +66,45 @@ class SHDSNN(tt.Model):
         super().__init__()
         self.net = nn.Sequential(
             nn.Flatten(start_dim=1),
-            nn.Linear(num_inputs, 256),
-            tt.snn.RLIB(256, beta=torch.rand(256), threshold=torch.rand(256), gamma=torch.rand(256)),
-            nn.Linear(256, 256),
-            tt.snn.RLIB(256, beta=torch.rand(256), threshold=torch.rand(256), gamma=torch.rand(256)),
-            nn.Linear(256, 256),
-            tt.snn.LI(256, beta=(torch.rand(256) * 0.5 + 0.5)),
-            nn.Linear(256, num_classes),
+            nn.Linear(num_inputs, hidden_dim),
+            tt.snn.LIB(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.snn.LIB(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.snn.LI(hidden_dim),
+            nn.Linear(hidden_dim, num_classes),
         )
 
     def forward(self, x):
         return self.net(x)
 
 
-class SHDRNN(tt.Model):
-    def __init__(self, cell_cls):
+class SHDGRU(tt.Model):
+    def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
             nn.Flatten(start_dim=1),
-            nn.Linear(num_inputs, 256),
-            cell_cls(256, 256),
-            cell_cls(256, 256),
-            nn.Linear(256, num_classes),
+            nn.Linear(num_inputs, hidden_dim),
+            tt.rnn.GRU(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.rnn.GRU(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, num_classes),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SHDLSTM(tt.Model):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Flatten(start_dim=1),
+            nn.Linear(num_inputs, hidden_dim),
+            tt.rnn.LSTM(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.rnn.LSTM(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, num_classes),
         )
 
     def forward(self, x):
@@ -95,14 +113,14 @@ class SHDRNN(tt.Model):
 
 def build_models():
     return {
-        "SNN Continuous": SHDSNN().to(device),
-        "GRU": SHDRNN(tt.rnn.GRU).to(device),
-        "LSTM": SHDRNN(tt.rnn.LSTM).to(device),
+        "SNN": SHDSNN().to(device),
+        "GRU": SHDGRU().to(device),
+        "LSTM": SHDLSTM().to(device),
     }
 
 
 def forward_sequence(model, sequence):
-    model.zero_states()
+    model.reset_states()
     output = None
     for t in range(sequence.size(0)):
         output = model(sequence[t])

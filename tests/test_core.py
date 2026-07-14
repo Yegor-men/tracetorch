@@ -26,7 +26,7 @@ class SimpleSNN(tt.Model):
 
 def get_model_output(model, input_data, num_timesteps=10):
     model.eval()
-    model.zero_states()
+    model.reset_states()
     outputs = []
     with torch.no_grad():
         for step in range(num_timesteps):
@@ -50,12 +50,12 @@ def test_compile_decompile():
     baseline_outputs = get_model_output(model, random_feature)
 
     # 2. Compile
-    model.TTcompile()
+    model.compile_parameters()
     compiled_outputs = get_model_output(model, random_feature)
     compare_outputs(baseline_outputs, compiled_outputs)
 
     # 3. Decompile
-    model.TTdecompile()
+    model.decompile_parameters()
     decompiled_outputs = get_model_output(model, random_feature)
     compare_outputs(baseline_outputs, decompiled_outputs)
 
@@ -66,7 +66,7 @@ def test_save_load_states():
     random_feature = torch.rand(b, c, h, w).to(device)
 
     model.eval()
-    model.zero_states()
+    model.reset_states()
     for _ in range(5):
         _ = model(random_feature)
 
@@ -96,7 +96,7 @@ def test_synaptic_layers_use_previous_synaptic_state():
     ]
 
     for layer in layers:
-        layer.zero_states()
+        layer.reset_states()
         layer(x)
         assert torch.allclose(layer.syn, expected_first_syn)
 

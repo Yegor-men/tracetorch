@@ -60,16 +60,16 @@ class LSTM(RNNLayer):
     ):
         super().__init__(out_features, dim)
 
-        self._initialize_state("H")
-        self._initialize_state("C")
+        self.define_state("H")
+        self.define_state("C")
 
         self.gate_layers = nn.Linear(in_features + out_features, 4 * out_features)
 
     def forward(self, x):
-        self._ensure_states(x)
-        x = self._to_working_dim(x)
-        H = self._to_working_dim(self.H)
-        C = self._to_working_dim(self.C)
+        self.zero_states(x)
+        x = self.to_working_dim(x)
+        H = self.to_working_dim(self.H)
+        C = self.to_working_dim(self.C)
 
         H_x = torch.cat([H, x], dim=-1)
 
@@ -94,7 +94,7 @@ class LSTM(RNNLayer):
         # Filter the long-term memory through the output gate
         H_new = o * torch.tanh(C_new)
 
-        self.C = self._from_working_dim(C_new)
-        self.H = self._from_working_dim(H_new)
+        self.C = self.from_working_dim(C_new)
+        self.H = self.from_working_dim(H_new)
 
         return self.H

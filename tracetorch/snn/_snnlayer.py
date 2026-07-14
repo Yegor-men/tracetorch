@@ -28,7 +28,7 @@ class Layer(BaseLayer):
     def __init__(self, num_neurons: int, dim: int = -1):
         super().__init__(num_neurons, dim)
 
-    def _register_decay(
+    def define_decay(
             self,
             name: str,
             value: Union[float, torch.Tensor],
@@ -36,7 +36,7 @@ class Layer(BaseLayer):
             learnable: bool,
     ):
         r"""Register a decay parameter constrained to ``(0, 1)``."""
-        self._register_parameter(
+        self.define_parameter(
             name,
             value,
             rank,
@@ -46,7 +46,7 @@ class Layer(BaseLayer):
             activation_fn=nn.functional.sigmoid,
         )
 
-    def _register_threshold(
+    def define_threshold(
             self,
             name: str,
             value: Union[float, torch.Tensor],
@@ -54,7 +54,7 @@ class Layer(BaseLayer):
             learnable: bool,
     ):
         r"""Register a positive threshold parameter."""
-        self._register_parameter(
+        self.define_parameter(
             name,
             value,
             rank,
@@ -62,22 +62,4 @@ class Layer(BaseLayer):
             init_fn=functional.softplus_inverse,
             inverse_fn=functional.softplus_inverse,
             activation_fn=nn.functional.softplus,
-        )
-
-    def _register_bias(
-            self,
-            name: str,
-            value: Union[float, torch.Tensor],
-            rank: Literal[0, 1],
-            learnable: bool,
-    ):
-        r"""Register a bias parameter with a smooth unconstrained transform."""
-        self._register_parameter(
-            name,
-            value,
-            rank,
-            learnable,
-            init_fn=torch.sinh,
-            inverse_fn=torch.sinh,
-            activation_fn=torch.arcsinh,
         )

@@ -22,6 +22,8 @@ batch_size = 100
 learning_rate = 1e-3
 
 data_root = examples_root / "data"
+input_dim = 28 * 28
+hidden_dim = 256
 num_classes = 10
 
 
@@ -73,37 +75,50 @@ def weighted_final_loss(logits, labels, alpha):
     return (loss * weights).mean()
 
 
-class ConvSNN(tt.Model):
-    def __init__(self, spike_fn=tt.functional.sigmoid4x):
+class MLPSNN(tt.Model):
+    def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
-            tt.snn.LIB(32, dim=-3, spike_fn=spike_fn),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            tt.snn.LIB(64, dim=-3, spike_fn=spike_fn),
-            nn.MaxPool2d(2),
             nn.Flatten(),
-            tt.snn.LI(64 * 7 * 7, beta=torch.rand(64 * 7 * 7)),
-            nn.Linear(64 * 7 * 7, num_classes),
+            nn.Linear(input_dim, hidden_dim),
+            tt.snn.LIB(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.snn.LIB(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.snn.LI(hidden_dim),
+            nn.Linear(hidden_dim, num_classes),
         )
 
     def forward(self, x):
         return self.net(x)
 
 
-class ConvRNN(tt.Model):
-    def __init__(self, cell_cls):
+class MLPGRU(tt.Model):
+    def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
-            cell_cls(32, 32, dim=-3),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            cell_cls(64, 64, dim=-3),
-            nn.MaxPool2d(2),
             nn.Flatten(),
-            nn.Linear(64 * 7 * 7, num_classes),
+            nn.Linear(input_dim, hidden_dim),
+            tt.rnn.GRU(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.rnn.GRU(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, num_classes),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class MLPLSTM(tt.Model):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_dim, hidden_dim),
+            tt.rnn.LSTM(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            tt.rnn.LSTM(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, num_classes),
         )
 
     def forward(self, x):
@@ -112,14 +127,14 @@ class ConvRNN(tt.Model):
 
 def build_models():
     return {
-        "SNN Continuous": ConvSNN().to(device),
-        "GRU": ConvRNN(tt.rnn.GRU).to(device),
-        "LSTM": ConvRNN(tt.rnn.LSTM).to(device),
+        "SNN": MLPSNN().to(device),
+        "GRU": MLPGRU().to(device),
+        "LSTM": MLPLSTM().to(device),
     }
 
 
 def forward_sequence(model, sequence):
-    model.zero_states()
+    model.reset_states()
     output = None
     for t in range(sequence.size(0)):
         output = model(sequence[t])
