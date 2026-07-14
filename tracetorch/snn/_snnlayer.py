@@ -13,7 +13,6 @@ class Layer(BaseLayer):
 
     * decays are constrained to ``(0, 1)`` through a sigmoid transform;
     * thresholds are constrained to positive values through a softplus transform;
-    * biases use a smooth unconstrained transform.
 
     Args:
         num_neurons (int): number of neurons in the target dimension.

@@ -19,7 +19,6 @@ class LITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): multiplier applied to
             positive output events.
@@ -36,7 +35,6 @@ class LITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         learn_beta (bool, default=True): whether ``beta`` is trainable.
         learn_pos_threshold (bool, default=True): whether ``pos_threshold`` is
             trainable.
@@ -44,8 +42,7 @@ class LITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         mem: membrane state.
@@ -62,9 +59,6 @@ class LITS(SNNLayer):
         ::
 
             mem = beta * mem + x
-            pos = spike_fn(mem - pos_threshold + bias)
-            neg = -spike_fn(-neg_threshold - mem - bias)
-            mem = mem - pos * pos_threshold - neg * neg_threshold
             return pos * pos_scale + neg * neg_scale
 
     Examples::
@@ -82,7 +76,6 @@ class LITS(SNNLayer):
             beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -91,24 +84,22 @@ class LITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
         self.define_state("mem")
+        self.define_state("prev_output")
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -119,13 +110,18 @@ class LITS(SNNLayer):
         x = self.to_working_dim(x)
 
         mem = self.to_working_dim(self.mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        mem = mem - pos_prev_output * self.pos_threshold
+        mem = mem - neg_prev_output * self.neg_threshold
+
         mem = mem * self.beta + x
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        mem = mem - pos_spikes * self.pos_threshold
-        mem = mem - neg_spikes * self.neg_threshold
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -133,6 +129,7 @@ class LITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.mem = self.from_working_dim(mem)
 
         return spikes
@@ -152,7 +149,6 @@ class DLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -169,7 +165,6 @@ class DLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         learn_pos_beta (bool, default=True): whether ``pos_beta`` is trainable.
         learn_neg_beta (bool, default=True): whether ``neg_beta`` is trainable.
         learn_pos_threshold (bool, default=True): whether ``pos_threshold`` is
@@ -178,8 +173,7 @@ class DLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -211,7 +205,6 @@ class DLITS(SNNLayer):
             neg_beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -221,20 +214,19 @@ class DLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
         self.define_state("pos_mem")
         self.define_state("neg_mem")
+        self.define_state("prev_output")
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -242,7 +234,6 @@ class DLITS(SNNLayer):
 
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -254,19 +245,23 @@ class DLITS(SNNLayer):
 
         pos_mem = self.to_working_dim(self.pos_mem)
         neg_mem = self.to_working_dim(self.neg_mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        pos_mem = pos_mem - pos_prev_output * self.pos_threshold * 0.5
+        pos_mem = pos_mem - neg_prev_output * self.neg_threshold * 0.5
+        neg_mem = neg_mem - pos_prev_output * self.pos_threshold * 0.5
+        neg_mem = neg_mem - neg_prev_output * self.neg_threshold * 0.5
 
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0)
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
-        neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
-        pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
-        neg_mem = neg_mem - neg_spikes * self.neg_threshold * 0.5
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -274,6 +269,7 @@ class DLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.pos_mem = self.from_working_dim(pos_mem)
         self.neg_mem = self.from_working_dim(neg_mem)
 
@@ -293,7 +289,6 @@ class SLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -310,7 +305,6 @@ class SLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         learn_alpha (bool, default=True): whether ``alpha`` is trainable.
         learn_beta (bool, default=True): whether ``beta`` is trainable.
         learn_pos_threshold (bool, default=True): whether ``pos_threshold`` is
@@ -319,8 +313,7 @@ class SLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -339,9 +332,6 @@ class SLITS(SNNLayer):
 
             syn = alpha * syn + (1 - alpha) * x
             mem = beta * mem + syn
-            pos = spike_fn(mem - pos_threshold + bias)
-            neg = -spike_fn(-neg_threshold - mem - bias)
-            mem = mem - pos * pos_threshold - neg * neg_threshold
             return pos * pos_scale + neg * neg_scale
 
     Examples::
@@ -360,7 +350,6 @@ class SLITS(SNNLayer):
             beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -370,15 +359,13 @@ class SLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
             learn_pos_threshold: bool = True,
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
@@ -386,13 +373,13 @@ class SLITS(SNNLayer):
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
         self.define_state("mem")
+        self.define_state("prev_output")
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
 
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -402,17 +389,22 @@ class SLITS(SNNLayer):
         self.zero_states(x)
         x = self.to_working_dim(x)
 
+        mem = self.to_working_dim(self.mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        mem = mem - pos_prev_output * self.pos_threshold
+        mem = mem - neg_prev_output * self.neg_threshold
+
         syn = self.to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + syn
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        mem = mem - pos_spikes * self.pos_threshold
-        mem = mem - neg_spikes * self.neg_threshold
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -420,6 +412,7 @@ class SLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.syn = self.from_working_dim(syn)
         self.mem = self.from_working_dim(mem)
 
@@ -441,7 +434,6 @@ class RLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -459,7 +451,6 @@ class RLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
             recurrent scale.
         learn_beta (bool, default=True): whether ``beta`` is trainable.
@@ -470,9 +461,8 @@ class RLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         mem: membrane state.
@@ -505,7 +495,6 @@ class RLITS(SNNLayer):
             gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -516,7 +505,6 @@ class RLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_gamma: bool = True,
@@ -524,9 +512,8 @@ class RLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
@@ -541,7 +528,6 @@ class RLITS(SNNLayer):
 
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -553,20 +539,24 @@ class RLITS(SNNLayer):
         self.zero_states(x)
         x = self.to_working_dim(x)
 
-        rec = self.to_working_dim(self.rec)
+        mem = self.to_working_dim(self.mem)
         prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        mem = mem - pos_prev_output * self.pos_threshold
+        mem = mem - neg_prev_output * self.neg_threshold
+
+        rec = self.to_working_dim(self.rec)
         rec = rec * self.gamma + prev_output * (1 - self.gamma)
 
         mem_delta = rec * self.rec_weight + x
 
-        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        mem = mem - pos_spikes * self.pos_threshold
-        mem = mem - neg_spikes * self.neg_threshold
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -574,9 +564,9 @@ class RLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.rec = self.from_working_dim(rec)
         self.mem = self.from_working_dim(mem)
-        self.prev_output = spikes
 
         return spikes
 
@@ -596,7 +586,6 @@ class DSLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -617,7 +606,6 @@ class DSLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         learn_pos_alpha (bool, default=True): whether ``pos_alpha`` is trainable.
         learn_neg_alpha (bool, default=True): whether ``neg_alpha`` is trainable.
         learn_pos_beta (bool, default=True): whether ``pos_beta`` is trainable.
@@ -628,8 +616,7 @@ class DSLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -666,7 +653,6 @@ class DSLITS(SNNLayer):
             neg_beta: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             dim: int = -1,
@@ -678,7 +664,6 @@ class DSLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             learn_pos_alpha: bool = True,
             learn_neg_alpha: bool = True,
             learn_pos_beta: bool = True,
@@ -687,8 +672,7 @@ class DSLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
@@ -699,6 +683,7 @@ class DSLITS(SNNLayer):
 
         self.define_state("pos_mem")
         self.define_state("neg_mem")
+        self.define_state("prev_output")
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -706,7 +691,6 @@ class DSLITS(SNNLayer):
 
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -715,6 +699,16 @@ class DSLITS(SNNLayer):
         """Computes the forward pass."""
         self.zero_states(x)
         x = self.to_working_dim(x)
+
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        pos_mem = pos_mem - pos_prev_output * self.pos_threshold * 0.5
+        pos_mem = pos_mem - neg_prev_output * self.neg_threshold * 0.5
+        neg_mem = neg_mem - pos_prev_output * self.pos_threshold * 0.5
+        neg_mem = neg_mem - neg_prev_output * self.neg_threshold * 0.5
 
         pos_syn = self.to_working_dim(self.pos_syn)
         neg_syn = self.to_working_dim(self.neg_syn)
@@ -726,20 +720,15 @@ class DSLITS(SNNLayer):
 
         syn = pos_syn + neg_syn
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0)
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
-        neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
-        pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
-        neg_mem = neg_mem - neg_spikes * self.neg_threshold * 0.5
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -747,6 +736,7 @@ class DSLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.pos_mem = self.from_working_dim(pos_mem)
         self.neg_mem = self.from_working_dim(neg_mem)
 
@@ -769,7 +759,6 @@ class DRLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -794,7 +783,6 @@ class DRLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         pos_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
             positive recurrent scale.
         neg_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
@@ -809,12 +797,11 @@ class DRLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_pos_rec_weight (bool, default=True): whether ``pos_rec_weight`` is
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         pos_mem: positive membrane state.
@@ -851,7 +838,6 @@ class DRLITS(SNNLayer):
             neg_gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -865,7 +851,6 @@ class DRLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             pos_rec_weight_rank: Literal[0, 1] = 1,
             neg_rec_weight_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
@@ -876,10 +861,9 @@ class DRLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
@@ -898,7 +882,6 @@ class DRLITS(SNNLayer):
 
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -911,9 +894,18 @@ class DRLITS(SNNLayer):
         self.zero_states(x)
         x = self.to_working_dim(x)
 
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        pos_mem = pos_mem - pos_prev_output * self.pos_threshold * 0.5
+        pos_mem = pos_mem - neg_prev_output * self.neg_threshold * 0.5
+        neg_mem = neg_mem - pos_prev_output * self.pos_threshold * 0.5
+        neg_mem = neg_mem - neg_prev_output * self.neg_threshold * 0.5
+
         pos_rec = self.to_working_dim(self.pos_rec)
         neg_rec = self.to_working_dim(self.neg_rec)
-        prev_output = self.to_working_dim(self.prev_output)
 
         pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
         neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
@@ -926,20 +918,15 @@ class DRLITS(SNNLayer):
         pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(x >= 0, x, 0.0)
         neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(x <= 0, x, 0.0)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + pos_mem_delta
         neg_mem = neg_mem * self.neg_beta + neg_mem_delta
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
-        neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
-        pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
-        neg_mem = neg_mem - neg_spikes * self.neg_threshold * 0.5
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -947,9 +934,9 @@ class DRLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.pos_mem = self.from_working_dim(pos_mem)
         self.neg_mem = self.from_working_dim(neg_mem)
-        self.prev_output = spikes
 
         return spikes
 
@@ -968,7 +955,6 @@ class SRLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -988,7 +974,6 @@ class SRLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
             recurrent scale.
         learn_alpha (bool, default=True): whether ``alpha`` is trainable.
@@ -1000,9 +985,8 @@ class SRLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_rec_weight (bool, default=True): whether ``rec_weight`` is trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         syn: synaptic state.
@@ -1024,9 +1008,6 @@ class SRLITS(SNNLayer):
             syn = alpha * syn + (1 - alpha) * x
             rec = gamma * rec + (1 - gamma) * prev_output
             mem = beta * mem + syn + rec_weight * rec
-            pos = spike_fn(mem - pos_threshold + bias)
-            neg = -spike_fn(-neg_threshold - mem - bias)
-            mem = mem - pos * pos_threshold - neg * neg_threshold
             prev_output = pos * pos_scale + neg * neg_scale
             return prev_output
 
@@ -1047,7 +1028,6 @@ class SRLITS(SNNLayer):
             gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -1059,7 +1039,6 @@ class SRLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             rec_weight_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
@@ -1068,9 +1047,8 @@ class SRLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
             learn_rec_weight: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
@@ -1088,7 +1066,6 @@ class SRLITS(SNNLayer):
 
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -1100,24 +1077,28 @@ class SRLITS(SNNLayer):
         self.zero_states(x)
         x = self.to_working_dim(x)
 
+        mem = self.to_working_dim(self.mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        mem = mem - pos_prev_output * self.pos_threshold
+        mem = mem - neg_prev_output * self.neg_threshold
+
         syn = self.to_working_dim(self.syn)
         syn = syn * self.alpha + x * (1 - self.alpha)
 
         rec = self.to_working_dim(self.rec)
-        prev_output = self.to_working_dim(self.prev_output)
         rec = rec * self.gamma + prev_output * (1 - self.gamma)
         self.rec = self.from_working_dim(rec)
 
         mem_delta = rec * self.rec_weight + syn
 
-        mem = self.to_working_dim(self.mem)
         mem = mem * self.beta + mem_delta
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        mem = mem - pos_spikes * self.pos_threshold
-        mem = mem - neg_spikes * self.neg_threshold
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -1125,9 +1106,9 @@ class SRLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.syn = self.from_working_dim(syn)
         self.mem = self.from_working_dim(mem)
-        self.prev_output = spikes
 
         return spikes
 
@@ -1151,7 +1132,6 @@ class DSRLITS(SNNLayer):
         pos_threshold (float or torch.Tensor, default=1.0): positive threshold.
         neg_threshold (float or torch.Tensor, default=1.0): negative threshold
             magnitude.
-        bias (float or torch.Tensor, default=0.0): bias that shifts both firing
             boundaries.
         pos_scale (float or torch.Tensor, default=1.0): positive output scale.
         neg_scale (float or torch.Tensor, default=1.0): negative output scale.
@@ -1180,7 +1160,6 @@ class DSRLITS(SNNLayer):
             scale.
         neg_scale_rank (Literal[0, 1], default=1): scalar or per-neuron negative
             scale.
-        bias_rank (Literal[0, 1], default=1): scalar or per-neuron bias.
         pos_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
             positive recurrent scale.
         neg_rec_weight_rank (Literal[0, 1], default=1): scalar or per-neuron
@@ -1197,12 +1176,11 @@ class DSRLITS(SNNLayer):
             trainable.
         learn_pos_scale (bool, default=True): whether ``pos_scale`` is trainable.
         learn_neg_scale (bool, default=True): whether ``neg_scale`` is trainable.
-        learn_bias (bool, default=True): whether ``bias`` is trainable.
         learn_pos_rec_weight (bool, default=True): whether ``pos_rec_weight`` is
             trainable.
         learn_neg_rec_weight (bool, default=True): whether ``neg_rec_weight`` is
             trainable.
-        spike_fn (Callable, default=tt.snn.spike_fn.smooth): spike function.
+        spike_fn (Callable, default=tt.snn.spike_fn.deterministic): spike function.
 
     Attributes:
         pos_syn: positive synaptic state.
@@ -1244,7 +1222,6 @@ class DSRLITS(SNNLayer):
             neg_gamma: Union[float, torch.Tensor] = 0.9,
             pos_threshold: Union[float, torch.Tensor] = 1.0,
             neg_threshold: Union[float, torch.Tensor] = 1.0,
-            bias: Union[float, torch.Tensor] = 0.0,
             pos_scale: Union[float, torch.Tensor] = 1.0,
             neg_scale: Union[float, torch.Tensor] = 1.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
@@ -1260,7 +1237,6 @@ class DSRLITS(SNNLayer):
             neg_threshold_rank: Literal[0, 1] = 1,
             pos_scale_rank: Literal[0, 1] = 1,
             neg_scale_rank: Literal[0, 1] = 1,
-            bias_rank: Literal[0, 1] = 1,
             pos_rec_weight_rank: Literal[0, 1] = 1,
             neg_rec_weight_rank: Literal[0, 1] = 1,
             learn_pos_alpha: bool = True,
@@ -1273,10 +1249,9 @@ class DSRLITS(SNNLayer):
             learn_neg_threshold: bool = True,
             learn_pos_scale: bool = True,
             learn_neg_scale: bool = True,
-            learn_bias: bool = True,
             learn_pos_rec_weight: bool = True,
             learn_neg_rec_weight: bool = True,
-            spike_fn=spike_functions.smooth,
+            spike_fn=spike_functions.deterministic,
     ):
         super().__init__(num_neurons, dim)
 
@@ -1299,7 +1274,6 @@ class DSRLITS(SNNLayer):
         self.spike_fn = spike_fn
         self.define_threshold("pos_threshold", pos_threshold, pos_threshold_rank, learn_pos_threshold)
         self.define_threshold("neg_threshold", neg_threshold, neg_threshold_rank, learn_neg_threshold)
-        self.define_bias("bias", bias, bias_rank, learn_bias)
 
         self.define_parameter("pos_scale", pos_scale, pos_scale_rank, learn_pos_scale)
         self.define_parameter("neg_scale", neg_scale, neg_scale_rank, learn_neg_scale)
@@ -1311,6 +1285,16 @@ class DSRLITS(SNNLayer):
         """Computes the forward pass."""
         self.zero_states(x)
         x = self.to_working_dim(x)
+
+        pos_mem = self.to_working_dim(self.pos_mem)
+        neg_mem = self.to_working_dim(self.neg_mem)
+        prev_output = self.to_working_dim(self.prev_output)
+        pos_prev_output = torch.where(prev_output >= 0, prev_output, 0.0)
+        neg_prev_output = torch.where(prev_output <= 0, prev_output, 0.0)
+        pos_mem = pos_mem - pos_prev_output * self.pos_threshold * 0.5
+        pos_mem = pos_mem - neg_prev_output * self.neg_threshold * 0.5
+        neg_mem = neg_mem - pos_prev_output * self.pos_threshold * 0.5
+        neg_mem = neg_mem - neg_prev_output * self.neg_threshold * 0.5
 
         pos_syn = self.to_working_dim(self.pos_syn)
         neg_syn = self.to_working_dim(self.neg_syn)
@@ -1324,7 +1308,6 @@ class DSRLITS(SNNLayer):
 
         pos_rec = self.to_working_dim(self.pos_rec)
         neg_rec = self.to_working_dim(self.neg_rec)
-        prev_output = self.to_working_dim(self.prev_output)
 
         pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
         neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
@@ -1337,20 +1320,15 @@ class DSRLITS(SNNLayer):
         pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(syn >= 0, syn, 0.0)
         neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(syn <= 0, syn, 0.0)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
         pos_mem = pos_mem * self.pos_beta + pos_mem_delta
         neg_mem = neg_mem * self.neg_beta + neg_mem_delta
 
         mem = pos_mem + neg_mem
 
-        pos_spikes = self.spike_fn(mem - self.pos_threshold + self.bias)
-        neg_spikes = -self.spike_fn(-self.neg_threshold - mem - self.bias)
+        pos_spikes = self.spike_fn(mem - self.pos_threshold)
+        neg_spikes = -self.spike_fn(-self.neg_threshold - mem)
 
-        pos_mem = pos_mem - pos_spikes * self.pos_threshold * 0.5
-        neg_mem = neg_mem - pos_spikes * self.pos_threshold * 0.5
-        pos_mem = pos_mem - neg_spikes * self.neg_threshold * 0.5
-        neg_mem = neg_mem - neg_spikes * self.neg_threshold * 0.5
+        reset_output = pos_spikes + neg_spikes
 
         pos_spikes = pos_spikes * self.pos_scale
         neg_spikes = neg_spikes * self.neg_scale
@@ -1358,8 +1336,8 @@ class DSRLITS(SNNLayer):
         spikes = pos_spikes + neg_spikes
 
         spikes = self.from_working_dim(spikes)
+        self.prev_output = self.from_working_dim(reset_output)
         self.pos_mem = self.from_working_dim(pos_mem)
         self.neg_mem = self.from_working_dim(neg_mem)
-        self.prev_output = spikes
 
         return spikes

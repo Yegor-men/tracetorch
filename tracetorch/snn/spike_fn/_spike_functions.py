@@ -2,12 +2,9 @@ import torch
 
 
 def smooth(x: torch.Tensor) -> torch.Tensor:
-    r"""Apply the default traceTorch smooth spike function.
+    r"""Apply the smooth traceTorch spike function.
 
-    ``sigmoid4x`` is a steeper sigmoid used to turn membrane distance from
-    threshold into a differentiable firing intensity. SNN firing layers pass
-    values such as ``mem - threshold + bias`` through this function to decide
-    how much charge to emit and reset.
+    ``sigmoid4x`` is a steeper sigmoid used to turn membrane distance from threshold into a differentiable firing intensity.
 
     Args:
         x (torch.Tensor): membrane distance from threshold.
