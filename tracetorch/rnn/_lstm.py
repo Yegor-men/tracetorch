@@ -11,8 +11,7 @@ class LSTM(RNNLayer):
 
     Args:
         in_features (int): number of input features.
-        out_features (int): number of output features (automatically becomes the hidden and cell state size). This is the value used as ``num_neurons`` for superclass initialization.
-        dim (int, default=-1): the dimension along which the layer operates.
+        out_features (int): number of output features (automatically becomes the hidden and cell state size).
 
     Attributes:
         H: the hidden state. Stores the previous timestep's output.
@@ -20,8 +19,8 @@ class LSTM(RNNLayer):
         gate_layers: linear layer computing all four gates simultaneously.
 
     Notes:
-        - **Input**: tensor of shape ``[*,in_features,*]`` where ``in_features`` is at index ``dim``.
-        - **Output**: tensor of shape ``[*,out_features,*]`` where ``out_features`` is at index ``dim``.
+        - **Input**: tensor of shape ``[..., in_features]``.
+        - **Output**: tensor of shape ``[..., out_features]``.
 
         Computes input, forget, output gates and cell candidate from concatenated hidden state and input.
         The forget gate controls what to discard from cell state, input gate controls what new information
@@ -44,10 +43,10 @@ class LSTM(RNNLayer):
         >>> print(output.shape)
         torch.Size([16, 32])
 
-        # Process 64->128 features along the color dimension of an image
-        >>> layer = tt.rnn.LSTM(64, 128, -3)
-        >>> input = torch.rand(32, 64, 28, 28)  # [B, C, H, W] shape
-        >>> output = layer(input)
+        # Move image channels to the last dimension explicitly
+        >>> layer = tt.rnn.LSTM(64, 128)
+        >>> input = torch.rand(32, 64, 28, 28)
+        >>> output = layer(input.movedim(-3, -1)).movedim(-1, -3)
         >>> print(output.shape)
         torch.Size([32, 128, 28, 28])
     """
@@ -56,20 +55,18 @@ class LSTM(RNNLayer):
             self,
             in_features: int,
             out_features: int,
-            dim: int = -1,
     ):
-        super().__init__(out_features, dim)
+        super().__init__()
 
-        self.define_state("H")
-        self.define_state("C")
+        self.define_state("H", (out_features,))
+        self.define_state("C", (out_features,))
 
         self.gate_layers = nn.Linear(in_features + out_features, 4 * out_features)
 
     def forward(self, x):
         self.zero_states(x)
-        x = self.to_working_dim(x)
-        H = self.to_working_dim(self.H)
-        C = self.to_working_dim(self.C)
+        H = self.H
+        C = self.C
 
         H_x = torch.cat([H, x], dim=-1)
 
@@ -94,7 +91,7 @@ class LSTM(RNNLayer):
         # Filter the long-term memory through the output gate
         H_new = o * torch.tanh(C_new)
 
-        self.C = self.from_working_dim(C_new)
-        self.H = self.from_working_dim(H_new)
+        self.C = C_new
+        self.H = H_new
 
         return self.H

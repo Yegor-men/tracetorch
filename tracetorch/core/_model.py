@@ -1,277 +1,153 @@
-from typing import TypedDict, Optional, Literal, Union, Dict, Any, Set
+from typing import Dict
+
 import torch
 from torch import nn
-from .. import functional
+
 from ._layer import Layer
 
 
 class Model(nn.Module):
-    r"""The superclass used for all traceTorch models.
-    Handles zeroing and detaching, compiling and decompiling, and saving and loading of states across the entire model tree: in PyTorch and python modules.
+    """Manage hidden states and parameter caches across a model hierarchy.
+
+    Weight checkpoints use native PyTorch state_dict(). Hidden-state
+    checkpoints use save_states()/load_states() and contain no parameters.
     """
 
-    def __init__(self):
-        super().__init__()
+    def _walk_objects(self, stop_at=None):
+        """Visit each object once, preferring registered module paths.
+
+        Plain Python containers and object attributes are also supported.
+        Shared layers and circular references do not produce duplicate paths.
+        """
+        visited = set()
+
+        def walk(obj, path):
+            if id(obj) in visited:
+                return
+            visited.add(id(obj))
+            yield path, obj
+            if stop_at is not None and stop_at(obj):
+                return
+
+            if isinstance(obj, nn.Module):
+                for name, child in obj._modules.items():
+                    if child is not None:
+                        child_path = f"{path}.{name}" if path else name
+                        yield from walk(child, child_path)
+
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    yield from walk(value, f"{path}[{key}]")
+            elif isinstance(obj, (list, tuple, set)):
+                for index, value in enumerate(obj):
+                    yield from walk(value, f"{path}[{index}]")
+            elif not isinstance(obj, torch.Tensor) and (isinstance(obj, nn.Module) or not callable(obj)):
+                for name, value in getattr(obj, "__dict__", {}).items():
+                    # PyTorch internals hold parameters, buffers, hooks, and
+                    # submodules already visited above, not additional layers.
+                    if isinstance(obj, nn.Module) and name.startswith("_"):
+                        if name in ("_modules", "_parameters", "_buffers") or "hook" in name:
+                            continue
+                    if isinstance(value, (torch.Tensor, str, bytes, int, float, bool, type(None))):
+                        continue
+                    child_path = f"{path}.{name}" if path else name
+                    yield from walk(value, child_path)
+
+        yield from walk(self, "")
 
     def _call_recursive(self, method_name: str) -> None:
-        r"""Internal recursive walker that calls methods on traceTorch layers.
+        """Call a layer operation once per object, respecting model overrides."""
+        def overrides_operation(obj):
+            return (isinstance(obj, Model) and obj is not self
+                    and getattr(type(obj), method_name, None) is not getattr(Model, method_name, None))
 
-        Traverses the entire model tree to find leaf components (traceTorch layers) and calls the specified method on them.
-        Handles traceTorch models, PyTorch modules and Python containers while avoiding circular references.
+        for _, obj in self._walk_objects(stop_at=overrides_operation):
+            # A subclass may call super() from its override; do not redispatch
+            # that override on the root. Nested overrides own their traversal.
+            if obj is self:
+                continue
+            if isinstance(obj, Model):
+                method = getattr(type(obj), method_name, None)
+                if method is not None and method is not getattr(Model, method_name, None):
+                    method(obj)
+            else:
+                method = getattr(obj, method_name, None)
+                if callable(method):
+                    method()
 
-        Args:
-            method_name (str): name of the method to call (e.g., "zero_states", "detach_states").
-
-        Notes:
-            - Uses object IDs to detect and avoid circular references.
-            - Calls methods on layer instances (leaf components).
-            - Respects method overrides in model subclasses.
-            - Internal method used by public APIs like ``zero_states()`` and ``detach_states()``.
-        """
-        visited: Set[int] = set()
-
-        def recurse(obj: Any) -> None:
-            oid = id(obj)
-            if oid in visited:
-                return
-            visited.add(oid)
-
-            # 1) Handle Layer instances (leaf components)
+    def _state_slots(self):
+        for path, obj in self._walk_objects():
             if isinstance(obj, Layer):
-                fn = getattr(obj, method_name, None)
-                if callable(fn):
-                    try:
-                        fn()
-                    except TypeError:
-                        fn()
-
-            # 2) Handle TTModel instances that override the method
-            elif isinstance(obj, Model):
-                cls_fn = getattr(obj.__class__, method_name, None)
-                base_fn = getattr(Model, method_name, None)
-                if cls_fn is not None and cls_fn is not base_fn:
-                    try:
-                        cls_fn(obj)
-                    except TypeError:
-                        cls_fn(obj)
-
-            # 3) Handle other objects that have the method
-            elif hasattr(obj, method_name):
-                fn = getattr(obj, method_name, None)
-                if callable(fn):
-                    try:
-                        fn()
-                    except TypeError:
-                        fn()
-
-            # 4) Recurse into registered submodules (this covers ModuleList, Sequential, etc.)
-            if isinstance(obj, nn.Module):
-                for child in obj._modules.values():
-                    if child is None:
-                        continue
-                    recurse(child)
-
-            # 5) Recurse into container attributes that might hold modules or other objects with methods.
-            #    This covers plain python lists/tuples/dicts/sets assigned as attributes on modules.
-            #    We purposely ignore common atomic types (tensors, numbers, strings).
-            try:
-                attrs = getattr(obj, "__dict__", {})
-            except Exception:
-                attrs = {}
-
-            for attr in attrs.values():
-                if attr is None:
-                    continue
-                # common containers
-                if isinstance(attr, (list, tuple, set)):
-                    for el in attr:
-                        recurse(el)
-                elif isinstance(attr, dict):
-                    for el in attr.values():
-                        recurse(el)
-                else:
-                    # If attribute is a module or object, recurse (visited prevents duplicates)
-                    if isinstance(attr, (nn.Module, object)):
-                        recurse(attr)
-
-        # start recursion from self
-        recurse(self)
+                for name in sorted(obj._state_names):
+                    full_name = f"{path}.{name}" if path else name
+                    yield full_name, obj, name
 
     def save_states(self) -> Dict[str, torch.Tensor]:
-        r"""Save all hidden states from all Layers in the model.
+        """Return detached copies of initialized states, keyed by layer path.
 
-        Returns:
-            Dictionary mapping layer_state_name -> tensor, compatible with torch.save()
-
-        Examples::
-
-            >>> states = model.save_states()
-            >>> torch.save(states, "model_states.pt")
-            # Keys look like: "net.layer1.H", "net.layer2.C", et cetera.
+        None states are omitted. The result can be saved with torch.save();
+        neither raw weights nor compiled parameter buffers are included.
         """
-        states = {}
-
-        def collect_states(obj, path=""):
-            if isinstance(obj, Layer):
-                for state_name in obj._state_names:
-                    state_value = getattr(obj, state_name)
-                    if state_value is not None:
-                        # Use dot notation for unique identification
-                        full_name = f"{path}.{state_name}" if path else state_name
-                        states[full_name] = state_value.detach().clone()
-
-            # Recurse into submodules and containers (similar to _call_recursive)
-            if isinstance(obj, nn.Module):
-                for name, child in obj._modules.items():
-                    child_path = f"{path}.{name}" if path else name
-                    collect_states(child, child_path)
-
-            # Handle container attributes
-            try:
-                attrs = getattr(obj, "__dict__", {})
-            except Exception:
-                attrs = {}
-
-            for attr_name, attr_value in attrs.items():
-                if attr_value is None:
-                    continue
-                if isinstance(attr_value, (list, tuple, set)):
-                    for i, el in enumerate(attr_value):
-                        collect_states(el, f"{path}.{attr_name}[{i}]")
-                elif isinstance(attr_value, dict):
-                    for key, el in attr_value.items():
-                        collect_states(el, f"{path}.{attr_name}[{key}]")
-                elif isinstance(attr_value, (nn.Module, object)) and not isinstance(attr_value, Layer):
-                    collect_states(attr_value, f"{path}.{attr_name}")
-
-        collect_states(self)
-        return states
+        return {
+            full_name: getattr(layer, name).detach().clone()
+            for full_name, layer, name in self._state_slots()
+            if getattr(layer, name) is not None
+        }
 
     def load_states(self, states: Dict[str, torch.Tensor], strict: bool = True, device=None) -> None:
-        r"""Load hidden states into the layers in the model.
+        """Load a hidden-state checkpoint without modifying model parameters.
 
-        Args:
-            states (Dict): dictionary from ``save_states()`` or ``torch.load()``.
-            strict (bool, default=True): if True, raises an error for missing / extra states.
-            device (str, default=None): target device for the loaded states. Automatically detected if set to None.
-
-        Examples::
-
-            >>> states = torch.load("model_states.pt")
-            >>> model.load_states(states)
+        Strict mode rejects missing and extra state names. Existing shapes and
+        declared trailing shapes are checked. Loaded tensors are detached and
+        copied, so subsequent updates do not mutate the checkpoint dictionary.
+        Device defaults to the layer's parameters, buffers, or saved tensor.
         """
-        loaded_count = 0
-        missing_states = []
+        slots = list(self._state_slots())
+        expected = {full_name for full_name, _, _ in slots}
+        if strict:
+            missing = expected - states.keys()
+            extra = states.keys() - expected
+            if missing or extra:
+                raise ValueError(f"State keys do not match: missing={sorted(missing)}, extra={sorted(extra)}")
 
-        def distribute_states(obj, path=""):
-            nonlocal loaded_count
+        # Validate everything before changing any state.
+        for full_name, layer, name in slots:
+            if full_name not in states:
+                continue
+            tensor = states[full_name]
+            if not isinstance(tensor, torch.Tensor):
+                raise TypeError(f"State {full_name!r} must be a torch.Tensor")
+            shape = layer._state_shapes[name]
+            if shape and tuple(tensor.shape[-len(shape):]) != shape:
+                raise ValueError(f"Shape mismatch for {full_name}: expected trailing {shape}, got {tensor.shape}")
+            current = getattr(layer, name)
+            if current is not None and current.shape != tensor.shape:
+                raise ValueError(f"Shape mismatch for {full_name}: expected {current.shape}, got {tensor.shape}")
 
-            if isinstance(obj, Layer):
-                for state_name in obj._state_names:
-                    full_name = f"{path}.{state_name}" if path else state_name
-
-                    if full_name in states:
-                        state_tensor = states[full_name]
-                        current_state = getattr(obj, state_name)
-
-                        # Validate shape if current state exists
-                        if current_state is not None:
-                            if current_state.shape != state_tensor.shape:
-                                raise ValueError(
-                                    f"Shape mismatch for {full_name}: "
-                                    f"expected {current_state.shape}, got {state_tensor.shape}"
-                                )
-
-                        # Use provided device, or detect from parameters/buffers, or fallback to current device
-                        target_device = device
-                        if target_device is None:
-                            # Try to get device from existing parameters
-                            for param in obj.parameters():
-                                target_device = param.device
-                                break
-                            else:
-                                # Try to get device from existing buffers
-                                for buffer in obj.buffers():
-                                    target_device = buffer.device
-                                    break
-                                else:
-                                    # Fallback to the state tensor's device
-                                    target_device = state_tensor.device
-
-                        # Set the state, ensuring it's on the correct device
-                        setattr(obj, state_name, state_tensor.to(target_device))
-                        loaded_count += 1
-                    else:
-                        missing_states.append(full_name)
-
-            # Recurse (same logic as save_states)
-            if isinstance(obj, nn.Module):
-                for name, child in obj._modules.items():
-                    child_path = f"{path}.{name}" if path else name
-                    distribute_states(child, child_path)
-
-            try:
-                attrs = getattr(obj, "__dict__", {})
-            except Exception:
-                attrs = {}
-
-            for attr_name, attr_value in attrs.items():
-                if attr_value is None:
-                    continue
-                if isinstance(attr_value, (list, tuple, set)):
-                    for i, el in enumerate(attr_value):
-                        distribute_states(el, f"{path}.{attr_name}[{i}]")
-                elif isinstance(attr_value, dict):
-                    for key, el in attr_value.items():
-                        distribute_states(el, f"{path}.{attr_name}[{key}]")
-                elif isinstance(attr_value, (nn.Module, object)) and not isinstance(attr_value, Layer):
-                    distribute_states(attr_value, f"{path}.{attr_name}")
-
-        distribute_states(self)
-
-        if strict and missing_states:
-            raise ValueError(f"Missing states for: {missing_states}")
-
-        print(f"Loaded {loaded_count} states")
+        for full_name, layer, name in slots:
+            if full_name not in states:
+                continue
+            tensor = states[full_name]
+            target_device = device
+            if target_device is None:
+                parameter = next(layer.parameters(), None)
+                buffer = next(layer.buffers(), None)
+                target_device = (parameter.device if parameter is not None else
+                                 buffer.device if buffer is not None else tensor.device)
+            setattr(layer, name, tensor.detach().to(target_device).clone())
 
     def reset_states(self) -> None:
-        r"""Set all hidden states to None across the entire model tree.
-
-        Recursively traverses the model hierarchy to find all traceTorch layers and sets their hidden states to None.
-        This forces lazy re-initialization on the next forward pass with proper tensor shapes.
-
-        Notes:
-            - Traverses traceTorch models, PyTorch modules and Python containers.
-            - Only affects traceTorch layers that implement state management.
-            - Used for resetting model states between batches or episodes.
-        """
+        """Set all hidden states to None for lazy initialization next forward."""
         self._call_recursive("reset_states")
 
     def detach_states(self) -> None:
-        r"""Detach all hidden states from the computation graph across the entire model tree.
-
-        Recursively traverses the model hierarchy to find all traceTorch layers and detaches their hidden states from the computation graph.
-        This enables online learning by preventing gradients from flowing through time.
-
-        Notes:
-            - Traverses traceTorch models, PyTorch modules and Python containers.
-            - Only affects traceTorch layers that implement state management.
-            - Used for online learning or truncated backpropagation, when you want to break temporal gradients.
-        """
+        """Detach every hidden state while preserving its numerical value."""
         self._call_recursive("detach_states")
 
-    def compile_parameters(self):
-        r"""Compiles all layers for inference by pre-computing parameters.
-
-        Recursively traverses the model hierarchy to find all traceTorch layers and compiles their parameters.
-        This allows a trained model to skip needless computation for each forward pass.
-        """
+    def compile_parameters(self) -> None:
+        """Cache activated traceTorch parameters across the model for inference."""
         self._call_recursive("compile_parameters")
 
-    def decompile_parameters(self):
-        r"""Decompiles all layers to restore training capabilities.
-
-        Recursively traverses the model hierarchy to find all traceTorch layers and decompiles their parameters.
-        This allows a compiled model to be trained once again.
-        """
+    def decompile_parameters(self) -> None:
+        """Delete caches and restore intended parameter learnability."""
         self._call_recursive("decompile_parameters")

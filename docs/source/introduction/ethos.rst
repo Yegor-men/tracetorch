@@ -38,10 +38,10 @@ State management stays explicit
 
 Hidden does not mean uncontrollable. ``tt.Model`` gives you explicit recursive methods:
 
-* ``zero_states()`` starts a new sequence.
+* ``reset_states()`` starts a new sequence.
 * ``detach_states()`` cuts temporal gradients while keeping numerical state.
 * ``save_states()`` and ``load_states()`` persist current hidden state.
-* ``TTcompile()`` and ``TTdecompile()`` switch constrained traceTorch parameters between trainable and inference forms.
+* ``compile_parameters()`` and ``decompile_parameters()`` switch constrained traceTorch parameters between trainable and inference forms.
 
 The user decides when a sequence starts, when gradients should flow through time, and when state should be saved. The
 library removes boilerplate, not intent.
@@ -59,7 +59,7 @@ traceTorch keeps the loop visible:
 
 .. code-block:: python
 
-    model.zero_states()
+    model.reset_states()
 
     for t in range(num_timesteps):
         output = model(x[t])
@@ -70,10 +70,9 @@ Composition over special cases
 ------------------------------
 
 traceTorch layers are designed to sit next to ordinary PyTorch layers. Put them after ``nn.Linear``, between
-convolutions, inside ``nn.Sequential``, or inside your own modules. Use ``dim`` when the feature dimension is not the
-last dimension.
+convolutions, inside ``nn.Sequential``, or inside your own modules. Use explicit ``tt.utils.MoveDim`` wrappers when the feature dimension is not last.
 
-This is also why traceTorch includes RNN and SSM-style layers. The library began with SNNs, but the same hidden-state
+This is also why traceTorch includes RNN layers and supports custom state-space dynamics. The library began with SNNs, but the same hidden-state
 contract works naturally for GRUs, LSTMs, and recurrent state-space layers.
 
 Opinionated defaults
@@ -81,10 +80,7 @@ Opinionated defaults
 
 traceTorch defaults are chosen for trainability and clarity.
 
-The most important SNN default is ``spike_fn=tt.functional.sigmoid4x``. A firing layer such as ``LIB`` therefore returns
-a smooth firing value by default instead of a hard spike. This makes the default behavior easier to train and closer to a
-differentiable dynamical system. If you want discrete forward events, pass a hard spike function such as
-``tt.functional.round_sigmoid4x`` explicitly.
+The default firing function is ``tt.snn.spike_fn.deterministic``: hard forward events with smooth surrogate gradients. Pass ``tt.snn.spike_fn.smooth`` explicitly for continuous firing values.
 
 This is not pretending to be the only correct SNN design. It is traceTorch choosing a stable starting point and making
 the sharper choices explicit.
@@ -95,8 +91,7 @@ What traceTorch is not
 traceTorch is not a full training framework. It does not own your dataloaders, losses, logging, checkpoint manager, or
 experiment runner.
 
-traceTorch is not an optimized SSM backend. Its SSM layers are adapted to the traceTorch recurrent interface and are
-useful for experimentation, but they are not official high-performance sequence-parallel implementations.
+traceTorch is not an optimized SSM backend. Its base layer supports custom vector and matrix states, but the library does not bundle optimized sequence-parallel SSM implementations.
 
 traceTorch is not trying to hide PyTorch. The goal is the opposite: keep the model recognizably PyTorch while making
 stateful layers feel natural.

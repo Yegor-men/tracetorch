@@ -12,13 +12,12 @@ class LIB(SNNLayer):
     membrane, and returns the output.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         beta (float or torch.Tensor, default=0.9): membrane decay, constrained
             to ``(0, 1)``.
         threshold (float or torch.Tensor, default=1.0): positive firing
             threshold, constrained to positive values.
             the spike function.
-        dim (int, default=-1): the dimension along which the layer operates.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
             decay.
         threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
@@ -35,8 +34,7 @@ class LIB(SNNLayer):
         spike_fn: spike function.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         With the default ``spike_fn=tt.snn.spike_fn.deterministic``, the layer returns hard
@@ -50,7 +48,7 @@ class LIB(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.LIB(num_neurons=32)
+        >>> layer = tt.snn.LIB(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -59,20 +57,20 @@ class LIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             beta: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
-            dim: int = -1,
             beta_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("mem")
-        self.define_state("prev_output")
+        self.define_state("mem", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
@@ -81,19 +79,17 @@ class LIB(SNNLayer):
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        mem = self.to_working_dim(self.mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        mem = self.mem
+        prev_output = self.prev_output
         mem = mem - prev_output * self.threshold
 
         mem = mem * self.beta + x
 
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
         self.prev_output = spikes
-        self.mem = self.from_working_dim(mem)
+        self.mem = mem
 
         return spikes
 
@@ -106,11 +102,10 @@ class DLIB(SNNLayer):
     summed for thresholding, then the reset is split evenly across both branches.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
         neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
         threshold (float or torch.Tensor, default=1.0): positive firing threshold.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             decay.
         neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -128,8 +123,7 @@ class DLIB(SNNLayer):
         threshold: activated positive threshold.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -143,7 +137,7 @@ class DLIB(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.DLIB(num_neurons=32)
+        >>> layer = tt.snn.DLIB(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -152,11 +146,10 @@ class DLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
-            dim: int = -1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
@@ -165,11 +158,12 @@ class DLIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
-        self.define_state("prev_output")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -180,11 +174,10 @@ class DLIB(SNNLayer):
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
+        prev_output = self.prev_output
         pos_mem = pos_mem - prev_output * self.threshold * 0.5
         neg_mem = neg_mem - prev_output * self.threshold * 0.5
 
@@ -195,10 +188,9 @@ class DLIB(SNNLayer):
 
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
         self.prev_output = spikes
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
 
         return spikes
 
@@ -212,11 +204,10 @@ class SLIB(SNNLayer):
     membrane increment.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         alpha (float or torch.Tensor, default=0.5): synaptic decay.
         beta (float or torch.Tensor, default=0.9): membrane decay.
         threshold (float or torch.Tensor, default=1.0): positive firing threshold.
-        dim (int, default=-1): the dimension along which the layer operates.
         alpha_rank (Literal[0, 1], default=1): scalar or per-neuron synaptic
             decay.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
@@ -233,8 +224,7 @@ class SLIB(SNNLayer):
         mem: membrane state.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -247,7 +237,7 @@ class SLIB(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.SLIB(num_neurons=32)
+        >>> layer = tt.snn.SLIB(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -256,11 +246,10 @@ class SLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             alpha: Union[float, torch.Tensor] = 0.5,
             beta: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
-            dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
@@ -269,13 +258,14 @@ class SLIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("syn")
+        self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self.define_state("mem")
-        self.define_state("prev_output")
+        self.define_state("mem", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
         self.spike_fn = spike_fn
@@ -285,22 +275,20 @@ class SLIB(SNNLayer):
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        mem = self.to_working_dim(self.mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        mem = self.mem
+        prev_output = self.prev_output
         mem = mem - prev_output * self.threshold
 
-        syn = self.to_working_dim(self.syn)
+        syn = self.syn
         syn = syn * self.alpha + x * (1 - self.alpha)
 
         mem = mem * self.beta + syn
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
         self.prev_output = spikes
-        self.syn = self.from_working_dim(syn)
-        self.mem = self.from_working_dim(mem)
+        self.syn = syn
+        self.mem = mem
 
         return spikes
 
@@ -313,12 +301,11 @@ class RLIB(SNNLayer):
     input before membrane integration.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         beta (float or torch.Tensor, default=0.9): membrane decay.
         gamma (float or torch.Tensor, default=0.9): recurrent trace decay.
         threshold (float or torch.Tensor, default=1.0): positive firing threshold.
         rec_weight (float or torch.Tensor, default=0.0): recurrent input scale.
-        dim (int, default=-1): the dimension along which the layer operates.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
             decay.
         gamma_rank (Literal[0, 1], default=1): scalar or per-neuron recurrent
@@ -339,8 +326,7 @@ class RLIB(SNNLayer):
         prev_output: previous returned output.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -354,7 +340,7 @@ class RLIB(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.RLIB(num_neurons=32)
+        >>> layer = tt.snn.RLIB(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -363,12 +349,11 @@ class RLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             beta: Union[float, torch.Tensor] = 0.9,
             gamma: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
-            dim: int = -1,
             beta_rank: Literal[0, 1] = 1,
             gamma_rank: Literal[0, 1] = 1,
             threshold_rank: Literal[0, 1] = 1,
@@ -379,33 +364,33 @@ class RLIB(SNNLayer):
             learn_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("mem")
+        self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
-        self.define_state("rec")
-        self.define_state("prev_output")
+        self.define_state("rec", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
 
         self.define_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
-        self.define_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
+        self.define_unbound_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        mem = self.to_working_dim(self.mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        mem = self.mem
+        prev_output = self.prev_output
         mem = mem - prev_output * self.threshold
 
-        rec = self.to_working_dim(self.rec)
+        rec = self.rec
         rec = rec * self.gamma + prev_output * (1 - self.gamma)
-        self.rec = self.from_working_dim(rec)
+        self.rec = rec
 
         mem_delta = rec * self.rec_weight + x
 
@@ -413,8 +398,7 @@ class RLIB(SNNLayer):
 
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
-        self.mem = self.from_working_dim(mem)
+        self.mem = mem
         self.prev_output = spikes
 
         return spikes
@@ -425,17 +409,16 @@ class DSLIB(SNNLayer):
 
     ``DSLIB`` combines dual positive/negative traces with a synaptic stage and a
     one-sided firing output. Positive and negative inputs are smoothed
-    separately, summed, integrated into dual membrane traces, and thresholded as
-    one combined membrane.
+    separately and integrated directly into their corresponding membrane traces.
+    The combined membrane is then thresholded.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_alpha (float or torch.Tensor, default=0.5): positive synaptic decay.
         neg_alpha (float or torch.Tensor, default=0.5): negative synaptic decay.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
         neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
         threshold (float or torch.Tensor, default=1.0): positive firing threshold.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             synaptic decay.
         neg_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -460,8 +443,7 @@ class DSLIB(SNNLayer):
         neg_mem: negative membrane state.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         The reset is split evenly across the dual membrane branches. Pseudocode
@@ -471,14 +453,13 @@ class DSLIB(SNNLayer):
 
             pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
             neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
-            syn = pos_syn + neg_syn
-            pos_mem = pos_beta * pos_mem + where(syn >= 0, syn, 0)
-            neg_mem = neg_beta * neg_mem + where(syn <= 0, syn, 0)
+            pos_mem = pos_beta * pos_mem + pos_syn
+            neg_mem = neg_beta * neg_mem + neg_syn
             return spikes
 
     Examples::
 
-        >>> layer = tt.snn.DSLIB(num_neurons=32)
+        >>> layer = tt.snn.DSLIB(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -487,13 +468,12 @@ class DSLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_alpha: Union[float, torch.Tensor] = 0.5,
             neg_alpha: Union[float, torch.Tensor] = 0.5,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
-            dim: int = -1,
             pos_alpha_rank: Literal[0, 1] = 1,
             neg_alpha_rank: Literal[0, 1] = 1,
             pos_beta_rank: Literal[0, 1] = 1,
@@ -506,16 +486,17 @@ class DSLIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_syn")
-        self.define_state("neg_syn")
+        self.define_state("pos_syn", (num_features,))
+        self.define_state("neg_syn", (num_features,))
         self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
         self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
-        self.define_state("prev_output")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -526,35 +507,31 @@ class DSLIB(SNNLayer):
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
+        prev_output = self.prev_output
         pos_mem = pos_mem - prev_output * self.threshold * 0.5
         neg_mem = neg_mem - prev_output * self.threshold * 0.5
 
-        pos_syn = self.to_working_dim(self.pos_syn)
-        neg_syn = self.to_working_dim(self.neg_syn)
+        pos_syn = self.pos_syn
+        neg_syn = self.neg_syn
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self.from_working_dim(pos_syn)
-        self.neg_syn = self.from_working_dim(neg_syn)
+        self.pos_syn = pos_syn
+        self.neg_syn = neg_syn
 
-        syn = pos_syn + neg_syn
-
-        pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0)
-        neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0)
+        pos_mem = pos_mem * self.pos_beta + pos_syn
+        neg_mem = neg_mem * self.neg_beta + neg_syn
 
         mem = pos_mem + neg_mem
 
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
         self.prev_output = spikes
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
 
         return spikes
 
@@ -568,7 +545,7 @@ class DRLIB(SNNLayer):
     one-sided binary firing decision.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
         neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
         pos_gamma (float or torch.Tensor, default=0.9): positive recurrent decay.
@@ -578,7 +555,6 @@ class DRLIB(SNNLayer):
             input scale.
         neg_rec_weight (float or torch.Tensor, default=0.0): negative recurrent
             input scale.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             membrane decay.
         neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -611,8 +587,7 @@ class DRLIB(SNNLayer):
         prev_output: previous returned output.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -621,14 +596,14 @@ class DRLIB(SNNLayer):
 
             pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * where(prev_output >= 0, prev_output, 0)
             neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * where(prev_output <= 0, prev_output, 0)
-            pos_mem = pos_beta * pos_mem + pos_rec_weight * where(pos_rec + neg_rec >= 0, pos_rec + neg_rec, 0) + where(x >= 0, x, 0)
-            neg_mem = neg_beta * neg_mem + neg_rec_weight * where(pos_rec + neg_rec <= 0, pos_rec + neg_rec, 0) + where(x <= 0, x, 0)
+            pos_mem = pos_beta * pos_mem + pos_rec_weight * pos_rec + where(x >= 0, x, 0)
+            neg_mem = neg_beta * neg_mem + neg_rec_weight * neg_rec + where(x <= 0, x, 0)
             prev_output = spikes
             return spikes
 
     Examples::
 
-        >>> layer = tt.snn.DRLIB(num_neurons=32)
+        >>> layer = tt.snn.DRLIB(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -637,7 +612,7 @@ class DRLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
             pos_gamma: Union[float, torch.Tensor] = 0.9,
@@ -645,7 +620,6 @@ class DRLIB(SNNLayer):
             threshold: Union[float, torch.Tensor] = 1.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
             neg_rec_weight: Union[float, torch.Tensor] = 0.0,
-            dim: int = -1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
             pos_gamma_rank: Literal[0, 1] = 1,
@@ -662,16 +636,17 @@ class DRLIB(SNNLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self.define_state("pos_rec")
-        self.define_state("neg_rec")
-        self.define_state("prev_output")
+        self.define_state("pos_rec", (num_features,))
+        self.define_state("neg_rec", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
         self.define_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
@@ -679,33 +654,30 @@ class DRLIB(SNNLayer):
 
         self.define_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
-        self.define_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
-        self.define_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
+        self.define_unbound_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
+        self.define_unbound_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
+        prev_output = self.prev_output
         pos_mem = pos_mem - prev_output * self.threshold * 0.5
         neg_mem = neg_mem - prev_output * self.threshold * 0.5
 
-        pos_rec = self.to_working_dim(self.pos_rec)
-        neg_rec = self.to_working_dim(self.neg_rec)
+        pos_rec = self.pos_rec
+        neg_rec = self.neg_rec
 
         pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
         neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
 
-        self.pos_rec = self.from_working_dim(pos_rec)
-        self.neg_rec = self.from_working_dim(neg_rec)
+        self.pos_rec = pos_rec
+        self.neg_rec = neg_rec
 
-        rec = pos_rec + neg_rec
-
-        pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(x >= 0, x, 0.0)
-        neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(x <= 0, x, 0.0)
+        pos_mem_delta = pos_rec * self.pos_rec_weight + torch.where(x >= 0, x, 0.0)
+        neg_mem_delta = neg_rec * self.neg_rec_weight + torch.where(x <= 0, x, 0.0)
 
         pos_mem = pos_mem * self.pos_beta + pos_mem_delta
         neg_mem = neg_mem * self.neg_beta + neg_mem_delta
@@ -714,9 +686,8 @@ class DRLIB(SNNLayer):
 
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
         self.prev_output = spikes
 
         return spikes
@@ -730,13 +701,12 @@ class SRLIB(SNNLayer):
     recurrent current before one-sided firing.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         alpha (float or torch.Tensor, default=0.5): synaptic decay.
         beta (float or torch.Tensor, default=0.9): membrane decay.
         gamma (float or torch.Tensor, default=0.9): recurrent trace decay.
         threshold (float or torch.Tensor, default=1.0): positive firing threshold.
         rec_weight (float or torch.Tensor, default=0.0): recurrent input scale.
-        dim (int, default=-1): the dimension along which the layer operates.
         alpha_rank (Literal[0, 1], default=1): scalar or per-neuron synaptic
             decay.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
@@ -760,8 +730,7 @@ class SRLIB(SNNLayer):
         prev_output: previous returned output.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -776,7 +745,7 @@ class SRLIB(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.SRLIB(num_neurons=32)
+        >>> layer = tt.snn.SRLIB(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -785,13 +754,12 @@ class SRLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             alpha: Union[float, torch.Tensor] = 0.5,
             beta: Union[float, torch.Tensor] = 0.9,
             gamma: Union[float, torch.Tensor] = 0.9,
             threshold: Union[float, torch.Tensor] = 1.0,
             rec_weight: Union[float, torch.Tensor] = 0.0,
-            dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
             gamma_rank: Literal[0, 1] = 1,
@@ -804,48 +772,47 @@ class SRLIB(SNNLayer):
             learn_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("syn")
+        self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self.define_state("mem")
+        self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
-        self.define_state("rec")
-        self.define_state("prev_output")
+        self.define_state("rec", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("gamma", gamma, gamma_rank, learn_gamma)
 
         self.spike_fn = spike_fn
 
         self.define_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
-        self.define_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
+        self.define_unbound_parameter("rec_weight", rec_weight, rec_weight_rank, learn_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        mem = self.to_working_dim(self.mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        mem = self.mem
+        prev_output = self.prev_output
         mem = mem - prev_output * self.threshold
 
-        syn = self.to_working_dim(self.syn)
+        syn = self.syn
         syn = syn * self.alpha + x * (1 - self.alpha)
-        self.syn = self.from_working_dim(syn)
+        self.syn = syn
 
-        rec = self.to_working_dim(self.rec)
+        rec = self.rec
         rec = rec * self.gamma + prev_output * (1 - self.gamma)
-        self.rec = self.from_working_dim(rec)
+        self.rec = rec
 
         mem_delta = rec * self.rec_weight + syn
 
         mem = mem * self.beta + mem_delta
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
-        self.mem = self.from_working_dim(mem)
+        self.mem = mem
         self.prev_output = spikes
 
         return spikes
@@ -860,7 +827,7 @@ class DSRLIB(SNNLayer):
     output.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_alpha (float or torch.Tensor, default=0.5): positive synaptic decay.
         neg_alpha (float or torch.Tensor, default=0.5): negative synaptic decay.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
@@ -872,7 +839,6 @@ class DSRLIB(SNNLayer):
             input scale.
         neg_rec_weight (float or torch.Tensor, default=0.0): negative recurrent
             input scale.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             synaptic decay.
         neg_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -913,8 +879,7 @@ class DSRLIB(SNNLayer):
         prev_output: previous returned output.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         ``DSRLIB`` is useful when the sign of the input and the sign of the
@@ -925,7 +890,7 @@ class DSRLIB(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.DSRLIB(num_neurons=32)
+        >>> layer = tt.snn.DSRLIB(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
@@ -934,7 +899,7 @@ class DSRLIB(SNNLayer):
 
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_alpha: Union[float, torch.Tensor] = 0.5,
             neg_alpha: Union[float, torch.Tensor] = 0.5,
             pos_beta: Union[float, torch.Tensor] = 0.9,
@@ -944,7 +909,6 @@ class DSRLIB(SNNLayer):
             threshold: Union[float, torch.Tensor] = 1.0,
             pos_rec_weight: Union[float, torch.Tensor] = 0.0,
             neg_rec_weight: Union[float, torch.Tensor] = 0.0,
-            dim: int = -1,
             pos_alpha_rank: Literal[0, 1] = 1,
             neg_alpha_rank: Literal[0, 1] = 1,
             pos_beta_rank: Literal[0, 1] = 1,
@@ -965,21 +929,22 @@ class DSRLIB(SNNLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_syn")
-        self.define_state("neg_syn")
+        self.define_state("pos_syn", (num_features,))
+        self.define_state("neg_syn", (num_features,))
         self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
         self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
-        self.define_state("pos_rec")
-        self.define_state("neg_rec")
-        self.define_state("prev_output")
+        self.define_state("pos_rec", (num_features,))
+        self.define_state("neg_rec", (num_features,))
+        self.define_state("prev_output", (num_features,))
         self.define_decay("pos_gamma", pos_gamma, pos_gamma_rank, learn_pos_gamma)
         self.define_decay("neg_gamma", neg_gamma, neg_gamma_rank, learn_neg_gamma)
 
@@ -987,43 +952,38 @@ class DSRLIB(SNNLayer):
 
         self.define_threshold("threshold", threshold, threshold_rank, learn_threshold)
 
-        self.define_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
-        self.define_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
+        self.define_unbound_parameter("pos_rec_weight", pos_rec_weight, pos_rec_weight_rank, learn_pos_rec_weight)
+        self.define_unbound_parameter("neg_rec_weight", neg_rec_weight, neg_rec_weight_rank, learn_neg_rec_weight)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
-        prev_output = self.to_working_dim(self.prev_output)
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
+        prev_output = self.prev_output
         pos_mem = pos_mem - prev_output * self.threshold * 0.5
         neg_mem = neg_mem - prev_output * self.threshold * 0.5
 
-        pos_syn = self.to_working_dim(self.pos_syn)
-        neg_syn = self.to_working_dim(self.neg_syn)
+        pos_syn = self.pos_syn
+        neg_syn = self.neg_syn
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self.from_working_dim(pos_syn)
-        self.neg_syn = self.from_working_dim(neg_syn)
+        self.pos_syn = pos_syn
+        self.neg_syn = neg_syn
 
-        syn = pos_syn + neg_syn
-
-        pos_rec = self.to_working_dim(self.pos_rec)
-        neg_rec = self.to_working_dim(self.neg_rec)
+        pos_rec = self.pos_rec
+        neg_rec = self.neg_rec
 
         pos_rec = pos_rec * self.pos_gamma + torch.where(prev_output >= 0, prev_output, 0.0) * (1 - self.pos_gamma)
         neg_rec = neg_rec * self.neg_gamma + torch.where(prev_output <= 0, prev_output, 0.0) * (1 - self.neg_gamma)
 
-        self.pos_rec = self.from_working_dim(pos_rec)
-        self.neg_rec = self.from_working_dim(neg_rec)
+        self.pos_rec = pos_rec
+        self.neg_rec = neg_rec
 
-        rec = pos_rec + neg_rec
-
-        pos_mem_delta = torch.where(rec >= 0, rec, 0.0) * self.pos_rec_weight + torch.where(syn >= 0, syn, 0.0)
-        neg_mem_delta = torch.where(rec <= 0, rec, 0.0) * self.neg_rec_weight + torch.where(syn <= 0, syn, 0.0)
+        pos_mem_delta = pos_rec * self.pos_rec_weight + pos_syn
+        neg_mem_delta = neg_rec * self.neg_rec_weight + neg_syn
 
         pos_mem = pos_mem * self.pos_beta + pos_mem_delta
         neg_mem = neg_mem * self.neg_beta + neg_mem_delta
@@ -1032,9 +992,8 @@ class DSRLIB(SNNLayer):
 
         spikes = self.spike_fn(mem - self.threshold)
 
-        spikes = self.from_working_dim(spikes)
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
         self.prev_output = spikes
 
         return spikes

@@ -66,7 +66,7 @@ After installation, this should import successfully:
 .. code-block:: python
 
     import tracetorch as tt
-    layer = tt.snn.LIB(num_neurons=16)
+    layer = tt.snn.LIB(num_features=16)
 
 If the import fails because of an optional plotting dependency, make sure the base requirements were installed into the
 same environment as PyTorch.

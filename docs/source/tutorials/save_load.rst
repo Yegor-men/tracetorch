@@ -9,7 +9,10 @@ Why states are separate
 
 Parameters describe the model. Hidden states describe where the model currently is in a sequence.
 
-For many training jobs, you do not need to save hidden states at all. You call ``zero_states()`` for every independent
+Compiled parameter caches are nonpersistent and are omitted from weight state dictionaries.
+Loading weights invalidates caches without changing hidden states. Neither checkpoint contains the other's tensors.
+
+For many training jobs, you do not need to save hidden states at all. You call ``reset_states()`` for every independent
 sequence and train from a fresh state. State saving becomes useful when:
 
 * doing streaming inference;
@@ -26,7 +29,7 @@ save.
 .. code-block:: python
 
     model.eval()
-    model.zero_states()
+    model.reset_states()
 
     with torch.no_grad():
         for t in range(sequence.size(0)):
@@ -58,7 +61,7 @@ Shape checking
 --------------
 
 If a layer already has a state tensor and the loaded state has a different shape, traceTorch raises a ``ValueError``.
-This prevents silent state corruption when batch size, target dimension, or model structure changed.
+Declared trailing state shapes are also checked when loading into a fresh layer. Reset existing states before intentionally loading a different instance shape.
 
 Continuing a sequence
 ---------------------
@@ -71,4 +74,4 @@ After loading states, continue calling the model normally:
     with torch.no_grad():
         next_output = model(next_timestep)
 
-Do not call ``zero_states()`` after loading unless you intentionally want to discard the loaded states.
+Do not call ``reset_states()`` after loading unless you intentionally want to discard the loaded states.

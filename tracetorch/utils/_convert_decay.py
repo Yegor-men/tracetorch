@@ -2,7 +2,7 @@ import math
 import torch
 from typing import Literal, Union
 
-metric_type = Literal["decay, halflife, tau, horizon"]
+metric_type = Literal["decay", "halflife", "tau", "horizon"]
 
 
 def convert_decay(
@@ -16,7 +16,7 @@ def convert_decay(
     if from_type == "decay":
         decay = value
     elif from_type == "halflife":
-        decay = m.exp(-m.log(2) / value)
+        decay = m.exp(-math.log(2) / value)
     elif from_type == "tau":
         decay = m.exp(-1.0 / value)
     elif from_type == "horizon":
@@ -35,7 +35,7 @@ def convert_decay(
     if to_type == "decay":
         return decay
     elif to_type == "halflife":
-        return -m.log(2) / m.log(decay)
+        return -math.log(2) / m.log(decay)
     elif to_type == "tau":
         return -1.0 / m.log(decay)
     elif to_type == "horizon":

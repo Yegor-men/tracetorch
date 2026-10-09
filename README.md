@@ -10,7 +10,7 @@
 
 traceTorch is a PyTorch library for stateful recurrent layers, built primarily for spiking neural networks.
 
-It gives you SNN, RNN, and SSM-style layers that behave like ordinary PyTorch modules: one tensor in, one tensor out, hidden states kept inside the layer. The difference is that those hidden states are still easy to manage. Inherit from `tt.Model`, call `zero_states()`, `detach_states()`, `save_states()`, `load_states()`, `TTcompile()`, or `TTdecompile()`, and traceTorch handles every traceTorch layer buried inside the model.
+It provides tools for building stateful layers, with SNN and RNN layers bundled by default. Hidden states stay inside each layer and are easy to manage: inherit from `tt.Model` and use `reset_states()`, `detach_states()`, `save_states()`, `load_states()`, `compile_parameters()`, or `decompile_parameters()` across the model.
 
 ```bash
 pip install tracetorch
@@ -28,9 +28,9 @@ class Net(tt.Model):
         self.net = nn.Sequential(
             nn.Flatten(),
             nn.Linear(784, 128),
-            tt.snn.LIB(num_neurons=128),
+            tt.snn.LIB(num_features=128),
             nn.Linear(128, 10),
-            tt.snn.LI(num_neurons=10),
+            tt.snn.LI(num_features=10),
         )
 
     def forward(self, x):
@@ -45,10 +45,10 @@ out = model(torch.rand(32, 1, 28, 28))
 ## Why traceTorch?
 
 - **Hidden states stay hidden.** Layers own their states, so model code stays readable.
-- **State management is explicit.** Reset between sequences with `zero_states()`, truncate history with `detach_states()`, and save/load hidden states when needed.
+- **State management is explicit.** Reset between sequences with `reset_states()`, truncate history with `detach_states()`, and save/load hidden states when needed.
 - **SNNs are first-class.** `tt.snn` contains 32 leaky-integrator-based layers with binary, ternary, scaled ternary, continuous, dual, synaptic, and recurrent variants.
 - **PyTorch composition stays normal.** Put traceTorch layers inside `nn.Sequential`, CNNs, MLPs, and custom PyTorch modules.
-- **Feature dimensions are configurable.** Use `dim=-1` for MLP features, `dim=-3` for image channels, or any other target dimension.
+- **Built-in layers use features last.** Move image channels explicitly with `tt.utils.MoveDim` when composing with convolutions.
 - **Parameters can be scalar, per-neuron, fixed, learnable, or tensor-initialized.**
 
 ## Layer Families
@@ -57,9 +57,36 @@ out = model(torch.rand(32, 1, 28, 28))
 | --- | --- |
 | `tt.snn` | `LI`, `LIB`, `LIT`, `LITS` families, including dual (`D`), synaptic (`S`), recurrent (`R`), and combined variants |
 | `tt.rnn` | `SimpleRNN`, `LSTM`, `GRU` |
-| `tt.ssm` | `S4`, `S5`, `S6`, `Mamba` adapted to traceTorch's one-timestep recurrent interface |
 
-traceTorch's main focus is SNN experimentation. The RNN and SSM layers exist because the same state-management design is useful there too, but the SSM implementations are not meant to replace the official optimized sequence-parallel versions.
+traceTorch's main focus is SNN experimentation. The base layer can also support custom vector or matrix states, including state-space dynamics.
+
+## Custom states and parameters
+
+`tt.Layer()` has no global feature count or target dimension. Declare each state with its own trailing shape:
+
+```python
+self.define_state("mem", (512,))
+self.define_state("history", (512, 4), dim=-1)
+```
+
+`zero_states(x)` lazily creates zeros with shape `x.shape[:dim] + state_shape`, using `x`'s dtype and device. Negative `dim` removes trailing input dimensions; `None` removes none. Existing states are preserved until reset. Time iteration remains external to the layer.
+
+`define_parameter(name, value, learnable=True, initialization_fn=None, activation_fn=None)` accepts a tensor of any shape. Initialization transforms it into an unconstrained raw `nn.Parameter` once; activation transforms it when accessed. SNN helpers retain scalar/per-neuron convenience arguments. Use `set_parameter_learnable(name, bool)` to change intended learnability.
+
+Compilation caches detached activated values in nonpersistent buffers and temporarily freezes raw parameters. Decompilation removes the caches and restores intended learnability without replacing parameters or invalidating optimizers. Loading weights clears caches too.
+
+Save weights with `torch.save(model.state_dict(), path)` and hidden states separately with `torch.save(model.save_states(), path)`. Neither checkpoint contains the other's tensors, and compiled caches are never included in weight state dictionaries. Learnability settings are configuration, not weight tensors. Move the model to its target device/dtype before allocating or loading plain-tensor hidden states.
+
+For channel-first images:
+
+```python
+nn.Sequential(
+    nn.Conv2d(3, 32, 3),
+    tt.utils.MoveDim(-3, -1),
+    tt.snn.LIB(32),
+    tt.utils.MoveDim(-1, -3),
+)
+```
 
 ## Documentation
 

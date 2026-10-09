@@ -1,249 +1,193 @@
-from typing import TypedDict, Optional, Literal, Union, Dict, Any, Set
+from typing import Callable, Optional, Tuple
+
 import torch
 from torch import nn
-from .. import functional
 
 
 class Layer(nn.Module):
-    r"""The superclass used for all traceTorch layers.
-    Handles state management, parameter initialization, compilation and decompilation, moving around tensors to the target dimension.
+    """Base class for stateful layers and optionally transformed parameters.
 
-    Args:
-        num_neurons (int): the number of neurons the layer is considered to have. When initializing any hidden states or registering parameters via the tracetorch methods, this is the value used.
-        dim (int, default=-1): the dimension along which the layer operates.
+    States are ordinary tensor attributes, separate from PyTorch weight
+    checkpoints. Each state declares its own trailing shape and input slice.
+    Parameters retain their raw nn.Parameter throughout compilation.
     """
 
-    def __init__(self, num_neurons: int, dim: int = -1):
+    def __init__(self):
         super().__init__()
         self._state_names = set()
-        self.num_neurons = num_neurons
-        self.dim = dim
+        self._state_shapes = {}
+        self._state_dims = {}
+        self._dynamic_params = {}
+        self._parameter_learnability = {}
 
     def define_parameter(
             self,
             name: str,
-            value: Union[float, torch.Tensor],
-            rank: Literal[0, 1],
-            learnable: bool,
-            init_fn=lambda x: x,
-            inverse_fn=lambda x: x,
-            activation_fn=lambda x: x,
+            value: torch.Tensor,
+            learnable: bool = True,
+            initialization_fn: Optional[Callable] = None,
+            activation_fn: Optional[Callable] = None,
     ) -> None:
-        r"""Register a parameter with dynamic activation functions.
+        """Define a raw parameter and its optional runtime transformation.
 
-        Creates a raw parameter that can be dynamically transformed through activation functions.
-        The raw parameter is stored as ``raw_{name}`` while the activated version is accessed via ``name``.
-
-        Args:
-            name (str): parameter name. Access raw version via ``self.raw_{name}``, activated via ``self.{name}``.
-            value (Union[float, torch.Tensor]): initial value. Scalar or vector matching `num_neurons` if rank=1. Can be set to a custom PyTorch tensor instead, and will automatically update the rank depending on the tensor's rank.
-            rank (Literal[0, 1]): 0 for scalar, 1 for vector of length `num_neurons`.
-            learnable (bool): whether parameter should be trainable (nn.Parameter) or fixed (buffer).
-            init_fn (Callable): function applied once during initialization to create raw parameter.
-            inverse_fn (Callable): function used during decompilation to recover raw parameter.
-            activation_fn (Callable): function applied when accessing the parameter dynamically.
-
-        Notes:
-            - Raw parameters are stored as ``nn.Parameter`` if learnable, otherwise as buffers.
-            - Dynamic access via ``self.{name}`` applies ``activation_fn`` to raw value.
-            - Parameters registered this way can be compiled and decompiled by traceTorch by utilizing the ``activation_fn`` and ``inverse_fn``.
+        value is a tensor of any shape. initialization_fn converts it into the
+        raw representation once (e.g. logit for a sigmoid decay).
+        self.raw_<name> is always an nn.Parameter; self.<name> returns its
+        activated value, or a detached cache while compiled.
+        Only the raw parameter is included in state_dict().
         """
+        if not isinstance(value, torch.Tensor):
+            raise TypeError("value must be a torch.Tensor")
+        if (not name or "." in name or hasattr(self, name)
+                or hasattr(self, f"raw_{name}") or hasattr(self, f"_compiled_{name}")):
+            raise ValueError(f"Parameter name is invalid or already in use: {name!r}")
 
-        if not hasattr(self, '_dynamic_params'):
-            self._dynamic_params = {}
-            self._inverse_functions = {}
-
-        if isinstance(value, torch.Tensor):
-            if value.ndim == 0:
-                pass
-            elif value.ndim == 1:
-                assert value.numel() == self.num_neurons, f"{name} does not have {self.num_neurons} elements"
-            else:
-                raise ValueError(f"rank (.ndim) of provided {name} is not 0 (scalar) or 1 (vector)")
-            param_tensor = init_fn(value)
-        else:
-            value = float(value)
-            if rank == 0:
-                param_tensor = init_fn(torch.tensor(value))
-            elif rank == 1:
-                param_tensor = init_fn(torch.full([self.num_neurons], value))
-            else:
-                raise ValueError(f"{name} rank is not 0 (scalar) or 1 (vector)")
-
-        # save the raw_ variant of the parameter as an nn.Parameter or buffer
-        if learnable:
-            setattr(self, f"raw_{name}", nn.Parameter(param_tensor.detach().clone()))
-        else:
-            self.register_buffer(f"raw_{name}", param_tensor.detach().clone())
-
-        # Store the activation and inverse functions directly in the instance
+        with torch.no_grad():
+            raw_value = value if initialization_fn is None else initialization_fn(value)
+            parameter = nn.Parameter(raw_value.detach().clone(), requires_grad=learnable)
+        self.register_parameter(f"raw_{name}", parameter)
         self._dynamic_params[name] = activation_fn
-        self._inverse_functions[name] = inverse_fn
+        self._parameter_learnability[name] = learnable
 
     def __getattr__(self, name: str):
-        r"""Intercept attribute access to dynamically compute activations on raw parameters."""
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            if '_dynamic_params' in self.__dict__ and name in self._dynamic_params:
-                raw_name = f"raw_{name}"
-                try:
-                    raw_val = super().__getattr__(raw_name)
-                    return self._dynamic_params[name](raw_val)
-                except AttributeError:
-                    pass
-            raise
+        dynamic_params = self.__dict__.get("_dynamic_params", {})
+        if name in dynamic_params:
+            cache_name = f"_compiled_{name}"
+            if cache_name in self._buffers:
+                return self._buffers[cache_name]
+            raw_value = super().__getattr__(f"raw_{name}")
+            activation_fn = dynamic_params[name]
+            return raw_value if activation_fn is None else activation_fn(raw_value)
+        return super().__getattr__(name)
 
-    def define_state(self, state_name: str) -> None:
-        r"""Initialize and register a state for traceTorch operations.
+    def set_parameter_learnable(self, name: str, learnable: bool) -> None:
+        """Set intended learnability, including while temporarily compiled.
 
-        Args:
-            state_name (str): state name.
+        Use this instead of changing raw_<name>.requires_grad directly:
+        compilation freezes the raw parameter without changing this intention.
         """
-        self._state_names.add(state_name)
-        setattr(self, state_name, None)
+        if name not in self._dynamic_params:
+            raise KeyError(name)
+        self._parameter_learnability[name] = learnable
+        raw = getattr(self, f"raw_{name}")
+        raw.requires_grad_(learnable and f"_compiled_{name}" not in self._buffers)
+        if not raw.requires_grad:
+            raw.grad = None
+
+    def define_state(
+            self,
+            name: str,
+            shape: Tuple[int, ...],
+            dim: Optional[int] = -1,
+    ) -> None:
+        """Declare a state, initially None, with its own allocation rule.
+
+        Allocation uses reference.shape[:dim] + shape. Negative dim drops
+        trailing reference dimensions; None drops none and appends shape to
+        the full reference shape. Zero and positive indices are rejected.
+        An empty shape is allowed.
+        """
+        if not name or "." in name or hasattr(self, name):
+            raise ValueError(f"State name is invalid or already in use: {name!r}")
+        if not isinstance(shape, tuple) or any(
+                not isinstance(size, int) or isinstance(size, bool) or size < 0
+                for size in shape):
+            raise ValueError("shape must be a tuple of nonnegative integers")
+        if dim is not None and (not isinstance(dim, int) or isinstance(dim, bool) or dim >= 0):
+            raise ValueError("dim must be a negative integer or None")
+        self._state_names.add(name)
+        self._state_shapes[name] = shape
+        self._state_dims[name] = dim
+        setattr(self, name, None)
 
     def detach_state(self, state_name: str) -> None:
-        r"""Detach a state tensor from the computation graph if it exists and is not None.
-
-        Args:
-            state_name (str): state name.
-        """
+        """Detach an existing state from its computation graph."""
+        if state_name not in self._state_names:
+            raise KeyError(state_name)
         state = getattr(self, state_name)
         if state is not None:
             setattr(self, state_name, state.detach())
 
     def detach_states(self) -> None:
-        r"""Detach all initialized state tensors from the computation graph if they are not None."""
+        """Detach all states."""
         for state_name in self._state_names:
             self.detach_state(state_name)
 
     def reset_state(self, state_name: str) -> None:
-        r"""Set a state to None.
-
-        Args:
-            state_name (str): state name.
-        """
+        """Set a declared state to None for lazy reinitialization."""
+        if state_name not in self._state_names:
+            raise KeyError(state_name)
         setattr(self, state_name, None)
 
     def reset_states(self) -> None:
-        r"""Set all initialized states to None."""
+        """Reset all states to None."""
         for state_name in self._state_names:
             self.reset_state(state_name)
 
     def zero_state(self, state_name: str, reference_tensor: torch.Tensor) -> None:
-        r"""Initialize a state with zeros if it is None.
+        """Allocate zeros from a state's shape rule, only if it is None.
 
-        Args:
-            state_name (str): state name.
-            reference_tensor (torch.Tensor): the reference tensor, whose shape the state will copy. The shape will be the same except ``dim``, which will be set to ``num_neurons`` instead.
+        The reference supplies the leading instance dimensions, dtype and
+        device. Existing states are not overwritten or silently resized.
+        Custom layers may override this method for nonzero initialization.
         """
-        state = getattr(self, state_name)
-        if state is None:
-            # Create shape that matches reference_tensor except for self.dim
-            shape = list(reference_tensor.shape)
-            shape[self.dim] = self.num_neurons  # Set the target dimension to num_neurons
-
-            state = torch.zeros(
-                shape,
-                dtype=reference_tensor.dtype,
-                device=reference_tensor.device,
-            )
-            setattr(self, state_name, state)
+        if state_name not in self._state_names:
+            raise KeyError(state_name)
+        if getattr(self, state_name) is None:
+            dim = self._state_dims[state_name]
+            if dim is not None and -dim > reference_tensor.ndim:
+                raise ValueError(f"State {state_name!r} cannot drop {-dim} dimensions "
+                                 f"from a {reference_tensor.ndim}-dimensional reference")
+            shape = tuple(reference_tensor.shape[:dim]) + self._state_shapes[state_name]
+            setattr(self, state_name, reference_tensor.new_zeros(shape))
 
     def zero_states(self, reference_tensor: torch.Tensor) -> None:
-        r"""Initialize all initialized states with zeros if they are None.
-
-        Args:
-            reference_tensor (torch.Tensor): the reference tensor, whose shape the states will copy. The shapes will be the same except ``dim``, which will be set to ``num_neurons`` instead.
-        """
+        """Lazily allocate all states using the same reference tensor."""
         for state_name in self._state_names:
             self.zero_state(state_name, reference_tensor)
 
-    def to_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
-        r"""Move a tensor's ``dim`` dimension to the working (last) dimension.
+    def compile_parameter(self, name: str) -> None:
+        """Cache an activated parameter for inference and freeze its raw value.
 
-        Args:
-            tensor (torch.Tensor): the tensor whose ``dim`` dimension will be moved to the last dimension.
+        The cache is a nonpersistent buffer. Raw parameter identity and intended
+        learnability are preserved; repeated compilation is a no-op.
         """
-        return tensor.movedim(self.dim, -1)
-
-    def from_working_dim(self, tensor: torch.Tensor) -> torch.Tensor:
-        r"""Move tensor back from the working (last) dimension to the ``dim`` dimension.
-
-        Args:
-            tensor (torch.Tensor): the tensor whose last dimension will be moved to the ``dim`` dimension.
-        """
-        return tensor.movedim(-1, self.dim)
+        if name not in self._dynamic_params:
+            raise KeyError(name)
+        cache_name = f"_compiled_{name}"
+        if cache_name in self._buffers:
+            return
+        with torch.no_grad():
+            cache = getattr(self, name).detach().clone()
+        self.register_buffer(cache_name, cache, persistent=False)
+        raw = getattr(self, f"raw_{name}")
+        raw.requires_grad_(False)
+        raw.grad = None
 
     def compile_parameters(self) -> None:
-        r"""Compile the layer for inference by pre-computing parameters.
+        """Compile every parameter defined through define_parameter."""
+        for name in self._dynamic_params:
+            self.compile_parameter(name)
 
-        Notes:
-            All parameters registered via ``_register_parameter`` will be optimized, as the ``activation_fn`` will be baked in to the activated parameter.
-            Proper training is not possible on a compiled layer.
-        """
-        if hasattr(self, '_compiled') and self._compiled:
+    def decompile_parameter(self, name: str) -> None:
+        """Delete a parameter cache and restore intended learnability."""
+        if name not in self._dynamic_params:
+            raise KeyError(name)
+        cache_name = f"_compiled_{name}"
+        if cache_name not in self._buffers:
             return
-
-        self._compile_metadata = {}
-        if not hasattr(self, '_dynamic_params'):
-            return
-
-        for param_name in list(self._dynamic_params.keys()):
-            raw_name = f"raw_{param_name}"
-            try:
-                raw_tensor = super().__getattr__(raw_name)
-            except AttributeError:
-                continue
-
-            # Get current computed value via our __getattr__ interceptor
-            computed_value = getattr(self, param_name)
-            is_parameter = isinstance(raw_tensor, nn.Parameter)
-
-            self._compile_metadata[param_name] = {
-                'is_parameter': is_parameter,
-                'learnable': raw_tensor.requires_grad if is_parameter else False
-            }
-
-            # Delete the raw attribute natively
-            delattr(self, raw_name)
-
-            # By registering a buffer, PyTorch handles its persistence natively.
-            # Our __getattr__ will organically ignore it because super().__getattr__(param_name) will now succeed.
-            self.register_buffer(param_name, computed_value.detach().clone())
-
-        self._compiled = True
+        delattr(self, cache_name)
+        getattr(self, f"raw_{name}").requires_grad_(self._parameter_learnability[name])
 
     def decompile_parameters(self) -> None:
-        r"""Decompile the layer to restore training capabilities.
+        """Decompile every parameter defined through define_parameter."""
+        for name in self._dynamic_params:
+            self.decompile_parameter(name)
 
-        Notes:
-            All parameters registered via ``_register_parameter`` will be decompiled, as the ``inverse_fn`` will be used to re-create the raw version of the parameter.
-        """
-        if not hasattr(self, '_compiled') or not self._compiled:
-            return
-
-        for param_name, metadata in self._compile_metadata.items():
-            if not hasattr(self, param_name):
-                continue
-
-            # The currently stored computed buffer
-            compiled_value = getattr(self, param_name)
-
-            # Re-convert to raw via the inverse function
-            inverse_fn = self._inverse_functions[param_name]
-            raw_value = inverse_fn(compiled_value)
-
-            # Eliminate compiled buffer
-            delattr(self, param_name)
-
-            raw_name = f"raw_{param_name}"
-            if metadata['is_parameter']:
-                self.register_parameter(raw_name,
-                                        nn.Parameter(raw_value.detach().clone(), requires_grad=metadata['learnable']))
-            else:
-                self.register_buffer(raw_name, raw_value.detach().clone())
-
-        delattr(self, '_compiled')
-        delattr(self, '_compile_metadata')
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        # Covers both layer.load_state_dict() and loading through a parent model.
+        # A cache computed from the old weights must never survive a weight load.
+        self.decompile_parameters()
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+                                     missing_keys, unexpected_keys, error_msgs)

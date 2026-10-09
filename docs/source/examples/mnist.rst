@@ -51,7 +51,7 @@ The SNN model is:
         def forward(self, x):
             return self.net(x)
 
-The important traceTorch mechanics are ``model.zero_states()`` before each image batch and repeated forward calls over
+The important traceTorch mechanics are ``model.reset_states()`` before each image batch and repeated forward calls over
 the timestep loop.
 
 Sequential MNIST

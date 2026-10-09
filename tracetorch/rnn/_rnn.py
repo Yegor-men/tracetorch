@@ -11,16 +11,15 @@ class SimpleRNN(RNNLayer):
 
     Args:
         in_features (int): number of input features.
-        out_features (int): number of output features. This is the value used as ``num_neurons`` for superclass initialization.
-        dim (int, default=-1): the dimension along which the layer operates.
+        out_features (int): number of output features.
 
     Attributes:
         H: the hidden state. Stores the previous timestep's output.
         lin: the linear layer used to calculate the output.
 
     Notes:
-        - **Input**: tensor of shape ``[*,in_features,*]`` where ``in_features`` is at index ``dim``.
-        - **Output**: tensor of shape ``[*,out_features,*]`` where ``out_features`` is at index ``dim``.
+        - **Input**: tensor of shape ``[..., in_features]``.
+        - **Output**: tensor of shape ``[..., out_features]``.
 
         Concatenates the hidden state ``H`` (previous timestep's output) to the input ``x``, processes both via a linear layer.
         The output is bound by ``tanh``. Records the result into ``H`` and returns it. Pseudocode looks as follows:
@@ -39,10 +38,10 @@ class SimpleRNN(RNNLayer):
         >>> print(output.shape)
         torch.Size([32, 10])
 
-        # Process 64->128 features along the color dimension of an image
-        >>> layer = tt.rnn.SimpleRNN(64, 128, -3)
-        >>> input = torch.rand(32, 64, 28, 28)  # [B, C, H, W] shape
-        >>> output = layer(input)
+        # Move image channels to the last dimension explicitly
+        >>> layer = tt.rnn.SimpleRNN(64, 128)
+        >>> input = torch.rand(32, 64, 28, 28)
+        >>> output = layer(input.movedim(-3, -1)).movedim(-1, -3)
         >>> print(output.shape)
         torch.Size([32, 128, 28, 28])
     """
@@ -51,22 +50,20 @@ class SimpleRNN(RNNLayer):
             self,
             in_features: int,
             out_features: int,
-            dim: int = -1,
     ):
-        super().__init__(out_features, dim)
+        super().__init__()
 
-        self.define_state("H")
+        self.define_state("H", (out_features,))
 
         self.lin = nn.Linear(in_features + out_features, out_features)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
-        H = self.to_working_dim(self.H)
+        H = self.H
 
         H_new = torch.tanh(self.lin(torch.cat([H, x], dim=-1)))
 
-        self.H = self.from_working_dim(H_new)
+        self.H = H_new
 
         return self.H

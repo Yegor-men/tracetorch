@@ -56,18 +56,7 @@ RNN layers
     A gated recurrent unit with reset and update gates.
 
 These layers process one timestep per forward call. They are useful when you want conventional RNN dynamics but still
-want ``tt.Model.zero_states()``, ``detach_states()``, and state saving.
-
-SSM layers
-----------
-
-``tt.ssm`` contains state-space-style layers adapted to the same one-timestep interface:
-
-``S4``, ``S5``, ``S6``, ``Mamba``
-    Experimental traceTorch-compatible implementations.
-
-These layers are convenient for mixing SNNs, RNNs, and SSM-like dynamics in the same model. They are not intended to be
-drop-in replacements for optimized official SSM implementations.
+want ``tt.Model.reset_states()``, ``detach_states()``, and state saving.
 
 Core layers
 -----------
@@ -75,26 +64,17 @@ Core layers
 ``tt.Layer`` is the base class for traceTorch layers. It provides:
 
 * state registration and lazy state initialization;
-* recursive zero/detach behavior through ``tt.Model``;
+* recursive reset/detach behavior through ``tt.Model``;
 * constrained parameter registration;
-* compile/decompile support;
-* helpers for moving the target dimension to and from the working dimension.
+* compile/decompile support.
 
 Most users do not need to subclass ``tt.Layer`` immediately. Read :doc:`../tutorials/custom_layer` when you want to
 create a new traceTorch-compatible layer.
 
-Functional helpers
-------------------
+Helpers
+-------
 
-``tt.functional`` contains small functions used by layers:
-
-* decay/halflife conversion helpers;
-* inverse transforms for constrained parameters;
-* ``sigmoid4x`` as the default SNN spike function;
-* hard spike functions such as ``round_sigmoid4x`` and ``stochastic_sigmoid4x``.
-
-Plotting helpers
-----------------
-
-``tt.plot`` contains plotting utilities used by experiments and examples. These are secondary to the core library and
-may evolve more freely than the model/layer APIs.
+``tt.utils`` provides decay conversion and the ``MoveDim`` wrapper for explicit layouts.
+``tt.inverse_fn`` provides initialization transforms for constrained parameters.
+``tt.snn.spike_fn`` provides deterministic, stochastic and smooth firing functions.
+Plotting utilities live in ``examples/plotting.py``, not the package.

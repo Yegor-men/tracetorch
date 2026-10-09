@@ -1,13 +1,14 @@
 from .core import Layer
 from .core import Model
 
-from . import core, functional, rnn, snn
+from . import core, rnn, snn, inverse_fn, utils
 
 __all__ = [
     "Layer",
     "Model",
     "core",
-    "functional",
     "rnn",
     "snn",
+    "inverse_fn",
+    "utils",
 ]

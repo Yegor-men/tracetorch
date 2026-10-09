@@ -8,14 +8,14 @@ traceTorch is a PyTorch library for stateful recurrent layers, built primarily f
 
 It keeps model code close to ordinary PyTorch while handling the parts that usually make recurrent and spiking models
 awkward: hidden-state initialization, hidden-state resets, truncated history, state persistence, parameter constraints,
-and feature dimensions that are not necessarily the last dimension.
+and explicit feature-last composition.
 
 The short version is:
 
 * Inherit models from ``tt.Model``.
 * Use traceTorch layers inside ordinary PyTorch modules.
 * Loop over timesteps yourself.
-* Call ``zero_states()`` when a new sequence starts.
+* Call ``reset_states()`` when a new sequence starts.
 * Call ``detach_states()`` when you want online or truncated learning.
 
 Where to go first
@@ -42,14 +42,8 @@ What traceTorch provides
     ``SimpleRNN``, ``LSTM``, and ``GRU`` layers adapted to traceTorch's state-management style. They process one
     timestep at a time and keep their hidden states internal.
 
-``tt.ssm``
-    ``S4``, ``S5``, ``S6``, and ``Mamba``-style layers adapted to traceTorch's recurrent interface. These are useful for
-    experimentation and composition with traceTorch layers, but they are not replacements for official optimized SSM
-    implementations.
-
 ``tt.Model`` and ``tt.Layer``
-    The core abstractions. ``tt.Layer`` gives each layer states, constrained parameters, compilation, and dimension
-    helpers. ``tt.Model`` recursively manages every traceTorch layer in a model tree.
+    The core abstractions. ``tt.Layer`` gives each layer states, constrained parameters, compilation, and per-state shape rules. ``tt.Model`` recursively manages every traceTorch layer in a model tree.
 
 .. toctree::
     :maxdepth: 2

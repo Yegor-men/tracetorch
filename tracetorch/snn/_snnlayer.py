@@ -1,64 +1,53 @@
-from ..core import Layer as BaseLayer
-from typing import TypedDict, Optional, Literal, Union, Dict, Any, Set
+from typing import Literal, Union
+
 import torch
 from torch import nn
-from .. import functional
+
+from .. import inverse_fn
+from ..core import Layer as BaseLayer
 
 
 class Layer(BaseLayer):
-    r"""Base class for traceTorch SNN layers.
+    """SNN parameter helpers for scalar or per-neuron initialization.
 
-    This class extends ``tt.Layer`` with parameter registration helpers commonly
-    used by spiking layers:
-
-    * decays are constrained to ``(0, 1)`` through a sigmoid transform;
-    * thresholds are constrained to positive values through a softplus transform;
-
-    Args:
-        num_neurons (int): number of neurons in the target dimension.
-        dim (int, default=-1): dimension along which the layer operates.
-
-    Notes:
-        Users normally instantiate concrete layers such as ``LIB`` or ``LIT``.
-        Subclass this base when creating a custom SNN layer that should integrate
-        with ``tt.Model`` state management and traceTorch parameter compilation.
+    Concrete SNN layers set num_features themselves. Numeric values with rank 1
+    are expanded per neuron; rank 0 shares a scalar. Tensor values are used
+    directly after checking they are scalar or per-neuron vectors.
+    All built-in SNN layers operate on the final input dimension.
     """
 
-    def __init__(self, num_neurons: int, dim: int = -1):
-        super().__init__(num_neurons, dim)
+    def _parameter_tensor(
+            self, name: str, value: Union[float, torch.Tensor], rank: Literal[0, 1],
+    ) -> torch.Tensor:
+        if isinstance(value, torch.Tensor):
+            if value.ndim == 0:
+                return value
+            if value.ndim == 1 and value.numel() == self.num_features:
+                return value
+            raise ValueError(f"{name} must be a scalar or vector of length {self.num_features}")
+        if rank == 0:
+            return torch.tensor(float(value))
+        if rank == 1:
+            return torch.full((self.num_features,), float(value))
+        raise ValueError(f"{name} rank must be 0 (scalar) or 1 (per-neuron)")
 
-    def define_decay(
-            self,
-            name: str,
-            value: Union[float, torch.Tensor],
-            rank: Literal[0, 1],
-            learnable: bool,
-    ):
-        r"""Register a decay parameter constrained to ``(0, 1)``."""
+    def define_decay(self, name: str, value: Union[float, torch.Tensor],
+                     rank: Literal[0, 1], learnable: bool) -> None:
+        """Define a scalar or per-neuron decay constrained to (0, 1)."""
         self.define_parameter(
-            name,
-            value,
-            rank,
-            learnable,
-            init_fn=functional.sigmoid_inverse,
-            inverse_fn=functional.sigmoid_inverse,
-            activation_fn=nn.functional.sigmoid,
+            name, self._parameter_tensor(name, value, rank), learnable,
+            initialization_fn=inverse_fn.sigmoid, activation_fn=torch.sigmoid,
         )
 
-    def define_threshold(
-            self,
-            name: str,
-            value: Union[float, torch.Tensor],
-            rank: Literal[0, 1],
-            learnable: bool,
-    ):
-        r"""Register a positive threshold parameter."""
+    def define_threshold(self, name: str, value: Union[float, torch.Tensor],
+                         rank: Literal[0, 1], learnable: bool) -> None:
+        """Define a scalar or per-neuron positive threshold."""
         self.define_parameter(
-            name,
-            value,
-            rank,
-            learnable,
-            init_fn=functional.softplus_inverse,
-            inverse_fn=functional.softplus_inverse,
-            activation_fn=nn.functional.softplus,
+            name, self._parameter_tensor(name, value, rank), learnable,
+            initialization_fn=inverse_fn.softplus, activation_fn=nn.functional.softplus,
         )
+
+    def define_unbound_parameter(self, name: str, value: Union[float, torch.Tensor],
+                                 rank: Literal[0, 1], learnable: bool) -> None:
+        """Define an unconstrained SNN parameter, such as a scale or weight."""
+        self.define_parameter(name, self._parameter_tensor(name, value, rank), learnable)

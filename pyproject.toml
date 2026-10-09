@@ -17,6 +17,14 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
 [project.urls]
 Homepage = "https://github.com/Yegor-men/tracetorch"
 Repository = "https://github.com/Yegor-men/tracetorch"

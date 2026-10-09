@@ -12,22 +12,19 @@ class LI(SNNLayer):
     a smooth recurrent feature transform.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         beta (float or torch.Tensor, default=0.9): membrane decay. The activated
             value is constrained to ``(0, 1)``.
-        dim (int, default=-1): the dimension along which the layer operates.
         beta_rank (Literal[0, 1], default=1): ``0`` for a scalar decay shared by
             all neurons, ``1`` for one decay per neuron.
         learn_beta (bool, default=True): whether ``beta`` is trainable.
 
     Attributes:
-        mem: membrane state. Lazily initialized to zeros with the input shape,
-            except the target dimension is set to ``num_neurons``.
+        mem: membrane state. Lazily initialized to zeros with the input shape.
         beta: activated membrane decay.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Updates the membrane by exponentially decaying the previous value and
@@ -40,34 +37,34 @@ class LI(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.LI(num_neurons=32)
+        >>> layer = tt.snn.LI(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("mem")
+        self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        mem = self.to_working_dim(self.mem)
+        mem = self.mem
         mem = mem * self.beta + x
 
-        self.mem = self.from_working_dim(mem)
+        self.mem = mem
 
         return self.mem
 
@@ -80,12 +77,11 @@ class DLI(SNNLayer):
     ``neg_mem``; the returned membrane is their sum.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_beta (float or torch.Tensor, default=0.9): decay for the positive
             membrane branch.
         neg_beta (float or torch.Tensor, default=0.9): decay for the negative
             membrane branch.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             decay.
         neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -100,8 +96,7 @@ class DLI(SNNLayer):
         neg_beta: activated negative membrane decay, constrained to ``(0, 1)``.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Dual traces let positive and negative evidence retain different time
@@ -115,42 +110,42 @@ class DLI(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.DLI(num_neurons=32)
+        >>> layer = tt.snn.DLI(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0)
         neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0)
 
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
 
         mem = self.pos_mem + self.neg_mem
 
@@ -165,12 +160,11 @@ class SLI(SNNLayer):
     with decay ``beta``.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         alpha (float or torch.Tensor, default=0.5): synaptic decay, constrained
             to ``(0, 1)``.
         beta (float or torch.Tensor, default=0.9): membrane decay, constrained
             to ``(0, 1)``.
-        dim (int, default=-1): the dimension along which the layer operates.
         alpha_rank (Literal[0, 1], default=1): scalar or per-neuron synaptic
             decay.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
@@ -185,8 +179,7 @@ class SLI(SNNLayer):
         beta: activated membrane decay.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         The synaptic trace is an exponential moving average of the input. The
@@ -201,44 +194,44 @@ class SLI(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.SLI(num_neurons=32)
+        >>> layer = tt.snn.SLI(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             alpha: Union[float, torch.Tensor] = 0.5,
             beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("syn")
+        self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self.define_state("mem")
+        self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        syn = self.to_working_dim(self.syn)
+        syn = self.syn
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        mem = self.to_working_dim(self.mem)
+        mem = self.mem
         mem = mem * self.beta + syn
 
-        self.syn = self.from_working_dim(syn)
-        self.mem = self.from_working_dim(mem)
+        self.syn = syn
+        self.mem = mem
 
         return self.mem
 
@@ -247,16 +240,15 @@ class DSLI(SNNLayer):
     r"""A dual synaptic leaky integrator layer with continuous membrane output.
 
     ``DSLI`` combines dual positive/negative traces with a synaptic stage. It
-    keeps separate positive and negative synaptic traces, then integrates their
-    sum into separate positive and negative membrane traces.
+    keeps separate positive and negative synaptic traces, then integrates each
+    directly into its corresponding membrane trace.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_alpha (float or torch.Tensor, default=0.5): positive synaptic decay.
         neg_alpha (float or torch.Tensor, default=0.5): negative synaptic decay.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
         neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             synaptic decay.
         neg_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -277,8 +269,7 @@ class DSLI(SNNLayer):
         neg_mem: negative membrane state.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -287,27 +278,26 @@ class DSLI(SNNLayer):
 
             pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
             neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
-            syn = pos_syn + neg_syn
-            pos_mem = pos_beta * pos_mem + where(syn >= 0, syn, 0)
-            neg_mem = neg_beta * neg_mem + where(syn <= 0, syn, 0)
+            pos_mem = pos_beta * pos_mem + pos_syn
+            neg_mem = neg_beta * neg_mem + neg_syn
             return pos_mem + neg_mem
 
     Examples::
 
-        >>> layer = tt.snn.DSLI(num_neurons=32)
+        >>> layer = tt.snn.DSLI(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_alpha: Union[float, torch.Tensor] = 0.5,
             neg_alpha: Union[float, torch.Tensor] = 0.5,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             pos_alpha_rank: Literal[0, 1] = 1,
             neg_alpha_rank: Literal[0, 1] = 1,
             pos_beta_rank: Literal[0, 1] = 1,
@@ -317,15 +307,16 @@ class DSLI(SNNLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_syn")
-        self.define_state("neg_syn")
+        self.define_state("pos_syn", (num_features,))
+        self.define_state("neg_syn", (num_features,))
         self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
         self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -333,25 +324,21 @@ class DSLI(SNNLayer):
         """Computes the forward pass."""
         self.zero_states(x)
 
-        x = self.to_working_dim(x)
-
-        pos_syn = self.to_working_dim(self.pos_syn)
-        neg_syn = self.to_working_dim(self.neg_syn)
+        pos_syn = self.pos_syn
+        neg_syn = self.neg_syn
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self.from_working_dim(pos_syn)
-        self.neg_syn = self.from_working_dim(neg_syn)
+        self.pos_syn = pos_syn
+        self.neg_syn = neg_syn
 
-        syn = pos_syn + neg_syn
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
+        pos_mem = pos_mem * self.pos_beta + pos_syn
+        neg_mem = neg_mem * self.neg_beta + neg_syn
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
-        pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0)
-        neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0)
-
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
 
         mem = self.pos_mem + self.neg_mem
 
@@ -366,10 +353,9 @@ class LIEMA(SNNLayer):
     unnormalized accumulator.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         beta (float or torch.Tensor, default=0.9): membrane EMA decay,
             constrained to ``(0, 1)``.
-        dim (int, default=-1): the dimension along which the layer operates.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron decay.
         learn_beta (bool, default=True): whether ``beta`` is trainable.
 
@@ -378,8 +364,7 @@ class LIEMA(SNNLayer):
         beta: activated membrane decay.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -391,34 +376,34 @@ class LIEMA(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.LIEMA(num_neurons=32)
+        >>> layer = tt.snn.LIEMA(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("mem")
+        self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        mem = self.to_working_dim(self.mem)
+        mem = self.mem
         mem = mem * self.beta + x * (1 - self.beta)
 
-        self.mem = self.from_working_dim(mem)
+        self.mem = mem
 
         return self.mem
 
@@ -431,12 +416,11 @@ class DLIEMA(SNNLayer):
     decay independently without allowing unbounded accumulation.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane EMA
             decay.
         neg_beta (float or torch.Tensor, default=0.9): negative membrane EMA
             decay.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_beta_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             decay.
         neg_beta_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -449,8 +433,7 @@ class DLIEMA(SNNLayer):
         neg_mem: negative membrane EMA state.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -463,42 +446,42 @@ class DLIEMA(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.DLIEMA(num_neurons=32)
+        >>> layer = tt.snn.DLIEMA(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             pos_beta_rank: Literal[0, 1] = 1,
             neg_beta_rank: Literal[0, 1] = 1,
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
         pos_mem = pos_mem * self.pos_beta + torch.where(x >= 0, x, 0.0) * (1 - self.pos_beta)
         neg_mem = neg_mem * self.neg_beta + torch.where(x <= 0, x, 0.0) * (1 - self.neg_beta)
 
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
 
         mem = self.pos_mem + self.neg_mem
 
@@ -512,12 +495,11 @@ class SLIEMA(SNNLayer):
     membrane as an EMA of that synaptic current.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         alpha (float or torch.Tensor, default=0.5): synaptic decay, constrained
             to ``(0, 1)``.
         beta (float or torch.Tensor, default=0.9): membrane decay, constrained
             to ``(0, 1)``.
-        dim (int, default=-1): the dimension along which the layer operates.
         alpha_rank (Literal[0, 1], default=1): scalar or per-neuron synaptic
             decay.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
@@ -530,8 +512,7 @@ class SLIEMA(SNNLayer):
         mem: membrane EMA state.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -544,44 +525,44 @@ class SLIEMA(SNNLayer):
 
     Examples::
 
-        >>> layer = tt.snn.SLIEMA(num_neurons=32)
+        >>> layer = tt.snn.SLIEMA(num_features=32)
         >>> input = torch.rand(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             alpha: Union[float, torch.Tensor] = 0.5,
             beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             alpha_rank: Literal[0, 1] = 1,
             beta_rank: Literal[0, 1] = 1,
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("syn")
+        self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
-        self.define_state("mem")
+        self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
 
     def forward(self, x):
         """Computes the forward pass."""
         self.zero_states(x)
-        x = self.to_working_dim(x)
 
-        syn = self.to_working_dim(self.syn)
+        syn = self.syn
         syn = syn * self.alpha + x * (1 - self.alpha)
 
-        mem = self.to_working_dim(self.mem)
+        mem = self.mem
         mem = mem * self.beta + syn * (1 - self.beta)
 
-        self.syn = self.from_working_dim(syn)
-        self.mem = self.from_working_dim(mem)
+        self.syn = syn
+        self.mem = mem
 
         return self.mem
 
@@ -591,16 +572,15 @@ class DSLIEMA(SNNLayer):
 
     ``DSLIEMA`` is the dual, synaptic, bounded-output variant of the leaky
     integrator family. It keeps positive and negative synaptic traces, then
-    updates positive and negative membrane EMA traces from their combined
-    synaptic current.
+    updates each membrane EMA trace directly from its corresponding synaptic
+    current.
 
     Args:
-        num_neurons (int): number of neurons in the target dimension.
+        num_features (int): number of neurons in the final dimension.
         pos_alpha (float or torch.Tensor, default=0.5): positive synaptic decay.
         neg_alpha (float or torch.Tensor, default=0.5): negative synaptic decay.
         pos_beta (float or torch.Tensor, default=0.9): positive membrane decay.
         neg_beta (float or torch.Tensor, default=0.9): negative membrane decay.
-        dim (int, default=-1): the dimension along which the layer operates.
         pos_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron positive
             synaptic decay.
         neg_alpha_rank (Literal[0, 1], default=1): scalar or per-neuron negative
@@ -621,8 +601,7 @@ class DSLIEMA(SNNLayer):
         neg_mem: negative membrane EMA state.
 
     Notes:
-        - **Input**: tensor of shape ``[*,num_neurons,*]`` where ``num_neurons``
-          is at index ``dim``.
+        - **Input**: tensor of shape ``[..., num_features]``.
         - **Output**: tensor with the same shape as the input.
 
         Pseudocode looks as follows:
@@ -631,27 +610,26 @@ class DSLIEMA(SNNLayer):
 
             pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
             neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
-            syn = pos_syn + neg_syn
-            pos_mem = pos_beta * pos_mem + (1 - pos_beta) * where(syn >= 0, syn, 0)
-            neg_mem = neg_beta * neg_mem + (1 - neg_beta) * where(syn <= 0, syn, 0)
+            pos_mem = pos_beta * pos_mem + (1 - pos_beta) * pos_syn
+            neg_mem = neg_beta * neg_mem + (1 - neg_beta) * neg_syn
             return pos_mem + neg_mem
 
     Examples::
 
-        >>> layer = tt.snn.DSLIEMA(num_neurons=32)
+        >>> layer = tt.snn.DSLIEMA(num_features=32)
         >>> input = torch.randn(16, 32)
         >>> output = layer(input)
         >>> print(output.shape)
         torch.Size([16, 32])
     """
+
     def __init__(
             self,
-            num_neurons: int,
+            num_features: int,
             pos_alpha: Union[float, torch.Tensor] = 0.5,
             neg_alpha: Union[float, torch.Tensor] = 0.5,
             pos_beta: Union[float, torch.Tensor] = 0.9,
             neg_beta: Union[float, torch.Tensor] = 0.9,
-            dim: int = -1,
             pos_alpha_rank: Literal[0, 1] = 1,
             neg_alpha_rank: Literal[0, 1] = 1,
             pos_beta_rank: Literal[0, 1] = 1,
@@ -661,15 +639,16 @@ class DSLIEMA(SNNLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__(num_neurons, dim)
+        super().__init__()
+        self.num_features = num_features
 
-        self.define_state("pos_syn")
-        self.define_state("neg_syn")
+        self.define_state("pos_syn", (num_features,))
+        self.define_state("neg_syn", (num_features,))
         self.define_decay("pos_alpha", pos_alpha, pos_alpha_rank, learn_pos_alpha)
         self.define_decay("neg_alpha", neg_alpha, neg_alpha_rank, learn_neg_alpha)
 
-        self.define_state("pos_mem")
-        self.define_state("neg_mem")
+        self.define_state("pos_mem", (num_features,))
+        self.define_state("neg_mem", (num_features,))
         self.define_decay("pos_beta", pos_beta, pos_beta_rank, learn_pos_beta)
         self.define_decay("neg_beta", neg_beta, neg_beta_rank, learn_neg_beta)
 
@@ -677,25 +656,21 @@ class DSLIEMA(SNNLayer):
         """Computes the forward pass."""
         self.zero_states(x)
 
-        x = self.to_working_dim(x)
-
-        pos_syn = self.to_working_dim(self.pos_syn)
-        neg_syn = self.to_working_dim(self.neg_syn)
+        pos_syn = self.pos_syn
+        neg_syn = self.neg_syn
         pos_syn = pos_syn * self.pos_alpha + torch.where(x >= 0, x, 0.0) * (1 - self.pos_alpha)
         neg_syn = neg_syn * self.neg_alpha + torch.where(x <= 0, x, 0.0) * (1 - self.neg_alpha)
 
-        self.pos_syn = self.from_working_dim(pos_syn)
-        self.neg_syn = self.from_working_dim(neg_syn)
+        self.pos_syn = pos_syn
+        self.neg_syn = neg_syn
 
-        syn = pos_syn + neg_syn
+        pos_mem = self.pos_mem
+        neg_mem = self.neg_mem
+        pos_mem = pos_mem * self.pos_beta + pos_syn * (1 - self.pos_beta)
+        neg_mem = neg_mem * self.neg_beta + neg_syn * (1 - self.neg_beta)
 
-        pos_mem = self.to_working_dim(self.pos_mem)
-        neg_mem = self.to_working_dim(self.neg_mem)
-        pos_mem = pos_mem * self.pos_beta + torch.where(syn >= 0, syn, 0.0) * (1 - self.pos_beta)
-        neg_mem = neg_mem * self.neg_beta + torch.where(syn <= 0, syn, 0.0) * (1 - self.neg_beta)
-
-        self.pos_mem = self.from_working_dim(pos_mem)
-        self.neg_mem = self.from_working_dim(neg_mem)
+        self.pos_mem = pos_mem
+        self.neg_mem = neg_mem
 
         mem = self.pos_mem + self.neg_mem
 

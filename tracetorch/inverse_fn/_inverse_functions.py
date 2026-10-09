@@ -1,7 +1,7 @@
 import torch
 
 
-def sigmoid_inverse(x: torch.Tensor) -> torch.Tensor:
+def sigmoid(x: torch.Tensor) -> torch.Tensor:
     r"""Return the logit transform of a tensor in ``(0, 1)``.
 
     traceTorch uses this when registering constrained decay parameters. The raw
@@ -20,7 +20,7 @@ def sigmoid_inverse(x: torch.Tensor) -> torch.Tensor:
     return torch.logit(x)
 
 
-def softplus_inverse(x: torch.Tensor) -> torch.Tensor:
+def softplus(x: torch.Tensor) -> torch.Tensor:
     r"""Return the inverse softplus transform of a positive tensor.
 
     traceTorch uses this when registering positive constrained parameters such as

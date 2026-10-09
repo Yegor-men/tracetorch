@@ -60,7 +60,7 @@ The sequence is processed explicitly:
 
 .. code-block:: python
 
-    model.zero_states()
+    model.reset_states()
 
     for t in range(seq_len):
         output = model(events[t])

@@ -1,23 +1,14 @@
 Creating a Custom Layer
 =======================
 
-A traceTorch layer is a PyTorch module with a small amount of state-management structure. This tutorial recreates a
-minimal GRU-like layer to show the moving parts without drowning in SNN details.
+A traceTorch layer extends ``nn.Module`` with state management and optional transformed parameters.
+The base constructor takes no feature count or dimension. A layer processes one timestep per call;
+the caller loops over time.
 
-The goal
---------
+Declaring states
+----------------
 
-We want a layer that:
-
-* stores a hidden state ``H``;
-* creates ``H`` lazily from the input shape;
-* works on any feature dimension through ``dim``;
-* integrates with ``tt.Model.zero_states()`` and ``detach_states()``.
-
-Subclass a traceTorch layer
----------------------------
-
-For RNN-style layers, subclass ``tt.rnn.Layer``. It already inherits from ``tt.Layer``.
+Each state declares its own trailing shape and how many trailing reference dimensions to replace:
 
 .. code-block:: python
 
@@ -27,49 +18,32 @@ For RNN-style layers, subclass ``tt.rnn.Layer``. It already inherits from ``tt.L
 
 
     class MiniGRU(tt.rnn.Layer):
-        def __init__(self, in_features: int, out_features: int, dim: int = -1):
-            super().__init__(num_neurons=out_features, dim=dim)
-
-            self._initialize_state("H")
+        def __init__(self, in_features: int, out_features: int):
+            super().__init__()
+            self.define_state("H", (out_features,))
             self.gates = nn.Linear(in_features + out_features, 2 * out_features)
             self.candidate = nn.Linear(in_features + out_features, out_features)
 
-Registering a state
--------------------
+        def forward(self, x):
+            self.zero_states(x)
+            H = self.H
+            reset, update = torch.sigmoid(self.gates(torch.cat([H, x], dim=-1))).chunk(2, dim=-1)
+            candidate = torch.tanh(self.candidate(torch.cat([H * reset, x], dim=-1)))
+            self.H = H * (1 - update) + update * candidate
+            return self.H
 
-``_initialize_state("H")`` records the state name and sets ``self.H = None``. That is enough for ``tt.Model`` to find and
-manage the state later.
+``define_state(name, shape, dim=-1)`` sets the attribute to ``None`` and records its allocation rule.
+``zero_state(name, x)`` allocates zeros only if the state is ``None``, using
+``x.shape[:dim] + shape`` and the reference dtype/device.
 
-Forward pass
-------------
+For example, input ``[B, L, D]`` and state shape ``(512, 4)`` give ``[B, L, 512, 4]`` with
+``dim=-1`` or ``[B, 512, 4]`` with ``dim=-2``. ``dim=None`` removes no input dimensions.
+Zero and positive dimensions are rejected. Scalar state shapes ``()`` are also supported.
 
-The forward pass has the same shape as the built-in layers:
-
-.. code-block:: python
-
-    def forward(self, x):
-        self._ensure_states(x)
-
-        x = self._to_working_dim(x)
-        H = self._to_working_dim(self.H)
-
-        H_x = torch.cat([H, x], dim=-1)
-        reset, update = torch.sigmoid(self.gates(H_x)).chunk(2, dim=-1)
-
-        candidate = torch.tanh(self.candidate(torch.cat([H * reset, x], dim=-1)))
-        H = H * (1 - update) + update * candidate
-
-        self.H = self._from_working_dim(H)
-        return self.H
-
-``_ensure_states(x)``
-    Creates ``H`` if it is ``None``. The state shape matches ``x`` except the target dimension becomes ``out_features``.
-
-``_to_working_dim(x)``
-    Moves the configured ``dim`` to the last dimension so linear layers can operate normally.
-
-``_from_working_dim(H)``
-    Moves the last dimension back to the configured ``dim``.
+Reset states before changing the instance shape or starting a new independent sequence.
+``reset_state(name)`` and ``reset_states()`` set states to ``None``; detach methods cut their history.
+Custom layers can override ``zero_state`` when they need a parameter-dependent resting state rather than zeros.
+The plural method calls the singular method for every declared state.
 
 Using the layer
 ---------------
@@ -86,41 +60,55 @@ Using the layer
 
 
     model = Net()
-    model.zero_states()
+    model.reset_states()
     y = model(torch.rand(16, 64))
-    print(y.shape)
-    # torch.Size([16, 32])
+    # y.shape == torch.Size([16, 32])
 
-Adding constrained parameters
------------------------------
+Built-in layers use the last dimension for features. For channel-first images, place
+``tt.utils.MoveDim(-3, -1)`` before a layer and ``tt.utils.MoveDim(-1, -3)`` after it in
+``nn.Sequential``. Hidden states remain in the feature-last layout.
 
-SNN and SSM layers often need constrained parameters. For example, a decay should stay between zero and one. SNN layers
-use helper methods such as ``_register_decay``:
+Defining parameters
+-------------------
+
+The base layer accepts an actual tensor of any shape, without scalar expansion or rank restrictions:
+
+.. code-block:: python
+
+    self.define_parameter(
+        "beta",
+        torch.full((512,), 0.9),
+        learnable=True,
+        initialization_fn=tt.inverse_fn.sigmoid,
+        activation_fn=torch.sigmoid,
+    )
+
+The initialization function runs once, converting the effective value into its raw representation.
+``self.raw_beta`` is always an ``nn.Parameter``. ``self.beta`` returns the activated raw value or,
+while compiled, its detached cached value. No initialization function is retained for decompilation.
+
+Use ``set_parameter_learnable("beta", False)`` to change intended learnability. This setting survives
+the temporary freeze imposed by compilation. Directly changing ``requires_grad`` does not update that intention.
+
+SNN convenience helpers
+-----------------------
+
+SNN scalar/per-neuron construction belongs to ``tt.snn.Layer`` rather than the generic base:
 
 .. code-block:: python
 
     class DecayLayer(tt.snn.Layer):
-        def __init__(self, num_neurons: int, beta: float = 0.9):
-            super().__init__(num_neurons)
-            self._initialize_state("mem")
-            self._register_decay("beta", beta, rank=1, learnable=True)
+        def __init__(self, num_features: int, beta: float = 0.9):
+            super().__init__()
+            self.num_features = num_features
+            self.define_state("mem", (num_features,))
+            self.define_decay("beta", beta, rank=1, learnable=True)
 
         def forward(self, x):
-            self._ensure_states(x)
+            self.zero_states(x)
             self.mem = self.mem * self.beta + x
             return self.mem
 
-The public ``self.beta`` value is activated through a sigmoid, so it stays in ``(0, 1)``. The raw stored parameter is
-``self.raw_beta``. This is what allows ``TTcompile()`` and ``TTdecompile()`` to optimize constrained parameters later.
-
-Checklist
----------
-
-When creating a custom traceTorch layer:
-
-* call the superclass with ``num_neurons`` and ``dim``;
-* call ``_initialize_state`` for every hidden state;
-* call ``_ensure_states(x)`` before using states in ``forward``;
-* use ``_to_working_dim`` before operations that expect features last;
-* write updated states back through ``_from_working_dim``;
-* return one tensor, keeping hidden states internal.
+The SNN helpers ``define_decay``, ``define_threshold`` and ``define_neuron_parameter`` support numeric
+scalar expansion: rank 0 shares one value; rank 1 initializes a value per neuron. Tensor inputs
+are used as scalar or per-neuron values directly.

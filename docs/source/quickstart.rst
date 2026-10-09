@@ -23,9 +23,9 @@ traceTorch models are ordinary PyTorch modules with one important change: inheri
             self.net = nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(784, 128),
-                tt.snn.LIB(num_neurons=128),
+                tt.snn.LIB(num_features=128),
                 nn.Linear(128, 10),
-                tt.snn.LI(num_neurons=10),
+                tt.snn.LI(num_features=10),
             )
 
         def forward(self, x):
@@ -36,7 +36,7 @@ traceTorch models are ordinary PyTorch modules with one important change: inheri
     model = Net().to(device)
 
 ``tt.snn.LIB`` is a leaky integrate-and-binary-fire layer. With the default
-``spike_fn=tt.functional.sigmoid4x``, it returns a smooth firing value rather than a hard discrete spike. ``tt.snn.LI``
+``spike_fn=tt.snn.spike_fn.deterministic``, it returns hard spikes with surrogate gradients. ``tt.snn.LI``
 is a continuous leaky integrator, useful as a simple readout trace.
 
 The timestep loop
@@ -56,7 +56,7 @@ model 20 times.
 
         model.train()
         model.zero_grad()
-        model.zero_states()
+        model.reset_states()
 
         running_output = 0
         for _ in range(20):
@@ -68,7 +68,7 @@ model 20 times.
         loss.backward()
         optimizer.step()
 
-The important line is ``model.zero_states()``. It resets all traceTorch hidden states to ``None`` so they will be lazily
+The important line is ``model.reset_states()``. It resets all traceTorch hidden states to ``None`` so they will be lazily
 created with the correct batch shape on the first timestep.
 
 Online learning
@@ -92,16 +92,18 @@ the whole sequence, do not detach until after the sequence.
 Working with images
 -------------------
 
-Layers operate on the dimension given by ``dim``. The default is ``-1``, which is natural for MLPs. For image channels,
-use ``dim=-3``.
+Built-in layers operate on the final dimension. Move image channels explicitly before and after the layer:
 
 .. code-block:: python
 
-    layer = tt.snn.LIB(num_neurons=32, dim=-3)
+    layer = nn.Sequential(
+        tt.utils.MoveDim(-3, -1),
+        tt.snn.LIB(num_features=32),
+        tt.utils.MoveDim(-1, -3),
+    )
     x = torch.rand(16, 32, 28, 28)
     y = layer(x)
-    print(y.shape)
-    # torch.Size([16, 32, 28, 28])
+    # y.shape == torch.Size([16, 32, 28, 28])
 
 Next steps
 ----------
