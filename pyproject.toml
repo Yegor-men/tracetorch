@@ -6,9 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "tracetorch"
 version = "0.19.2"
 authors = [{ name = "Yegor Menovchshikov", email = "yegor.mn@gmail.com" }]
-description = "A strict, ergonomic, and powerful library for SNNs and RNNs in PyTorch."
+description = "Stateful recurrent layers for PyTorch."
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 license = "MIT"
 dependencies = ["torch>=2.0.0"]
 classifiers = [

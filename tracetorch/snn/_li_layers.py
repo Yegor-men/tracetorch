@@ -51,8 +51,7 @@ class LI(SNNLayer):
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
@@ -104,9 +103,10 @@ class DLI(SNNLayer):
 
         ::
 
-            pos_mem = pos_beta * pos_mem + where(x >= 0, x, 0)
-            neg_mem = neg_beta * neg_mem + where(x <= 0, x, 0)
-            return pos_mem + neg_mem
+            pos_mem = pos_beta * pos_mem + maximum(x, 0)
+            neg_mem = neg_beta * neg_mem + minimum(x, 0)
+            mem = pos_mem + neg_mem
+            return mem
 
     Examples::
 
@@ -127,8 +127,7 @@ class DLI(SNNLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_mem", (num_features,))
         self.define_state("neg_mem", (num_features,))
@@ -211,8 +210,7 @@ class SLI(SNNLayer):
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -276,11 +274,12 @@ class DSLI(SNNLayer):
 
         ::
 
-            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
-            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * maximum(x, 0)
             pos_mem = pos_beta * pos_mem + pos_syn
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * minimum(x, 0)
             neg_mem = neg_beta * neg_mem + neg_syn
-            return pos_mem + neg_mem
+            mem = pos_mem + neg_mem
+            return mem
 
     Examples::
 
@@ -307,8 +306,7 @@ class DSLI(SNNLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_syn", (num_features,))
         self.define_state("neg_syn", (num_features,))
@@ -390,8 +388,7 @@ class LIEMA(SNNLayer):
             beta_rank: Literal[0, 1] = 1,
             learn_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
@@ -440,9 +437,10 @@ class DLIEMA(SNNLayer):
 
         ::
 
-            pos_mem = pos_beta * pos_mem + (1 - pos_beta) * where(x >= 0, x, 0)
-            neg_mem = neg_beta * neg_mem + (1 - neg_beta) * where(x <= 0, x, 0)
-            return pos_mem + neg_mem
+            pos_mem = pos_beta * pos_mem + (1 - pos_beta) * maximum(x, 0)
+            neg_mem = neg_beta * neg_mem + (1 - neg_beta) * minimum(x, 0)
+            mem = pos_mem + neg_mem
+            return mem
 
     Examples::
 
@@ -463,8 +461,7 @@ class DLIEMA(SNNLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_mem", (num_features,))
         self.define_state("neg_mem", (num_features,))
@@ -542,8 +539,7 @@ class SLIEMA(SNNLayer):
             learn_alpha: bool = True,
             learn_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -608,11 +604,12 @@ class DSLIEMA(SNNLayer):
 
         ::
 
-            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
-            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * maximum(x, 0)
             pos_mem = pos_beta * pos_mem + (1 - pos_beta) * pos_syn
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * minimum(x, 0)
             neg_mem = neg_beta * neg_mem + (1 - neg_beta) * neg_syn
-            return pos_mem + neg_mem
+            mem = pos_mem + neg_mem
+            return mem
 
     Examples::
 
@@ -639,8 +636,7 @@ class DSLIEMA(SNNLayer):
             learn_pos_beta: bool = True,
             learn_neg_beta: bool = True,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_syn", (num_features,))
         self.define_state("neg_syn", (num_features,))

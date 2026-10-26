@@ -1,7 +1,9 @@
 Core
 ====
 
-Core classes provide the state-management and parameter-management machinery used by every traceTorch layer.
+The core classes coordinate the pieces used throughout the library. ``Layer``
+declares the states and transformed parameters for one update, while ``Model``
+finds those layers inside a network so we can manage their memory together.
 
 Model
 -----

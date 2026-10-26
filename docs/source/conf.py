@@ -22,18 +22,33 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
+    'nbsphinx',
+    'nbsphinx_link',
 ]
 
+# Notebook outputs are recorded during authoring, not during the documentation build.
+nbsphinx_execute = 'never'
+nbsphinx_allow_errors = False
+nbsphinx_codecell_lexer = 'python3'
+
+
+def configure_linked_notebooks(app):
+    # Set this after source registration; nbsphinx-link's default lambda cannot be cached.
+    app.config.nbsphinx_custom_formats['.nblink'] = ('nbformat.reads', {'as_version': 4})
+
+
+def setup(app):
+    app.connect('builder-inited', configure_linked_notebooks)
+    app.connect('html-page-context', hide_notebook_link_source)
+
+
+def hide_notebook_link_source(app, pagename, templatename, context, doctree):
+    # A .nblink contains routing metadata; the lesson links to its actual notebook.
+    if context.get('sourcename', '').endswith('.nblink.txt'):
+        context['show_source'] = False
+
 napoleon_use_ivar = True
-autodoc_mock_imports = [
-    'torch',
-    'numpy',
-    'matplotlib',
-    'matplotlib.pyplot',
-    'matplotlib.colors',
-    'scipy',
-    'scipy.stats',
-]
+autodoc_mock_imports = ['torch']
 
 import importlib.util
 
@@ -51,6 +66,7 @@ if importlib.util.find_spec('sphinxcontrib.googleanalytics') is not None:
 has_rtd_theme = importlib.util.find_spec('sphinx_rtd_theme') is not None
 html_theme = 'sphinx_rtd_theme' if has_rtd_theme else 'alabaster'
 html_static_path = ['_static']
+html_baseurl = 'https://yegor-men.github.io/tracetorch/'
 html_theme_options = {}
 if has_rtd_theme:
     html_theme_options = {
@@ -61,5 +77,12 @@ if has_rtd_theme:
 
 import os
 import sys
+import shutil
 
-sys.path.insert(0, os.path.abspath('../..'))
+# The documentation dependency bundles Pandoc for systems without a separate install.
+if shutil.which('pandoc') is None:
+    import pypandoc
+
+    os.environ['PATH'] = os.path.dirname(pypandoc.get_pandoc_path()) + os.pathsep + os.environ.get('PATH', '')
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))

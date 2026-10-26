@@ -8,8 +8,8 @@ class LIB(SNNLayer):
     r"""A leaky integrate-and-binary-fire layer.
 
     ``LIB`` is traceTorch's one-sided firing layer. It stores one membrane trace,
-    converts the distance from threshold into a firing output, subtracts the threshold-scaled output from the
-    membrane, and returns the output.
+    converts the distance from threshold into a firing output, subtracts the threshold-scaled previous output from the
+    membrane on the next timestep, and returns the current output.
 
     Args:
         num_features (int): number of neurons in the final dimension.
@@ -17,7 +17,6 @@ class LIB(SNNLayer):
             to ``(0, 1)``.
         threshold (float or torch.Tensor, default=1.0): positive firing
             threshold, constrained to positive values.
-            the spike function.
         beta_rank (Literal[0, 1], default=1): scalar or per-neuron membrane
             decay.
         threshold_rank (Literal[0, 1], default=1): scalar or per-neuron
@@ -43,7 +42,10 @@ class LIB(SNNLayer):
 
         ::
 
-            mem = beta * mem + x
+            reset = prev_output * threshold
+            mem = beta * (mem - reset) + x
+            spikes = spike_fn(mem - threshold)
+            prev_output = spikes
             return spikes
 
     Examples::
@@ -66,8 +68,7 @@ class LIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("mem", (num_features,))
         self.define_state("prev_output", (num_features,))
@@ -130,9 +131,12 @@ class DLIB(SNNLayer):
 
         ::
 
-            pos_mem = pos_beta * pos_mem + where(x >= 0, x, 0)
-            neg_mem = neg_beta * neg_mem + where(x <= 0, x, 0)
+            reset = prev_output * threshold
+            pos_mem = pos_beta * (pos_mem - reset / 2) + maximum(x, 0)
+            neg_mem = neg_beta * (neg_mem - reset / 2) + minimum(x, 0)
             mem = pos_mem + neg_mem
+            spikes = spike_fn(mem - threshold)
+            prev_output = spikes
             return spikes
 
     Examples::
@@ -158,8 +162,7 @@ class DLIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_mem", (num_features,))
         self.define_state("neg_mem", (num_features,))
@@ -231,8 +234,11 @@ class SLIB(SNNLayer):
 
         ::
 
+            reset = prev_output * threshold
             syn = alpha * syn + (1 - alpha) * x
-            mem = beta * mem + syn
+            mem = beta * (mem - reset) + syn
+            spikes = spike_fn(mem - threshold)
+            prev_output = spikes
             return spikes
 
     Examples::
@@ -258,8 +264,7 @@ class SLIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -333,8 +338,10 @@ class RLIB(SNNLayer):
 
         ::
 
+            reset = prev_output * threshold
             rec = gamma * rec + (1 - gamma) * prev_output
-            mem = beta * mem + x + rec_weight * rec
+            mem = beta * (mem - reset) + x + rec_weight * rec
+            spikes = spike_fn(mem - threshold)
             prev_output = spikes
             return spikes
 
@@ -364,8 +371,7 @@ class RLIB(SNNLayer):
             learn_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
@@ -451,10 +457,14 @@ class DSLIB(SNNLayer):
 
         ::
 
-            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * where(x >= 0, x, 0)
-            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * where(x <= 0, x, 0)
-            pos_mem = pos_beta * pos_mem + pos_syn
-            neg_mem = neg_beta * neg_mem + neg_syn
+            reset = prev_output * threshold
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * maximum(x, 0)
+            pos_mem = pos_beta * (pos_mem - reset / 2) + pos_syn
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * minimum(x, 0)
+            neg_mem = neg_beta * (neg_mem - reset / 2) + neg_syn
+            mem = pos_mem + neg_mem
+            spikes = spike_fn(mem - threshold)
+            prev_output = spikes
             return spikes
 
     Examples::
@@ -486,8 +496,7 @@ class DSLIB(SNNLayer):
             learn_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_syn", (num_features,))
         self.define_state("neg_syn", (num_features,))
@@ -594,10 +603,13 @@ class DRLIB(SNNLayer):
 
         ::
 
-            pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * where(prev_output >= 0, prev_output, 0)
-            neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * where(prev_output <= 0, prev_output, 0)
-            pos_mem = pos_beta * pos_mem + pos_rec_weight * pos_rec + where(x >= 0, x, 0)
-            neg_mem = neg_beta * neg_mem + neg_rec_weight * neg_rec + where(x <= 0, x, 0)
+            reset = prev_output * threshold
+            pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * maximum(prev_output, 0)
+            pos_mem = pos_beta * (pos_mem - reset / 2) + maximum(x, 0) + pos_rec_weight * pos_rec
+            neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * minimum(prev_output, 0)
+            neg_mem = neg_beta * (neg_mem - reset / 2) + minimum(x, 0) + neg_rec_weight * neg_rec
+            mem = pos_mem + neg_mem
+            spikes = spike_fn(mem - threshold)
             prev_output = spikes
             return spikes
 
@@ -636,8 +648,7 @@ class DRLIB(SNNLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_mem", (num_features,))
         self.define_state("neg_mem", (num_features,))
@@ -737,9 +748,11 @@ class SRLIB(SNNLayer):
 
         ::
 
+            reset = prev_output * threshold
             syn = alpha * syn + (1 - alpha) * x
             rec = gamma * rec + (1 - gamma) * prev_output
-            mem = beta * mem + syn + rec_weight * rec
+            mem = beta * (mem - reset) + syn + rec_weight * rec
+            spikes = spike_fn(mem - threshold)
             prev_output = spikes
             return spikes
 
@@ -772,8 +785,7 @@ class SRLIB(SNNLayer):
             learn_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -821,7 +833,7 @@ class SRLIB(SNNLayer):
 class DSRLIB(SNNLayer):
     r"""A dual synaptic recurrent leaky integrate-and-binary-fire layer.
 
-    ``DSRLIB`` is the most expressive binary SNN layer in traceTorch. It combines
+    ``DSRLIB`` combines
     dual positive/negative synaptic traces, dual positive/negative recurrent
     traces, dual positive/negative membrane traces, and a one-sided binary firing
     output.
@@ -888,6 +900,20 @@ class DSRLIB(SNNLayer):
         the returned output is non-negative when the spike function follows the
         standard ``[0, 1]`` output convention.
 
+    Pseudocode::
+
+            reset = prev_output * threshold
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * maximum(x, 0)
+            pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * maximum(prev_output, 0)
+            pos_mem = pos_beta * (pos_mem - reset / 2) + pos_syn + pos_rec_weight * pos_rec
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * minimum(x, 0)
+            neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * minimum(prev_output, 0)
+            neg_mem = neg_beta * (neg_mem - reset / 2) + neg_syn + neg_rec_weight * neg_rec
+            mem = pos_mem + neg_mem
+            spikes = spike_fn(mem - threshold)
+            prev_output = spikes
+            return spikes
+
     Examples::
 
         >>> layer = tt.snn.DSRLIB(num_features=32)
@@ -929,8 +955,7 @@ class DSRLIB(SNNLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_syn", (num_features,))
         self.define_state("neg_syn", (num_features,))

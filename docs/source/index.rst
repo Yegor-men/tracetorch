@@ -1,58 +1,46 @@
-traceTorch Documentation
-========================
+traceTorch
+==========
 
 .. image:: _static/tracetorch_banner.png
-    :alt: traceTorch banner image
+   :alt: traceTorch banner
 
-traceTorch is a PyTorch library for stateful recurrent layers, built primarily for spiking neural networks.
+A recurrent model uses earlier inputs to make sense of what it sees now.
+Spiking neural networks do this with neurons that integrate input, retain a
+decaying membrane state and produce firing events. GRUs and LSTMs keep their
+own forms of memory, using gates to control what remains from one step to the next.
 
-It keeps model code close to ordinary PyTorch while handling the parts that usually make recurrent and spiking models
-awkward: hidden-state initialization, hidden-state resets, truncated history, state persistence, parameter constraints,
-and explicit feature-last composition.
+traceTorch provides these stateful layers for PyTorch. Each layer processes one
+timestep and keeps its own hidden states, so we can combine it with ordinary
+linear layers, convolutions and containers. Our code supplies the sequence,
+decides where memory should reset, and chooses which outputs contribute to loss.
 
-The short version is:
+The library includes 32 leaky-integrator variants, SimpleRNN, GRU and LSTM layers,
+along with a base class for custom updates and independently shaped states.
+We can reset, detach, save or restore those states across a model without passing
+them through every module by hand.
 
-* Inherit models from ``tt.Model``.
-* Use traceTorch layers inside ordinary PyTorch modules.
-* Loop over timesteps yourself.
-* Call ``reset_states()`` when a new sequence starts.
-* Call ``detach_states()`` when you want online or truncated learning.
+Getting started
+---------------
 
-Where to go first
------------------
+If you're new to the library, start with :doc:`installation/index` and the
+:doc:`quickstart`. We'll build a small model that remembers a random value
+through several timesteps, then train it with a complete PyTorch loop.
 
-If you are new to traceTorch, read the documentation in this order:
+:doc:`introduction/index` follows that example with the reasoning behind the
+interface and the equations behind the layers. From there, the
+:doc:`tutorials/index` work through practical image, audio and text tasks, with
+notebooks for exploration and complete Python programs alongside them.
 
-1. :doc:`Installation <installation/index>` shows how to install the package and run examples.
-2. :doc:`Quickstart <quickstart>` builds the smallest useful model and training loop.
-3. :doc:`Introduction <introduction/index>` explains the mental model: hidden states, timestep loops, SNN naming, and layer choices.
-4. :doc:`Examples <examples/index>` walks through the runnable scripts in the repository.
-5. :doc:`Tutorials <tutorials/index>` covers save/load, compile/decompile, and custom layer creation.
-6. :doc:`Reference <reference/index>` links the API docstrings.
-
-What traceTorch provides
-------------------------
-
-``tt.snn``
-    32 leaky-integrator-based SNN layers. The family covers continuous readout layers, binary firing layers, ternary
-    firing layers, scaled ternary layers, dual sign-specific traces, synaptic traces, recurrent traces, and combinations
-    of those mechanisms.
-
-``tt.rnn``
-    ``SimpleRNN``, ``LSTM``, and ``GRU`` layers adapted to traceTorch's state-management style. They process one
-    timestep at a time and keep their hidden states internal.
-
-``tt.Model`` and ``tt.Layer``
-    The core abstractions. ``tt.Layer`` gives each layer states, constrained parameters, compilation, and per-state shape rules. ``tt.Model`` recursively manages every traceTorch layer in a model tree.
+You can use the :doc:`reference/index` whenever you need a method signature,
+parameter constraint or the exact update for a particular layer.
 
 .. toctree::
-    :maxdepth: 2
-    :caption: Documentation
-    :hidden:
+   :maxdepth: 2
+   :caption: Documentation
+   :hidden:
 
-    installation/index
-    quickstart
-    introduction/index
-    examples/index
-    tutorials/index
-    reference/index
+   installation/index
+   quickstart
+   introduction/index
+   tutorials/index
+   reference/index

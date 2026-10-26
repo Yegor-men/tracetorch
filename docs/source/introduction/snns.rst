@@ -1,270 +1,188 @@
-The SNNs of traceTorch
-======================
+Understanding the neuron updates
+================================
 
-traceTorch was designed around spiking neural networks, but it deliberately treats "spiking" as a configurable part of
-the layer rather than as an unavoidable hard-coded event. The SNN layers are recurrent dynamical systems first: they keep
-one or more traces, update those traces one timestep at a time, and optionally convert the membrane value into binary,
-ternary, or scaled ternary output.
+The SNN layers differ in what they remember and how they turn that memory into
+an output. We'll start with one membrane value, then add firing, input filtering
+and output history. The equations use one feature to keep the notation readable;
+the implementation applies the same operations across the final feature axis.
 
-This is the main idea to keep in mind when reading the API:
-
-* ``LI`` layers return the membrane trace directly. They are leaky integrators, not firing neurons.
-* ``LIB`` layers use one positive threshold and produce non-negative output.
-* ``LIT`` layers use positive and negative thresholds and can produce positive or negative output.
-* ``LITS`` layers are ternary layers with learnable or fixed positive and negative output scales.
-* ``D`` splits traces into positive and negative branches.
-* ``S`` adds a synaptic trace before the membrane trace.
-* ``R`` adds a recurrent trace from the previous output.
-
-The membrane trace
-------------------
-
-The simplest traceTorch SNN layer is ``LI``. It stores a membrane state called ``mem`` and updates it as:
-
-::
-
-    mem = beta * mem + x
-    return mem
-
-The decay ``beta`` is constrained to ``(0, 1)`` by the layer registration machinery, even when it is learnable. A value
-near zero makes the layer mostly react to the current input. A value near one gives the layer longer memory.
-
-The ``LIEMA`` variants use an exponential-moving-average form instead:
-
-::
-
-    mem = beta * mem + (1 - beta) * x
-    return mem
-
-This keeps the magnitude bounded in a way that is useful when the layer is meant to smooth a signal instead of
-accumulate evidence.
-
-Spikes, intensities, and surrogate functions
---------------------------------------------
-
-Binary firing layers subtract the previous output's threshold-scaled reset before decay and integration:
-
-::
-
-    mem = (mem - prev_output * threshold) * beta + x
-    spikes = spike_fn(mem - threshold)
-    prev_output = spikes
-    return spikes
-
-The default ``spike_fn`` is ``tt.snn.spike_fn.deterministic``: a hard threshold in the forward
-pass with the derivative of ``sigmoid(4 * x)`` in the backward pass. Use
-``tt.snn.spike_fn.smooth`` for continuous firing intensities or ``tt.snn.spike_fn.stochastic``
-for stochastic events.
-
-Ternary layers retain two signed, unscaled event states, ``pos_prev_output`` and
-``neg_prev_output``, rather than storing their sum. Their reset uses both events:
-
-::
-
-    reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
-    mem = (mem - reset) * beta + x
-    pos_spikes = spike_fn(mem - pos_threshold)
-    neg_spikes = -spike_fn(-neg_threshold - mem)
-    pos_prev_output = pos_spikes
-    neg_prev_output = neg_spikes
-    return pos_spikes + neg_spikes
-
-This preserves both firing intensities when ``spike_fn`` is smooth, and both
-events if stochastic firing activates both branches. ``LITS`` applies
-``pos_scale`` and ``neg_scale`` only to the returned output; reset and recurrence
-always use the unscaled events. Dual membrane layers share the reset equally
-between their two membrane traces.
-
-Surrogate gradients
--------------------
-
-Hard spikes are difficult to train with ordinary gradient descent because a step function has zero derivative almost
-everywhere and is undefined at the threshold. Surrogate-gradient training keeps the forward computation spike-like while
-using a smoother backward approximation.
-
-In traceTorch, the separation is explicit:
-
-* ``spike_fn`` turns membrane distance from threshold into the returned firing output.
-* ``smooth`` returns a continuous firing intensity.
-* ``deterministic`` and ``stochastic`` return hard spikes with a smooth surrogate derivative.
-
-This design makes the training behavior visible. The default keeps the forward pass discrete and uses a continuous backward approximation. The hard
-spike functions make the forward pass discrete while keeping the backward pass trainable.
-
-Synaptic traces
+Membrane memory
 ---------------
 
-Synaptic variants add a trace called ``syn`` before the membrane:
+A leaky integrator, ``LI``, adds the current input :math:`x_t` to a decayed copy
+of its previous membrane :math:`m_{t-1}`:
 
-::
+.. math::
 
-    syn = alpha * syn + (1 - alpha) * x
-    mem = beta * mem + syn
+   m_t = \beta m_{t-1} + x_t, \qquad y_t = m_t.
 
-This makes the input current smoother before it reaches the membrane. Dual synaptic layers use ``pos_syn`` and
-``neg_syn`` so positive and negative signals can decay independently. Each
-synaptic trace feeds its corresponding membrane trace directly, without summing
-the two currents and splitting that sum by sign again.
+The decay :math:`0 < \beta < 1` controls how quickly old input fades. With no
+further input, an initial membrane value becomes :math:`\beta^n m_0` after
+:math:`n` calls. We usually work directly with the decay: 0.9 keeps 90% of a
+passive trace at each step, while 0.99 keeps 99%.
 
-Recurrent traces
-----------------
+When we want a rough duration, the **time horizon** gives a convenient scale:
 
-Recurrent variants add a trace of the previous output:
+.. math::
 
-::
+   H = \frac{1}{1-\beta}, \qquad \beta = 1-\frac{1}{H}.
 
-    rec = gamma * rec + (1 - gamma) * prev_output
-    mem = beta * mem + x + rec_weight * rec
+Thus 0.9 gives a horizon of 10 timesteps, and 0.99 gives 100. This is also the
+total weight :math:`\sum_{k=0}^{\infty}\beta^k` of the exponential history.
+It isn't a point where memory disappears: after roughly one horizon, a slow
+passive trace retains about :math:`e^{-1}`, or 37%, of its initial value.
+New input and firing resets can change that trace, so the horizon describes
+decay rather than guaranteeing how long a model remembers a fact.
 
-The recurrent trace is internal to the layer. The caller still passes one tensor in and receives one tensor out, which
-keeps traceTorch layers composable with ordinary PyTorch modules.
+For recordings with a known frame duration we can also express the horizon
+in seconds. For text it counts bytes, with no assigned physical duration.
+``tt.utils.convert_decay`` converts between these descriptions, including
+half-life when we specifically want the time for a trace to fall by half.
+The :doc:`../tutorials/shd` tutorial uses the recording length to choose decays,
+while :doc:`../tutorials/language_model` explores uniform random decays without
+choosing a single sequence duration in advance.
 
-For ternary layers, a single ``rec`` trace filters the sum of the two unscaled
-events. Dual recurrent layers instead filter each event independently:
+LI accumulates input, so a constant input :math:`c` approaches
+:math:`c/(1-\beta)`. ``LIEMA`` instead uses an exponential moving average:
 
-::
+.. math::
 
-    pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * pos_prev_output
-    neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * neg_prev_output
+   m_t = \beta m_{t-1} + (1-\beta)x_t.
 
-Each recurrent trace feeds its corresponding membrane through its own recurrent
-weight, without combining and re-splitting the histories.
+The extra input factor changes the steady value to :math:`c`, which makes this
+form useful for smoothing a signal without increasing its constant magnitude.
+Both forms retain time-dependent information, but both are linear in the input
+sequence for a fixed decay and initial state. Memory alone doesn't make a
+transformation nonlinear.
 
-Ternary hidden-state checkpoints use ``pos_prev_output`` and ``neg_prev_output``;
-older checkpoints containing only ``prev_output`` do not preserve both branches
-and cannot reconstruct them in general. Parameter names in weight checkpoints
-are unchanged.
+From a membrane to firing
+-------------------------
 
-Choosing a layer
-----------------
+``LIB`` adds a positive threshold :math:`\theta` and a previous firing state
+:math:`s_{t-1}`. It first subtracts the previous event's reset, then decays the
+membrane and adds the new input:
 
-Use ``LI`` or ``LIEMA`` when you want a continuous trace. Use ``LIB`` when you want one-sided firing. Use ``LIT`` when
-positive and negative events should be represented separately. Use ``LITS`` when the positive and negative events should
-also have their own output magnitudes.
+.. math::
 
-Then add prefixes only when they match the dynamics you need:
+   m_t &= \beta(m_{t-1} - \theta s_{t-1}) + x_t, \\
+   s_t &= H(m_t-\theta), \qquad y_t = s_t,
 
-* Add ``D`` when positive and negative history should be stored separately.
-* Add ``S`` when inputs should be smoothed before membrane integration.
-* Add ``R`` when the neuron's previous output should influence its next membrane update.
+where :math:`H(z)` is 1 when :math:`z \geq 0` and 0 otherwise. The threshold
+therefore determines whether the current membrane produces a firing event.
+That event affects the membrane on the *next* call: reset is delayed and occurs
+before decay, rather than setting the current membrane to zero immediately.
 
-The names look dense at first, but they are meant to be mechanical. ``DSRLITS`` is a dual, synaptic, recurrent, leaky
-integrator with ternary scaled output.
+We can see the distinction with a decay of 0.9, threshold 1 and constant input
+0.6. Starting from zero, the first two membrane values are 0.6 and 1.14, so the
+second call fires. The next update uses
+:math:`0.9(1.14-1)+0.6=0.726`, which falls below threshold again. The membrane
+stores continuous values even though the returned output is binary.
 
-The layer families
-------------------
+This firing rule is nonlinear. Its hard threshold has zero derivative away
+from the boundary, so the default function uses a surrogate derivative during
+training. For distance :math:`z=m-\theta`, we define
 
-The 32 SNN layers are easier to understand as four output families, each with the same optional dynamics layered on top.
+.. math::
 
-.. list-table::
-   :header-rows: 1
+   g(z) = \sigma(4z), \qquad g'(z)=4g(z)(1-g(z)),
+   \qquad \sigma(z)=\frac{1}{1+e^{-z}}.
 
-   * - Family
-     - Output
-     - Base layer
-     - Variants
-   * - ``LI``
-     - Continuous membrane value
-     - ``LI``
-     - ``LI``, ``DLI``, ``SLI``, ``DSLI``, ``LIEMA``, ``DLIEMA``, ``SLIEMA``, ``DSLIEMA``
-   * - ``LIB``
-     - One-sided non-negative firing value
-     - ``LIB``
-     - ``LIB``, ``DLIB``, ``SLIB``, ``RLIB``, ``DSLIB``, ``DRLIB``, ``SRLIB``, ``DSRLIB``
-   * - ``LIT``
-     - Positive, zero, or negative firing value
-     - ``LIT``
-     - ``LIT``, ``DLIT``, ``SLIT``, ``RLIT``, ``DSLIT``, ``DRLIT``, ``SRLIT``, ``DSRLIT``
-   * - ``LITS``
-     - Positive, zero, or negative firing value with separate output scales
-     - ``LITS``
-     - ``LITS``, ``DLITS``, ``SLITS``, ``RLITS``, ``DSLITS``, ``DRLITS``, ``SRLITS``, ``DSRLITS``
+``deterministic`` returns the hard event in the forward pass but uses
+:math:`g'(z)` during backpropagation. ``stochastic`` samples a hard event with
+probability :math:`g(z)` and uses that same surrogate derivative. With
+``smooth``, the forward output itself is :math:`g(z)`, so ordinary differentiation
+gives its gradient. The smooth intensity also enters the next reset; changing
+the firing function changes the forward dynamics as well as the output values.
 
-The output family goes at the end of the name. Prefixes describe extra internal traces:
+The :doc:`../tutorials/mnist` tutorial plots the hard output, smooth function
+and surrogate derivative, then follows them into a training update.
 
-* No prefix: one membrane trace.
-* ``D``: positive and negative traces are stored separately.
-* ``S``: a synaptic trace is added before the membrane.
-* ``R``: a recurrent trace of the previous output is added before the membrane.
-* ``DS``, ``DR``, ``SR``, ``DSR``: combinations of the above.
+Representing positive and negative events
+-----------------------------------------
 
-This means that ``SRLIT`` is a synaptic recurrent ternary layer, while ``DLITS`` is a dual ternary-scaled layer.
+``LIT`` uses separate positive and negative thresholds, both stored as positive
+magnitudes. If :math:`s_t^+` is the positive event and :math:`s_t^-` is the signed
+negative event, its update is
 
-Common parameters
------------------
+.. math::
 
-Most SNN parameters follow the same rules across all layers.
+   r_{t-1} &= \theta^+s_{t-1}^+ + \theta^-s_{t-1}^-, \\
+   m_t &= \beta(m_{t-1}-r_{t-1})+x_t, \\
+   s_t^+ &= f(m_t-\theta^+), \\
+   s_t^- &= -f(-\theta^- - m_t), \\
+   y_t &= s_t^+ + s_t^-.
 
-``num_features`` is the final input dimension size. For example, ``tt.snn.LIB(64)`` accepts ``[..., 64]``. Move channel-first images explicitly before applying the layer.
+Here :math:`f` is the selected firing function. With deterministic firing,
+the output is negative, zero or positive; with smooth firing, both branches
+have continuous intensities. We retain both event states separately because
+their sum doesn't preserve the information each reset term needs.
 
-Decay parameters are constrained to ``(0, 1)``:
+``LITS`` adds positive output scales :math:`a^+` and :math:`a^-`:
 
-* ``alpha`` controls synaptic memory.
-* ``beta`` controls membrane memory.
-* ``gamma`` controls recurrent-output memory.
+.. math::
 
-Threshold parameters are constrained to positive values:
+   y_t = a^+s_t^+ + a^-s_t^-.
 
-* ``threshold`` is used by binary layers.
-* ``pos_threshold`` and ``neg_threshold`` are used by ternary layers.
+The scales change what reaches the next layer, while reset and recurrent history
+still use the unscaled events. That separates the threshold that causes firing
+from the magnitude of its downstream contribution.
 
-The ``*_rank`` arguments choose whether a parameter is shared or per-neuron. A rank of ``0`` creates a scalar. A rank of
-``1`` creates a vector of length ``num_features``. You can also pass a tensor directly; scalar tensors are accepted, and
-1D tensors must have ``num_features`` elements.
+Filtering input before integration
+----------------------------------
 
-The ``learn_*`` arguments choose whether a parameter is trainable. If ``learn_beta=False``, for example, the raw decay is
-stored as an ``nn.Parameter`` with ``requires_grad=False``. Use ``set_parameter_learnable`` to change intended learnability later, including across compilation.
+An ``S`` prefix adds a synaptic history :math:`a_t` before the membrane. For
+example, ``SLIB`` replaces the direct membrane input with a filtered current:
 
-Working on non-last dimensions
-------------------------------
+.. math::
 
-Built-in layers operate on the final dimension. For channel-first images, move the channel axis explicitly:
+   a_t &= \alpha a_{t-1} + (1-\alpha)x_t, \\
+   m_t &= \beta(m_{t-1}-\theta s_{t-1}) + a_t.
 
-::
+The synaptic decay :math:`\alpha` and membrane decay :math:`\beta` now control
+two different histories. An input can keep contributing through the synapse
+after its original timestep, while the membrane combines that current with
+its own remaining charge. A larger synaptic decay gives a slower response and
+a longer tail.
 
-    layer = nn.Sequential(
-        tt.utils.MoveDim(-3, -1),
-        tt.snn.LIB(num_features=32),
-        tt.utils.MoveDim(-1, -3),
-    )
-    x = torch.rand(16, 32, 28, 28)
-    y = layer(x)
-    # y.shape == torch.Size([16, 32, 28, 28])
+Keeping a trace of earlier output
+---------------------------------
 
-States remain in feature-last layout; only the layer's input and output are moved.
+An ``R`` prefix adds a filtered history :math:`q_t` of the previous firing
+output. For ``RLIB``, with recurrent decay :math:`\gamma` and weight :math:`w_r`,
+we get
 
-Practical choices
------------------
+.. math::
 
-Start simple unless the task gives you a reason not to.
+   q_t &= \gamma q_{t-1} + (1-\gamma)s_{t-1}, \\
+   m_t &= \beta(m_{t-1}-\theta s_{t-1}) + x_t + w_rq_t.
 
-Use ``LI`` as a readout or continuous accumulator when you want to keep magnitude information. Use ``LIEMA`` when the
-trace should remain bounded like a smoothed signal.
+This gives the neuron's own output a further influence on future updates,
+in addition to its effect through reset. The trace is per feature; it doesn't
+mix all neurons through an internal dense recurrent matrix. We use an ordinary
+linear projection when the model needs learned mixing between neurons.
+In ternary layers, the non-dual recurrent trace filters the sum of the two
+unscaled signed events.
 
-Use ``LIB`` for ordinary one-sided SNN experiments. It is the traceTorch name for the common leaky integrate-and-fire
-shape, with hard spikes and surrogate gradients by default.
+Separating positive and negative histories
+------------------------------------------
 
-Use ``LIT`` when negative events are meaningful. This is often more natural for signed activations, residual streams, or
-signals where "below baseline" should be represented explicitly rather than merely suppressing positive firing.
+The ``D`` prefix gives positive and negative input separate traces, which can
+learn different decays. For the continuous ``DLI`` layer:
 
-Use ``LITS`` when the positive and negative events should have independent magnitudes. This lets the layer learn or fix
-the downstream strength of positive and negative events separately from the thresholds that produced them.
+.. math::
 
-Add ``S`` when input should arrive as a current over time instead of as a direct membrane increment. Add ``R`` when a
-neuron's previous output should influence its next update. Add ``D`` when positive and negative history should have
-separate time constants.
+   m_t^+ &= \beta^+m_{t-1}^+ + \max(x_t,0), \\
+   m_t^- &= \beta^-m_{t-1}^- + \min(x_t,0), \\
+   y_t &= m_t^+ + m_t^-.
 
-For a first model, something like this is usually easier to reason about than starting with the largest layer:
+Firing variants calculate their output from the combined membrane and divide
+the reset equally between the two membrane traces *before* each branch's decay.
+When synaptic traces are present, each signed synaptic history feeds its
+corresponding membrane directly. Dual recurrent ternary layers likewise filter
+the positive and negative events separately, rather than summing and splitting
+them again.
 
-::
-
-    self.net = nn.Sequential(
-        nn.Linear(784, 128),
-        tt.snn.LIB(128),
-        nn.Linear(128, 10),
-        tt.snn.LI(10),
-    )
-
-Once that works, the layer name gives a mechanical upgrade path: ``LIB`` to ``SLIB`` for input smoothing, ``LIB`` to
-``RLIB`` for recurrent output memory, ``LIB`` to ``LIT`` for signed events, or ``LIT`` to ``LITS`` for signed events with
-separate output magnitudes.
+These options describe different state updates, rather than a ranking of neuron
+quality. A model might need only a membrane, or it might have a reason to retain
+input and output histories separately. :doc:`layers` maps these choices to the
+available names, while the API reference gives the full update for each variant.

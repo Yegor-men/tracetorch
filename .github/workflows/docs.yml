@@ -2,7 +2,7 @@ name: Build and Deploy Docs
 
 on:
   push:
-    branches: [main]  # Triggers on pushes to main (adjust if your branch is different, e.g., master)
+    branches: [main]
 
 permissions:
   contents: read
@@ -32,8 +32,7 @@ jobs:
 
       - name: Build Sphinx docs
         run: |
-          cd docs
-          make html  # Assumes output is docs/build/html/ (adjust to _build/html/ if needed)
+          make -C docs html SPHINXOPTS="-W --keep-going"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -52,8 +52,13 @@ class LIT(SNNLayer):
 
         ::
 
-            mem = beta * mem + x
-            return pos + neg
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
+            mem = beta * (mem - reset) + x
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
 
     Examples::
 
@@ -78,8 +83,7 @@ class LIT(SNNLayer):
             learn_neg_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("mem", (num_features,))
         self.define_state("pos_prev_output", (num_features,))
@@ -159,10 +163,15 @@ class DLIT(SNNLayer):
 
         ::
 
-            pos_mem = pos_beta * pos_mem + where(x >= 0, x, 0)
-            neg_mem = neg_beta * neg_mem + where(x < 0, x, 0)
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
+            pos_mem = pos_beta * (pos_mem - reset / 2) + maximum(x, 0)
+            neg_mem = neg_beta * (neg_mem - reset / 2) + minimum(x, 0)
             mem = pos_mem + neg_mem
-            return pos + neg
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
 
     Examples::
 
@@ -190,8 +199,7 @@ class DLIT(SNNLayer):
             learn_neg_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_mem", (num_features,))
         self.define_state("neg_mem", (num_features,))
@@ -279,9 +287,14 @@ class SLIT(SNNLayer):
 
         ::
 
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
             syn = alpha * syn + (1 - alpha) * x
-            mem = beta * mem + syn
-            return pos + neg
+            mem = beta * (mem - reset) + syn
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
 
     Examples::
 
@@ -309,8 +322,7 @@ class SLIT(SNNLayer):
             learn_neg_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
         self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
 
@@ -400,11 +412,14 @@ class RLIT(SNNLayer):
 
         ::
 
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
             rec = gamma * rec + (1 - gamma) * (pos_prev_output + neg_prev_output)
-            mem = beta * mem + x + rec_weight * rec
-            pos_prev_output = pos
-            neg_prev_output = neg
-            return pos + neg
+            mem = beta * (mem - reset) + x + rec_weight * rec
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
 
     Examples::
 
@@ -435,8 +450,7 @@ class RLIT(SNNLayer):
             learn_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("mem", (num_features,))
         self.define_decay("beta", beta, beta_rank, learn_beta)
@@ -535,6 +549,20 @@ class DSLIT(SNNLayer):
 
         The membrane reset is split evenly across the two membrane branches.
 
+    Pseudocode::
+
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * maximum(x, 0)
+            pos_mem = pos_beta * (pos_mem - reset / 2) + pos_syn
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * minimum(x, 0)
+            neg_mem = neg_beta * (neg_mem - reset / 2) + neg_syn
+            mem = pos_mem + neg_mem
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
+
     Examples::
 
         >>> layer = tt.snn.DSLIT(num_features=32)
@@ -567,8 +595,7 @@ class DSLIT(SNNLayer):
             learn_neg_threshold: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_syn", (num_features,))
         self.define_state("neg_syn", (num_features,))
@@ -692,6 +719,20 @@ class DRLIT(SNNLayer):
         ``DRLIT`` is the ternary recurrent layer to reach for when positive and
         negative recurrent history should use different decays and gains.
 
+    Pseudocode::
+
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
+            pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * pos_prev_output
+            pos_mem = pos_beta * (pos_mem - reset / 2) + maximum(x, 0) + pos_rec_weight * pos_rec
+            neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * neg_prev_output
+            neg_mem = neg_beta * (neg_mem - reset / 2) + minimum(x, 0) + neg_rec_weight * neg_rec
+            mem = pos_mem + neg_mem
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
+
     Examples::
 
         >>> layer = tt.snn.DRLIT(num_features=32)
@@ -730,8 +771,7 @@ class DRLIT(SNNLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_mem", (num_features,))
         self.define_state("neg_mem", (num_features,))
@@ -849,12 +889,15 @@ class SRLIT(SNNLayer):
 
         ::
 
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
             syn = alpha * syn + (1 - alpha) * x
             rec = gamma * rec + (1 - gamma) * (pos_prev_output + neg_prev_output)
-            mem = beta * mem + syn + rec_weight * rec
-            pos_prev_output = pos
-            neg_prev_output = neg
-            return pos + neg
+            mem = beta * (mem - reset) + syn + rec_weight * rec
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
 
     Examples::
 
@@ -888,8 +931,7 @@ class SRLIT(SNNLayer):
             learn_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("syn", (num_features,))
         self.define_decay("alpha", alpha, alpha_rank, learn_alpha)
@@ -947,7 +989,7 @@ class DSRLIT(SNNLayer):
 
     ``DSRLIT`` combines every ternary trace mechanism: dual synaptic traces,
     dual recurrent traces, dual membrane traces, and positive/negative firing
-    thresholds. It is the most expressive unscaled ternary SNN layer.
+    thresholds.
 
     Args:
         num_features (int): number of neurons in the final dimension.
@@ -1018,6 +1060,22 @@ class DSRLIT(SNNLayer):
         Use ``DSRLIT`` when both input history and output history should retain
         sign-specific dynamics before ternary firing.
 
+    Pseudocode::
+
+            reset = pos_prev_output * pos_threshold + neg_prev_output * neg_threshold
+            pos_syn = pos_alpha * pos_syn + (1 - pos_alpha) * maximum(x, 0)
+            pos_rec = pos_gamma * pos_rec + (1 - pos_gamma) * pos_prev_output
+            pos_mem = pos_beta * (pos_mem - reset / 2) + pos_syn + pos_rec_weight * pos_rec
+            neg_syn = neg_alpha * neg_syn + (1 - neg_alpha) * minimum(x, 0)
+            neg_rec = neg_gamma * neg_rec + (1 - neg_gamma) * neg_prev_output
+            neg_mem = neg_beta * (neg_mem - reset / 2) + neg_syn + neg_rec_weight * neg_rec
+            mem = pos_mem + neg_mem
+            pos_spikes = spike_fn(mem - pos_threshold)
+            neg_spikes = -spike_fn(-neg_threshold - mem)
+            pos_prev_output = pos_spikes
+            neg_prev_output = neg_spikes
+            return pos_spikes + neg_spikes
+
     Examples::
 
         >>> layer = tt.snn.DSRLIT(num_features=32)
@@ -1062,8 +1120,7 @@ class DSRLIT(SNNLayer):
             learn_neg_rec_weight: bool = True,
             spike_fn=spike_functions.deterministic,
     ):
-        super().__init__()
-        self.num_features = num_features
+        super().__init__(num_features)
 
         self.define_state("pos_syn", (num_features,))
         self.define_state("neg_syn", (num_features,))

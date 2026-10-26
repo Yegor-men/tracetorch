@@ -1,112 +1,77 @@
 Quickstart
 ==========
 
-This page builds the smallest useful traceTorch training loop. The goal is not accuracy; it is to show the shape of a
-traceTorch model.
+Let's build a small model that remembers a number. We'll give it a random value
+at the first timestep, follow that with seven zeros, and ask it to reproduce the
+original value from its final output. That gives us a complete training example
+without needing to download a dataset.
 
-The model
+The last input is always zero, while the answer depends on the first input, so
+the model has to carry information between calls. We can use a leaky integrator
+for that memory, with a linear layer on either side to project into and out of
+eight hidden features:
+
+.. math::
+
+   u_t &= W_{in}x_t + b_{in}, \\
+   m_t &= \beta m_{t-1} + u_t, \\
+   \hat y_t &= W_{out}m_t + b_{out}.
+
+Here :math:`x_t` is the input at timestep :math:`t`, :math:`m_t` is the stored
+membrane, and :math:`\hat y_t` is the prediction. The decay :math:`\beta`
+controls how much of the previous membrane remains. We'll use
+:math:`\hat y_8` to predict :math:`x_1`; the intermediate outputs don't contribute
+to this task's loss. The matrices :math:`W_{in}` and :math:`W_{out}` are the
+linear layers' learned weights, and :math:`b_{in}` and :math:`b_{out}` are their
+biases.
+
+We don't need an extra activation function here because recalling a number is a
+linear task. LI provides memory, while its update remains linear for a fixed
+decay. In the practical tutorials, firing functions provide nonlinear
+updates when the task needs them.
+
+The complete example
+--------------------
+
+.. literalinclude:: ../../examples/quickstart/main.py
+   :language: python
+
+The input tensor has shape ``[8, 16, 1]``: eight timesteps, sixteen independent
+sequences, and one feature. Only its first timestep contains random values; the
+remaining timesteps are zeros. ``targets`` keeps a copy of those first values,
+which we'll compare with the model's final predictions.
+
+Each forward call receives one timestep. ``LI`` keeps its membrane between calls,
+and inheriting from ``tt.Model`` lets us reset that memory across the model.
+We reset before each repetition because it begins a new sequence; otherwise the
+model would also see memory left over from the previous training update.
+
+Within each update, we clear the parameter gradients, process the eight inputs
+in order, and calculate mean squared error from the last prediction. Calling
+``backward()`` follows the calculation through all eight timesteps, so the
+optimizer can adjust both the projections and the membrane decay. Resetting
+states and clearing gradients serve different purposes, which is why both appear
+in the loop.
+
+Trying it
 ---------
 
-traceTorch models are ordinary PyTorch modules with one important change: inherit from ``tt.Model`` instead of
-``nn.Module``. That gives the model recursive state-management methods.
+After :doc:`installation/index`, run the example from the downloaded repository:
 
-.. code-block:: python
+.. code-block:: bash
 
-    import torch
-    from torch import nn
-    import tracetorch as tt
+   python examples/quickstart/main.py
 
+With seed 0, the loss falls from about 2.784 to less than 0.000001, and the final
+predictions approach the first inputs. We deliberately reuse a small batch here
+to make the training procedure easy to follow; this is a demonstration of
+temporal memory, rather than a dataset benchmark.
 
-    class Net(tt.Model):
-        def __init__(self):
-            super().__init__()
-            self.net = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(784, 128),
-                tt.snn.LIB(num_features=128),
-                nn.Linear(128, 10),
-                tt.snn.LI(num_features=10),
-            )
+You can see why the reset belongs outside the timestep loop by moving it inside
+that loop for an experiment. The model then forgets the initial value before it
+sees the final zero, so it can only learn a shared answer for all sixteen targets.
+Move the reset back before continuing with the other examples.
 
-        def forward(self, x):
-            return self.net(x)
-
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = Net().to(device)
-
-``tt.snn.LIB`` is a leaky integrate-and-binary-fire layer. With the default
-``spike_fn=tt.snn.spike_fn.deterministic``, it returns hard spikes with surrogate gradients. ``tt.snn.LI``
-is a continuous leaky integrator, useful as a simple readout trace.
-
-The timestep loop
------------------
-
-traceTorch layers process one timestep per forward call. If an input has 20 timesteps, the outer training loop calls the
-model 20 times.
-
-.. code-block:: python
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
-    loss_fn = nn.functional.cross_entropy
-
-    for image, label in train_dataloader:
-        image = image.to(device)
-        label = label.to(device)
-
-        model.train()
-        model.zero_grad()
-        model.reset_states()
-
-        running_output = 0
-        for _ in range(20):
-            x_t = torch.bernoulli(image)
-            running_output = running_output + model(x_t)
-
-        output = running_output / 20
-        loss = loss_fn(output, label)
-        loss.backward()
-        optimizer.step()
-
-The important line is ``model.reset_states()``. It resets all traceTorch hidden states to ``None`` so they will be lazily
-created with the correct batch shape on the first timestep.
-
-Online learning
----------------
-
-If you want gradients to stop at each timestep, call ``detach_states()`` inside the timestep loop.
-
-.. code-block:: python
-
-    for t in range(num_timesteps):
-        output = model(x[t])
-        loss = loss_fn(output, label)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        model.detach_states()
-
-This is useful for online learning and truncated backpropagation through time. If you want full backpropagation through
-the whole sequence, do not detach until after the sequence.
-
-Working with images
--------------------
-
-Built-in layers operate on the final dimension. Move image channels explicitly before and after the layer:
-
-.. code-block:: python
-
-    layer = nn.Sequential(
-        tt.utils.MoveDim(-3, -1),
-        tt.snn.LIB(num_features=32),
-        tt.utils.MoveDim(-1, -3),
-    )
-    x = torch.rand(16, 32, 28, 28)
-    y = layer(x)
-    # y.shape == torch.Size([16, 32, 28, 28])
-
-Next steps
-----------
-
-Read :doc:`introduction/index` to understand the design choices, then follow :doc:`examples/mnist` for complete runnable
-MNIST scripts.
+If you'd like to understand how these states and decays work, continue with
+:doc:`introduction/index`. The :doc:`tutorials/index` use the same training ideas
+for image, audio and text tasks.

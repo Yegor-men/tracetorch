@@ -10,6 +10,14 @@ def convert_decay(
         from_type: metric_type,
         to_type: metric_type,
 ):
+    """Convert a decay or its timestep-based memory measure.
+
+    Supported measures are ``decay``, ``halflife`` (time to halve a trace),
+    ``tau`` (time to decay by a factor of e), and ``horizon`` (1 / (1 - decay)).
+    The equivalent decay must lie strictly between zero and one. Tensor inputs
+    preserve device and dtype and support differentiation; numeric inputs return
+    a scalar. Convert physical durations to timesteps before using this helper.
+    """
     is_tensor = torch.is_tensor(value)
     m = torch if is_tensor else math
 

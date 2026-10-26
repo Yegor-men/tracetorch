@@ -1,137 +1,93 @@
 ![traceTorch Banner](https://raw.githubusercontent.com/Yegor-men/tracetorch/main/media/tracetorch_banner.png)
 
-[![Documentation](https://img.shields.io/pypi/v/tracetorch?style=flat&labelColor=555&label=Documentation&color=red)](https://yegor-men.github.io/tracetorch/)
-[![PyPI version](https://img.shields.io/pypi/v/tracetorch?style=flat&labelColor=555&label=PyPI&color=blue)](https://pypi.org/project/tracetorch/)
-[![License](https://img.shields.io/badge/License-MIT-purple.svg?style=flat&labelColor=555)](https://opensource.org/license/mit)
-[![GitHub issues](https://img.shields.io/github/issues/Yegor-men/tracetorch?style=flat&labelColor=555&label=Issues&color=orange)](https://github.com/Yegor-men/tracetorch/issues)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/tracetorch?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=BLUE&left_text=Downloads)](https://pepy.tech/projects/tracetorch)
+[![Documentation](https://img.shields.io/badge/Documentation-online-blue)](https://yegor-men.github.io/tracetorch/)
+[![PyPI version](https://img.shields.io/pypi/v/tracetorch)](https://pypi.org/project/tracetorch/)
+[![License](https://img.shields.io/badge/License-MIT-purple)](https://opensource.org/license/mit)
 
 # traceTorch
 
-traceTorch is a PyTorch library for stateful recurrent layers, built primarily for spiking neural networks.
+An image can arrive one patch at a time. Audio arrives over time, and the next byte in a passage depends on what came before. In each case, a model needs a way to retain information while processing new input.
 
-It provides tools for building stateful layers, with SNN and RNN layers bundled by default. Hidden states stay inside each layer and are easy to manage: inherit from `tt.Model` and use `reset_states()`, `detach_states()`, `save_states()`, `load_states()`, `compile_parameters()`, or `decompile_parameters()` across the model.
-
-```bash
-pip install tracetorch
-```
+traceTorch brings that memory to ordinary PyTorch models, with a focus on spiking neural networks. A layer processes one timestep and keeps its own hidden states, so you can place recurrent neurons between familiar linear layers and write the sequence loop yourself:
 
 ```python
 import torch
 from torch import nn
 import tracetorch as tt
 
-
-class Net(tt.Model):
+class Model(tt.Model):
     def __init__(self):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(784, 128),
-            tt.snn.LIB(num_features=128),
-            nn.Linear(128, 10),
-            tt.snn.LI(num_features=10),
+        self.layers = nn.Sequential(
+            nn.Linear(16, 64),
+            tt.snn.LIB(64),
+            nn.Linear(64, 10),
+            tt.snn.LI(10, beta=0.9, beta_rank=0, learn_beta=False),
         )
 
     def forward(self, x):
-        return self.net(x)
+        return self.layers(x)
 
-
-model = Net()
+model = Model()
+sequence = torch.randn(49, 8, 16)  # 49 timesteps, 8 independent sequences
 model.reset_states()
-out = model(torch.rand(32, 1, 28, 28))
+for timestep in sequence:
+    scores = model(timestep)
 ```
 
-## Why traceTorch?
+The last scores contain the result of processing the sequence. You choose whether to train from those final scores or from every timestep, when to begin a new sequence, and how long gradients should follow its history. Parameters work with PyTorch optimizers and checkpoints; memory can be reset, detached, saved and restored across the whole model.
 
-- **Hidden states stay hidden.** Layers own their states, so model code stays readable.
-- **State management is explicit.** Reset between sequences with `reset_states()`, truncate history with `detach_states()`, and save/load hidden states when needed.
-- **SNNs are first-class.** `tt.snn` contains 32 leaky-integrator-based layers with binary, ternary, scaled ternary, continuous, dual, synaptic, and recurrent variants.
-- **PyTorch composition stays normal.** Put traceTorch layers inside `nn.Sequential`, CNNs, MLPs, and custom PyTorch modules.
-- **Built-in layers use features last.** Move image channels explicitly with `tt.utils.MoveDim` when composing with convolutions.
-- **Parameters can be scalar, per-neuron, fixed, learnable, or tensor-initialized.**
+That makes traceTorch a place to build and understand recurrent models without hiding the update behind a training framework. You can start with a built-in neuron, inspect its equations, or define a new layer whose states have the shapes your idea needs—including matrices. The [documentation](https://yegor-men.github.io/tracetorch/) connects these operations to runnable models and illustrated notebooks.
 
-## Layer Families
+## Installation
 
-| Module | Layers |
-| --- | --- |
-| `tt.snn` | `LI`, `LIB`, `LIT`, `LITS` families, including dual (`D`), synaptic (`S`), recurrent (`R`), and combined variants |
-| `tt.rnn` | `SimpleRNN`, `LSTM`, `GRU` |
-
-traceTorch's main focus is SNN experimentation. The base layer can also support custom vector or matrix states, including state-space dynamics.
-
-## Custom states and parameters
-
-`tt.Layer()` has no global feature count or target dimension. Declare each state with its own trailing shape:
-
-```python
-self.define_state("mem", (512,))
-self.define_state("history", (512, 4), dim=-1)
+```bash
+pip install tracetorch
 ```
 
-`zero_states(x)` lazily creates zeros with shape `x.shape[:dim] + state_shape`, using `x`'s dtype and device. Negative `dim` removes trailing input dimensions; `None` removes none. Existing states are preserved until reset. Time iteration remains external to the layer.
+PyTorch is the library's runtime dependency. The examples list their own dataset, plotting and notebook packages, so you can install those when you choose an example to work through.
 
-`define_parameter(name, value, learnable=True, initialization_fn=None, activation_fn=None)` accepts a tensor of any shape. Initialization transforms it into an unconstrained raw `nn.Parameter` once; activation transforms it when accessed. SNN helpers retain scalar/per-neuron convenience arguments. Use `set_parameter_learnable(name, bool)` to change intended learnability.
+## Quickstart
 
-Compilation caches detached activated values in nonpersistent buffers and temporarily freezes raw parameters. Decompilation removes the caches and restores intended learnability without replacing parameters or invalidating optimizers. Loading weights clears caches too.
-
-Save weights with `torch.save(model.state_dict(), path)` and hidden states separately with `torch.save(model.save_states(), path)`. Neither checkpoint contains the other's tensors, and compiled caches are never included in weight state dictionaries. Learnability settings are configuration, not weight tensors. Move the model to its target device/dtype before allocating or loading plain-tensor hidden states.
-
-For channel-first images:
-
-```python
-nn.Sequential(
-    nn.Conv2d(3, 32, 3),
-    tt.utils.MoveDim(-3, -1),
-    tt.snn.LIB(32),
-    tt.utils.MoveDim(-1, -3),
-)
-```
-
-## Documentation
-
-Read the full documentation at <https://yegor-men.github.io/tracetorch/>.
-
-Recommended path:
-
-1. **Installation**: install the package or editable repository.
-2. **Quickstart**: build and train a minimal traceTorch model.
-3. **Introduction**: understand the state model, SNN naming scheme, and design choices.
-4. **Examples**: follow MNIST and Heidelberg Digits examples from `examples/`.
-5. **Tutorials**: learn saving/loading states, compiling/decompiling, and custom layer creation.
-6. **Reference**: inspect API docstrings.
-
-## Examples
-
-Runnable examples live in `examples/`.
+We'll start with a small model that remembers a random value through seven timesteps of silence, then reproduces it from the final output. It needs no dataset download, and the complete training loop fits in one file:
 
 ```bash
 git clone https://github.com/Yegor-men/tracetorch.git
 cd tracetorch
 pip install -e .
-
-cd examples/mnist
-pip install -r requirements.txt
-python rate_coded.py
+python examples/quickstart/main.py
 ```
 
-Current examples:
+The [quickstart explanation](https://yegor-men.github.io/tracetorch/quickstart.html) follows the [program](examples/quickstart/main.py) through model construction, state reset, the timestep loop and a weight update. [Understanding traceTorch](https://yegor-men.github.io/tracetorch/introduction/index.html) then connects those choices to the layer equations and the library's design.
 
-- `examples/mnist/rate_coded.py`: rate-coded MNIST over repeated Bernoulli timesteps.
-- `examples/mnist/sequential.py`: MNIST as a patch sequence.
-- `examples/mnist/noisy.py`: MNIST with noisy repeated observations.
-- `examples/heidelberg_digits/main.py`: Spiking Heidelberg Digits with Tonic.
+## Examples and tutorials
 
-These examples are written to show traceTorch mechanics clearly. They are not tuned as benchmark or SOTA training recipes.
+Each example has its own folder with `main.py`, a local `requirements.txt`, and a `tutorial.ipynb` when a walkthrough is available. The program runs the complete workflow, while the notebook builds the same solution with explanations, figures and experiments. The documentation displays that notebook directly, so the lesson stays the same on the website and in your editor.
 
-## Development Status
+For MNIST, install the local requirements and run the complete program:
 
-traceTorch is approaching its v1.0.0 release. The current focus is documentation, tests, examples, and API polish.
+```bash
+pip install -r examples/mnist/requirements.txt
+python examples/mnist/main.py --device cpu
+```
 
-## Author
+To work through its notebook instead, run `jupyter lab` and open `examples/mnist/tutorial.ipynb`. You can also use an IDE with Jupyter support in the same Python environment.
 
-Created by [Yegor Menovchshikov](https://github.com/Yegor-men).
+| Example | Notebook | Complete program |
+| --- | --- | --- |
+| Reading image patches with an SNN | [tutorial.ipynb](examples/mnist/tutorial.ipynb) | [main.py](examples/mnist/main.py) |
+| Retaining auditory features with synaptic residual blocks | [tutorial.ipynb](examples/shd/tutorial.ipynb) | [main.py](examples/shd/main.py) |
+| Predicting bytes with a residual SNN and online updates | [tutorial.ipynb](examples/alice_language_model/tutorial.ipynb) | [main.py](examples/alice_language_model/main.py) |
+| Building a neuron with matrix-shaped histories | [tutorial.ipynb](examples/custom_neuron/tutorial.ipynb) | [main.py](examples/custom_neuron/main.py) |
 
-## License
+These are teaching experiments: they demonstrate model construction, training and interpretation with small workloads, rather than aiming for benchmark-leading results. All examples reuse `examples/data/`, while plots and checkpoints belong to each example's folder. The defaults keep training short on CPU; an initial dataset download can take longer. [examples/README.md](examples/README.md) describes the commands and saved files.
 
-MIT.
+## Available layers
+
+The library includes 32 leaky-integrator variants with continuous or firing outputs, plus SimpleRNN, GRU and LSTM layers. You can choose deterministic, stochastic or smooth firing, add synaptic and recurrent histories, or use `tt.Layer` to define a different state update.
+
+Built-in recurrent layers use the final dimension for features. `tt.Model` coordinates their state operations, while parameter compilation can cache transformed values during evaluation and decompilation restores their intended learnability. The [API reference](https://yegor-men.github.io/tracetorch/reference/index.html) gives the exact signatures and equations.
+
+## Author and license
+
+Created by [Yegor Menovchshikov](https://github.com/Yegor-men) and distributed under the MIT license.

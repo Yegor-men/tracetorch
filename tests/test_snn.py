@@ -54,6 +54,25 @@ def test_public_snn_inventory():
     assert set(tt.snn.__all__) - {"Layer", "spike_fn"} == set(SNN_NAMES)
 
 
+@pytest.mark.parametrize("count", [0, -1, 1.5, True, None, "4"])
+def test_snn_base_rejects_invalid_feature_counts(count):
+    with pytest.raises(ValueError, match="positive integer"):
+        tt.snn.Layer(count)
+
+
+def test_snn_base_owns_feature_count_and_parameter_initialization():
+    layer = tt.snn.Layer(4)
+    layer.define_decay("beta", 0.7, rank=1, learnable=True)
+    layer.define_threshold("threshold", 1.5, rank=0, learnable=False)
+    layer.define_unbound_parameter("scale", torch.arange(4.0), rank=1, learnable=True)
+    assert layer.num_features == 4
+    torch.testing.assert_close(layer.beta, torch.full((4,), 0.7))
+    torch.testing.assert_close(layer.threshold, torch.tensor(1.5))
+    torch.testing.assert_close(layer.scale, torch.arange(4.0))
+    with pytest.raises(ValueError, match="rank"):
+        layer.define_decay("invalid", torch.tensor(0.5), rank=2, learnable=True)
+
+
 def test_deterministic_spikes_include_the_threshold():
     x = torch.tensor([-1.0, -0.001, 0.0, 0.001, 1.0])
     torch.testing.assert_close(tt.snn.spike_fn.deterministic(x), torch.tensor([0., 0., 1., 1., 1.]))

@@ -1,97 +1,105 @@
-The Ethos of traceTorch
-=======================
+Why layers keep their own states
+================================
 
-traceTorch exists because stateful neural networks should not require messy model code.
+When we classify a whole image at once, a model can calculate its answer from a
+single input tensor. A sequence is different: the current input may only make
+sense in light of earlier inputs. A spoken digit unfolds over several audio
+frames, for example, while the next byte in a sentence depends on the text that
+came before it. A recurrent layer keeps some of that history in a hidden state.
 
-Spiking neural networks, recurrent neural networks, and state-space-style models all have the same practical annoyance:
-they carry hidden state through time. In plain PyTorch, that often means the model's forward method grows extra
-arguments, returns extra tensors, manually initializes state shapes, detaches state at the right time, and threads
-hidden values through layers that should otherwise look simple.
+We can describe this with a state update and an output:
 
-traceTorch chooses a stricter rule:
+.. math::
 
-    Layers own their hidden states. Models manage those states.
+   h_t &= f_\theta(h_{t-1}, x_t), \\
+   y_t &= g_\theta(h_t, x_t).
 
-That one rule shapes the rest of the library.
+Here :math:`x_t` is the current input, :math:`h_t` is the updated hidden state,
+and :math:`\theta` represents the learned parameters. The functions depend on
+the layer: a GRU uses gates to combine new input with old memory, while a spiking
+neuron can integrate its input into a membrane and produce a firing event.
+The state itself may contain several tensors, rather than just one vector.
 
-Hidden states stay hidden
--------------------------
+traceTorch puts that state inside the layer. You call the layer with one input
+at a time and receive its output, while the layer retains the values it needs
+for the next call. This lets a stateful layer sit inside an ordinary PyTorch
+container, such as ``nn.Sequential``, without making every neighboring module
+accept or return hidden states.
 
-A traceTorch layer accepts one tensor and returns one tensor. It does not ask the caller to pass a membrane, hidden
-state, cell state, recurrent trace, or SSM state into ``forward``. Those values live inside the layer.
-
-This keeps model definitions readable:
-
-.. code-block:: python
-
-    self.net = nn.Sequential(
-        nn.Linear(784, 128),
-        tt.snn.LIB(128),
-        nn.Linear(128, 10),
-        tt.snn.LI(10),
-    )
-
-The code reads like PyTorch because it is still PyTorch. The layer just happens to remember something between calls.
-
-State management stays explicit
--------------------------------
-
-Hidden does not mean uncontrollable. ``tt.Model`` gives you explicit recursive methods:
-
-* ``reset_states()`` starts a new sequence.
-* ``detach_states()`` cuts temporal gradients while keeping numerical state.
-* ``save_states()`` and ``load_states()`` persist current hidden state.
-* ``compile_parameters()`` and ``decompile_parameters()`` switch constrained traceTorch parameters between trainable and inference forms.
-
-The user decides when a sequence starts, when gradients should flow through time, and when state should be saved. The
-library removes boilerplate, not intent.
-
-One timestep at a time
-----------------------
-
-traceTorch layers process one timestep per forward call. That is deliberate.
-
-Different tasks disagree about what a sequence means. Some models use the final output. Some average all outputs. Some
-accumulate loss at every timestep. Some detach every step for online learning. A hidden sequence API would have to pick
-one of those patterns or grow a complicated configuration surface.
-
-traceTorch keeps the loop visible:
-
-.. code-block:: python
-
-    model.reset_states()
-
-    for t in range(num_timesteps):
-        output = model(x[t])
-
-This is a small amount of code, and it keeps the training semantics obvious.
-
-Composition over special cases
+A timestep comes from the task
 ------------------------------
 
-traceTorch layers are designed to sit next to ordinary PyTorch layers. Put them after ``nn.Linear``, between
-convolutions, inside ``nn.Sequential``, or inside your own modules. Use explicit ``tt.utils.MoveDim`` wrappers when the feature dimension is not last.
+For a concrete example, consider a leaky integrator with decay 0.5:
 
-This is also why traceTorch includes RNN layers and supports custom state-space dynamics. The library began with SNNs, but the same hidden-state
-contract works naturally for GRUs, LSTMs, and recurrent state-space layers.
+.. code-block:: python
 
-Opinionated defaults
---------------------
+   import torch
+   import tracetorch as tt
 
-traceTorch defaults are chosen for trainability and clarity.
+   layer = tt.snn.LI(1, beta=0.5, learn_beta=False)
+   first = layer(torch.tensor([[1.0]]))
+   second = layer(torch.tensor([[0.0]]))
 
-The default firing function is ``tt.snn.spike_fn.deterministic``: hard forward events with smooth surrogate gradients. Pass ``tt.snn.spike_fn.smooth`` explicitly for continuous firing values.
+Its update is :math:`m_t = 0.5m_{t-1} + x_t`, so the outputs are 1.0 and 0.5.
+The second input is zero, but the stored membrane still contains part of the
+first input. The caller doesn't need to pass that membrane back into the layer.
 
-This is not pretending to be the only correct SNN design. It is traceTorch choosing a stable starting point and making
-the sharper choices explicit.
+We decide what each call represents. In the MNIST tutorial it's a small image
+patch; in SHD it's an audio frame; in the language model it's a byte. The library
+doesn't assign a physical duration to a call, because the same state update can
+be useful at different sampling rates and for sequences without a physical clock.
 
-What traceTorch is not
-----------------------
+Keeping the timestep loop in your code also leaves the prediction rule visible.
+An image classifier might use only its final output, while a language model
+needs a next-byte prediction at every timestep. Both use the same layer interface,
+but the point where we calculate loss changes with the task.
 
-traceTorch is not a full training framework. It does not own your dataloaders, losses, logging, checkpoint manager, or
-experiment runner.
+The model coordinates memory
+----------------------------
 
-traceTorch is not an optimized SSM backend. Its base layer supports custom vector and matrix states, but the library does not bundle optimized sequence-parallel SSM implementations.
+A larger network can contain several stateful layers, including ones nested
+inside ordinary PyTorch containers. When the network inherits from ``tt.Model``,
+we can manage their states together: ``reset_states()`` begins an independent
+sequence, ``detach_states()`` preserves memory while limiting gradient history,
+and ``save_states()`` lets us resume an unfinished sequence later.
 
-traceTorch is not trying to hide PyTorch. The goal is the opposite: keep the model recognizably PyTorch while making
-stateful layers feel natural.
+These operations belong in the training or inference code because only that code
+knows where a sequence ends. A layer cannot tell whether the next audio frame
+continues the current recording or starts a different one. We'll follow those
+boundaries in :doc:`stateful_models`, including the difference between forgetting
+values and cutting their connection to earlier calculations.
+
+States and parameters play different roles
+------------------------------------------
+
+In the leaky integrator, the membrane describes the inputs processed so far,
+while the decay describes how the layer behaves for every sequence. The membrane
+is a hidden state; the decay is a model parameter. Training can change the decay,
+but processing a new input changes the membrane even when we're only evaluating.
+
+That distinction also explains checkpointing. PyTorch's ``state_dict()`` stores
+the learned model, whereas ``save_states()`` stores the current sequence memory.
+For a new independent input, weights are enough. To continue a particular stream,
+we also need its hidden states and the position of its next input.
+
+Combining dynamics with PyTorch modules
+---------------------------------------
+
+Built-in SNN layers update each feature's history independently. A linear layer
+or convolution supplies the mixing between features, so we can change that
+projection without changing the neuron dynamics. GRU and LSTM layers include
+their own learned feature projections as part of their gate equations.
+
+All built-in recurrent layers use the final input dimension for features.
+For image tensors in channel-first layout, we therefore move the channel axis
+explicitly before the recurrent layer and move it back afterward. Keeping that
+layout change visible helps us distinguish independent spatial positions from
+successive timesteps.
+
+Some neuron parameters also need constraints: a decay stays between zero and one,
+for example, while a threshold stays positive. traceTorch stores unconstrained
+raw parameters and transforms them when they're accessed. When those weights
+remain fixed for evaluation, ``compile_parameters()`` can cache their transformed
+values, and ``decompile_parameters()`` restores their intended learnability.
+This is separate from ``eval()`` and gradient recording; the :doc:`../tutorials/shd`
+tutorial walks through all three operations in context.

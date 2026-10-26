@@ -2,6 +2,8 @@
 **/checkpoints/
 **/samples/
 **/tensorboard/
+examples/*/figures/
+**/.ipynb_checkpoints/
 docs/build/
 
 # Distribution / packaging

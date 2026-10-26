@@ -1,7 +1,9 @@
 RNN
 ===
 
-``tt.rnn`` contains conventional recurrent layers adapted to traceTorch's hidden-state contract.
+The layers in ``tt.rnn`` keep their hidden states inside the module and process
+one timestep per call. Their projections and gates follow the equations below,
+while the surrounding model supplies the sequence boundaries and training loss.
 
 Base Layer
 ----------

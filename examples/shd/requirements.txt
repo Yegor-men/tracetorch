@@ -1,0 +1,5 @@
+tonic>=1.4
+matplotlib>=3.6
+jupyterlab>=4
+ipykernel>=6
+ipywidgets>=8

@@ -1,16 +1,15 @@
 Reference
 =========
 
-The reference section is the API index. It is intentionally more direct than the introduction and tutorials: use it when
-you already know the concept and need signatures, arguments, attributes, or implementation notes.
+Once you know which layer or operation you need, the reference gives its exact
+signature, constraints, state attributes and update. The
+:doc:`../introduction/index` connects these APIs to the underlying ideas, while
+the :doc:`../tutorials/index` work through complete tasks with them.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
    core/index
    snn/index
    rnn/index
-   ssm/index
-   functional/index
-   plot/index
+   helpers/index

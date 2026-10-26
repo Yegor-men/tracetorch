@@ -7,6 +7,9 @@ pip install -e '.[test]'
 python -m pytest
 ```
 
+Tests run manually. Pushes, tags and releases do not invoke this suite; the
+documentation workflow builds and deploys the website separately.
+
 Tests are organized by permanent behavior, not by development milestones:
 
 - `core/test_layer.py`: parameter/state definitions, lazy allocation, reset/detach, learnability, compilation, and weight loading. These tests use the generic base layer.

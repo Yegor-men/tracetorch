@@ -29,8 +29,10 @@ class LSTM(RNNLayer):
 
         ::
 
-            i, f, o, g = chunk(sigmoid(gate_layers(concatenate(H, x))), 4)
-            C = f * C + i * tanh(g)
+            i_raw, f_raw, o_raw, g_raw = chunk(gate_layers(concatenate(H, x)), 4)
+            i, f, o = sigmoid(i_raw), sigmoid(f_raw), sigmoid(o_raw)
+            g = tanh(g_raw)
+            C = f * C + i * g
             H = o * tanh(C)
             return H
 

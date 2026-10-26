@@ -1,7 +1,9 @@
 SNN
 ===
 
-``tt.snn`` contains traceTorch's leaky-integrator-based spiking layers.
+The layers in ``tt.snn`` combine membrane integration with different histories
+and output rules. :doc:`../../introduction/snns` develops those rules step by
+step; here we can look up the arguments and exact update for a selected variant.
 
 Base Layer
 ----------
